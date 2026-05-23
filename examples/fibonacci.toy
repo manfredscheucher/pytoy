@@ -1,0 +1,40 @@
+# fibonacci.toy
+# Computes the n-th Fibonacci number
+# Result ends up in the accumulator
+#
+# Algorithm:
+#   a, b = 0, 1
+#   for i in range(n):
+#       b = a + b
+#       a = b - a   (= old b, no temp needed)
+#
+# Set before running:
+#   n   = desired position (e.g. 10 -> fib(10) = 55)
+#   b   = 1
+#   one = 1
+
+        load  n         # acc = n (loop counter)
+loop:   ifzero end      # n == 0 -> done
+
+        load  a         # acc = a
+        add   b         # acc = a + b
+        store b         # b = a + b  (new b)
+
+        load  b         # acc = new b
+        sub   a         # acc = (a+b) - a = old b
+        store a         # a = old b
+
+        load  n         # acc = n
+        sub   one       # acc = n - 1
+        store n         # n--
+
+        goto  loop
+
+end:    load  a         # result: fib(n) in accumulator
+        stop
+
+# data
+n:      7               # <- change here (max 13, fib(14)=377 > 255)
+a:      0
+b:      1
+one:    1
