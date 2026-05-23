@@ -42,17 +42,18 @@ Options:
 - `-m` — show memory dump each step (data cells that were ever non-zero)
 - `-v` — verbose output with binary encoding of instructions
 - `-x` — export compiled listing to `.out` file
-- `-g` — open graphical debugger (requires PySide6)
+- `-g` — open graphical interface (requires PySide6)
 
 All flags can be combined freely. Without any flags, the program runs with a compact trace showing `PC`, `ACC`, and the command for each step.
 
-## Graphical Debugger
+## GUI
 
-The `-g` / `--gui` flag opens a PySide6-based visual debugger with:
+The `-g` / `--gui` flag opens a PySide6-based graphical interface with:
 
 - Source code panel with highlighted current instruction (yellow) and referenced memory (green)
-- Memory panel showing addresses, values, and original source in binary
+- Memory panel showing addresses and values in binary
 - Step, Run, and Reset controls (also via Space, R, Escape)
+- Click any line to highlight it (orange) on both panels
 
 PySide6 is only required for the GUI — the command-line mode works without it.
 
@@ -61,7 +62,7 @@ pip install PySide6   # only needed for --gui
 python3 pytoy.py examples/fibonacci.toy --gui
 ```
 
-![pytoy debugger](screenshot.png)
+![pytoy](screenshot.png)
 
 ## Assembly Syntax
 

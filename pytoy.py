@@ -347,7 +347,7 @@ def gui_main(mem, listing, syms, data_addrs):
     class ToyDebugger(QMainWindow):
         def __init__(self, mem_original, listing, syms, data_addrs):
             super().__init__()
-            self.setWindowTitle("pytoy debugger")
+            self.setWindowTitle("pytoy")
             self.resize(1000, 700)
 
             self.mem_original = list(mem_original)
@@ -653,7 +653,7 @@ def main():
     ap.add_argument('-m', '--mem',     action='store_true', help='show memory dump each step')
     ap.add_argument('-v', '--verbose', action='store_true', help='vertical memory listing each step')
     ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .out')
-    ap.add_argument('-g', '--gui',     action='store_true', help='open graphical debugger')
+    ap.add_argument('-g', '--gui',     action='store_true', help='open graphical interface')
     args = ap.parse_args()
 
     try:    src = open(args.file).read()
