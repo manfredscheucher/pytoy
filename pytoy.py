@@ -358,10 +358,12 @@ def gui_main(mem, listing, syms, data_addrs):
 
             # build addr→line map and addr→orig map
             self.addr_to_line = {}
+            self.line_to_addr = {}
             self.addr_orig = {}
             for i, (addr, blist, orig, is_data) in enumerate(listing):
                 if addr is not None:
                     self.addr_to_line[addr] = i
+                    self.line_to_addr[i] = addr
                     self.addr_orig[addr] = orig.rstrip()
                     if blist and len(blist) == 2:
                         self.addr_orig[addr + 1] = ''
@@ -400,6 +402,9 @@ def gui_main(mem, listing, syms, data_addrs):
             self.mem_view.setLineWrapMode(QTextEdit.NoWrap)
             splitter.addWidget(self.mem_view)
 
+            self.source_view.mouseReleaseEvent = self._source_clicked
+            self.mem_view.mouseReleaseEvent = self._mem_clicked
+
             splitter.setSizes([500, 500])
 
             # bottom bar
@@ -436,6 +441,8 @@ def gui_main(mem, listing, syms, data_addrs):
             self.stopped = False
             self.step_count = 0
             self.arg_addr = None
+            self.selected_addr = None
+            self._mem_line_addrs = {}
             self.timer.stop()
             self.btn_step.setEnabled(True)
             self.btn_run.setEnabled(True)
@@ -499,6 +506,7 @@ def gui_main(mem, listing, syms, data_addrs):
             self.acc &= 0xFF
             self.pc = next_pc
             self.step_count += 1
+            self.selected_addr = None
             self.arg_addr = arg_addr
             self.visible.update(self.touched)
             self.refresh()
@@ -514,6 +522,24 @@ def gui_main(mem, listing, syms, data_addrs):
                 return
             self.step()
 
+        def _source_clicked(self, event):
+            QTextEdit.mouseReleaseEvent(self.source_view, event)
+            cursor = self.source_view.cursorForPosition(event.pos())
+            line = cursor.blockNumber()
+            addr = self.line_to_addr.get(line)
+            if addr is not None:
+                self.selected_addr = addr
+                self.refresh()
+
+        def _mem_clicked(self, event):
+            QTextEdit.mouseReleaseEvent(self.mem_view, event)
+            cursor = self.mem_view.cursorForPosition(event.pos())
+            line = cursor.blockNumber()
+            addr = self._mem_line_addrs.get(line)
+            if addr is not None:
+                self.selected_addr = addr
+                self.refresh()
+
         def refresh(self):
             self._refresh_source()
             self._refresh_memory()
@@ -522,6 +548,7 @@ def gui_main(mem, listing, syms, data_addrs):
         def _refresh_source(self):
             lines = []
             pc_line = self.addr_to_line.get(self.pc)
+            sel_line = self.addr_to_line.get(self.selected_addr) if self.selected_addr is not None else None
             # find which source line the current instruction references
             instr = self.mem[self.pc]
             cur_arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
@@ -535,7 +562,9 @@ def gui_main(mem, listing, syms, data_addrs):
                     marker = "  "
                 text = orig.rstrip() if orig else ""
                 escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                if i == pc_line:
+                if i == sel_line:
+                    lines.append(f'<span style="background-color:#ffcc66;">{marker} {escaped}</span>')
+                elif i == pc_line:
                     lines.append(f'<span style="background-color:#ffffaa;">{marker} {escaped}</span>')
                 elif i == arg_line:
                     lines.append(f'<span style="background-color:#aaffaa;">{marker} {escaped}</span>')
@@ -580,14 +609,19 @@ def gui_main(mem, listing, syms, data_addrs):
                 cur_arg = self.mem[(self.pc + 1) % 256]
 
             # unified memory listing
+            self._mem_line_addrs = {}
             lines.append(f'<b>memory:</b>')
             lines.append(_esc(f"      {'address':>14}  {'value':>14}"))
             for a in sorted(self.visible):
+                line_idx = len(lines)
+                self._mem_line_addrs[line_idx] = a
                 marker = ">>" if a == self.pc else "  "
                 v = self.mem[a]
                 text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}"
                 escaped = _esc(text)
-                if a == self.pc:
+                if a == self.selected_addr:
+                    lines.append(f'<span style="background-color:#ffcc66;">{escaped}</span>')
+                elif a == self.pc:
                     lines.append(f'<span style="background-color:#ffffaa;">{escaped}</span>')
                 elif a == cur_arg:
                     lines.append(f'<span style="background-color:#aaffaa;">{escaped}</span>')

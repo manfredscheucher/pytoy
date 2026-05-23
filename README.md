@@ -61,6 +61,8 @@ pip install PySide6   # only needed for --gui
 python3 pytoy.py examples/fibonacci.toy --gui
 ```
 
+![pytoy debugger](screenshot.png)
+
 ## Assembly Syntax
 
 ```
