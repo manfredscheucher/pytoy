@@ -110,15 +110,15 @@ def _resolve(op, syms, ctx, errors):
 # ── Simulator ──────────────────────────────────────────────────────────────
 
 def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False,
-             addr_comments=None):
+             addr_orig=None):
     mem  = list(mem_in)
     rsym = {v: k for k, v in syms.items()}
     acc, pc = 0, 0
     touched = set(data_addrs)
-    if addr_comments is None:
-        addr_comments = {}
+    if addr_orig is None:
+        addr_orig = {}
     # visible addresses for verbose mode: all program addresses
-    visible = set(addr_comments.keys()) if verbose else set()
+    visible = set(addr_orig.keys()) if verbose else set()
 
     def sym(a): return rsym.get(a, str(a))
 
@@ -129,44 +129,35 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             parts.append(f"{name}={mem[i]}")
         return "  mem: " + ", ".join(parts) if parts else "  mem: (empty)"
 
-    def vertical_mem(cur_pc, cur_acc, cmd_desc="", prev_tag="", dump=False):
+    def vertical_mem(cur_pc, cur_acc, cmd_desc="", cmd_bytes="", prev_tag="", cur_arg=None, dump=False):
         lines = []
         # show tag from previous instruction if any
         if prev_tag:
-            lines.append(f"               {prev_tag}")
+            lines.append(f"  {prev_tag}")
         # current step
-        step_info = f"ACC={cur_acc}=b{cur_acc:08b}  PC={cur_pc}"
+        lines.append("current step:")
+        lines.append(f"  ACC={cur_acc}=b{cur_acc:08b}")
+        lines.append(f"  PC={cur_pc}")
+        if cmd_bytes:
+            n = len(cmd_bytes.split())
+            lines.append(f"  OP{n}={cmd_bytes}")
         if cmd_desc:
-            step_info += f"  {cmd_desc}"
-        lines.append(f"current step:  {step_info}")
+            lines.append(f"  EXPLAIN: {cmd_desc}")
         lines.append("")
         # memory listing
         lines.append("memory:")
-        lines.append(f"       {'address':>18}  {'label':>8}  {'value':>14}  original")
+        lines.append("       address        value  original")
         for a in sorted(visible):
-            if a in data_addrs or a in touched:
-                continue
-            marker = ">>" if a == cur_pc else "  "
-            label = rsym.get(a, '')
-            lbl = f"{label}:" if label else ""
+            if a == cur_pc:
+                marker = ">>"
+            elif a == cur_arg:
+                marker = "**"
+            else:
+                marker = "  "
             v = mem[a]
-            comment = addr_comments.get(a, '')
-            cmt = f"  {comment}" if comment else ""
-            lines.append(f"  {marker} {a:3d}=b{a:08b}  {lbl:>8}  {v:3d}=b{v:08b}{cmt}")
-        # variables
-        lines.append("")
-        lines.append("variables:")
-        lines.append(f"       {'address':>18}  {'label':>8}  {'value':>14}  original")
-        for a in sorted(visible):
-            if a not in data_addrs and a not in touched:
-                continue
-            marker = ">>" if a == cur_pc else "  "
-            label = rsym.get(a, '')
-            lbl = f"{label}:" if label else ""
-            v = mem[a]
-            comment = addr_comments.get(a, '')
-            cmt = f"  {comment}" if comment else ""
-            lines.append(f"  {marker} {a:3d}=b{a:08b}  {lbl:>8}  {v:3d}=b{v:08b}{cmt}")
+            orig = addr_orig.get(a, '')
+            orig_str = f"  {orig}" if orig else ""
+            lines.append(f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}{orig_str}")
         # optional mem dump
         if dump:
             lines.append("")
@@ -179,8 +170,8 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         # peek at first instruction for description
         _instr = mem[pc]
         _arg = mem[(pc+1) % 256] if _instr & FETCH else None
-        _desc, _ = _describe(_instr, _arg, sym, mem)
-        print(vertical_mem(pc, acc, cmd_desc=_desc, dump=show_mem))
+        _desc, _bs = _describe(_instr, _arg, sym, mem)
+        print(vertical_mem(pc, acc, cmd_desc=_desc, cmd_bytes=_bs, cur_arg=_arg, dump=show_mem))
         print()
         if step:
             try: input("[Enter] > ")
@@ -238,8 +229,8 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             # describe the next instruction at next_pc
             _ninstr = mem[next_pc]
             _narg = mem[(next_pc+1) % 256] if _ninstr & FETCH else None
-            _ndesc, _ = _describe(_ninstr, _narg, sym, mem)
-            print(vertical_mem(next_pc, acc, cmd_desc=_ndesc, prev_tag=tag.strip(), dump=show_mem))
+            _ndesc, _nbs = _describe(_ninstr, _narg, sym, mem)
+            print(vertical_mem(next_pc, acc, cmd_desc=_ndesc, cmd_bytes=_nbs, prev_tag=tag.strip(), cur_arg=_narg, dump=show_mem))
             print()
             if step:
                 try: input("[Enter] > ")
@@ -252,29 +243,31 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
 
     # STOP
     if verbose:
-        print(vertical_mem(pc, acc, cmd_desc="STOP", dump=show_mem))
+        print(vertical_mem(pc, acc, cmd_bytes="b00000000", dump=show_mem))
     else:
         print(f"\nPC={pc:3d}  ACC={acc:3d}  STOP")
         if show_mem: print(mem_dump())
     return acc
 
 def _describe(instr, arg_addr, sym, mem):
-    bs = f"{instr:08b}" + (f"  {arg_addr:08b}" if arg_addr is not None else "")
-    if   instr == 0:   return "STOP",                          bs
-    elif instr == 1:   return "RIGHT",                         bs
-    elif instr == 2:   return "LEFT",                          bs
-    elif instr == 15:  return "NOT",                           bs
-    elif instr == 17:  return f"AND   {sym(arg_addr)} (={mem[arg_addr]})", bs
-    elif instr == 18:  return f"OR    {sym(arg_addr)} (={mem[arg_addr]})", bs
-    elif instr == 19:  return f"XOR   {sym(arg_addr)} (={mem[arg_addr]})", bs
-    elif instr == 20:  return f"LOAD  {sym(arg_addr)} (={mem[arg_addr]})", bs
-    elif instr == 21:  return f"STORE {sym(arg_addr)}",        bs
-    elif instr == 22:  return f"ADD   {sym(arg_addr)} (={mem[arg_addr]})", bs
-    elif instr == 23:  return f"SUB   {sym(arg_addr)} (={mem[arg_addr]})", bs
-    elif instr == 24:  return f"GOTO  {sym(arg_addr)}",        bs
-    elif instr == 25:  return f"IFZERO {sym(arg_addr)}",       bs
-    elif instr == 128: return "NOP",                           bs
-    else:              return f"NOP (opcode={instr})",         bs
+    bs = f"b{instr:08b}" + (f" b{arg_addr:08b}" if arg_addr is not None else "")
+    def _av(): return f"(addr:{arg_addr}, val:{mem[arg_addr]})"
+    def _a():  return f"(addr:{arg_addr})"
+    if   instr == 0:   return "STOP",                              bs
+    elif instr == 1:   return "RIGHT",                             bs
+    elif instr == 2:   return "LEFT",                              bs
+    elif instr == 15:  return "NOT",                               bs
+    elif instr == 17:  return f"AND   {sym(arg_addr)} {_av()}",    bs
+    elif instr == 18:  return f"OR    {sym(arg_addr)} {_av()}",    bs
+    elif instr == 19:  return f"XOR   {sym(arg_addr)} {_av()}",    bs
+    elif instr == 20:  return f"LOAD  {sym(arg_addr)} {_av()}",    bs
+    elif instr == 21:  return f"STORE {sym(arg_addr)} {_a()}",     bs
+    elif instr == 22:  return f"ADD   {sym(arg_addr)} {_av()}",    bs
+    elif instr == 23:  return f"SUB   {sym(arg_addr)} {_av()}",    bs
+    elif instr == 24:  return f"GOTO  {sym(arg_addr)} {_a()}",     bs
+    elif instr == 25:  return f"IFZERO {sym(arg_addr)} {_a()}",    bs
+    elif instr == 128: return "NOP",                               bs
+    else:              return f"NOP (opcode={instr})",             bs
 
 # ── Assembly listing (interactive) ────────────────────────────────────────
 
@@ -361,34 +354,18 @@ def gui_main(mem, listing, syms, data_addrs):
             self.data_addrs = set(data_addrs)
             self.rsym = {v: k for k, v in syms.items()}
 
-            # build addr→line map and addr→comment map
+            # build addr→line map and addr→orig map
             self.addr_to_line = {}
-            self.addr_comments = {}
+            self.addr_orig = {}
             for i, (addr, blist, orig, is_data) in enumerate(listing):
                 if addr is not None:
                     self.addr_to_line[addr] = i
-                    # build comment from source
-                    code = orig.strip()
-                    if ':' in code and not is_data:
-                        code = code[code.index(':') + 1:].strip()
-                    if '#' in code:
-                        code_part = code[:code.index('#')].strip()
-                        comment_part = code[code.index('#'):]
-                    else:
-                        code_part = code.strip()
-                        comment_part = ''
-                    if is_data:
-                        annotation = comment_part.lstrip('# ').strip() if comment_part else ''
-                    else:
-                        annotation = code_part
-                        if comment_part:
-                            annotation += '  ' + comment_part
-                    self.addr_comments[addr] = '# ' + annotation if annotation else ''
+                    self.addr_orig[addr] = orig.rstrip()
                     if blist and len(blist) == 2:
-                        self.addr_comments[addr + 1] = ''
+                        self.addr_orig[addr + 1] = ''
 
-            # collect all visible addresses (code + data)
-            self.visible = set(self.addr_comments.keys())
+            # collect all visible addresses
+            self.visible = set(self.addr_orig.keys())
 
             self._build_ui()
             self._setup_shortcuts()
@@ -458,6 +435,7 @@ def gui_main(mem, listing, syms, data_addrs):
             self.touched = set(self.data_addrs)
             self.stopped = False
             self.last_tag = ""
+            self.arg_addr = None
             self.timer.stop()
             self.btn_step.setEnabled(True)
             self.btn_run.setEnabled(True)
@@ -528,6 +506,7 @@ def gui_main(mem, listing, syms, data_addrs):
             self.acc &= 0xFF
             self.pc = next_pc
             self.last_tag = tag
+            self.arg_addr = arg_addr
             self.visible.update(self.touched)
             self.refresh()
 
@@ -550,12 +529,23 @@ def gui_main(mem, listing, syms, data_addrs):
         def _refresh_source(self):
             lines = []
             pc_line = self.addr_to_line.get(self.pc)
+            # find which source line the current instruction references
+            instr = self.mem[self.pc]
+            cur_arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
+            arg_line = self.addr_to_line.get(cur_arg) if cur_arg is not None else None
             for i, (addr, blist, orig, is_data) in enumerate(self.listing):
-                marker = ">>" if i == pc_line else "  "
+                if i == pc_line:
+                    marker = ">>"
+                elif i == arg_line:
+                    marker = "**"
+                else:
+                    marker = "  "
                 text = orig.rstrip() if orig else ""
                 escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 if i == pc_line:
                     lines.append(f'<span style="background-color:#ffffaa;">{marker} {escaped}</span>')
+                elif i == arg_line:
+                    lines.append(f'<span style="background-color:#aaffaa;">{marker} {escaped}</span>')
                 else:
                     lines.append(f'{marker} {escaped}')
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
@@ -575,39 +565,41 @@ def gui_main(mem, listing, syms, data_addrs):
                 return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
             lines = []
-            hdr = f"       {'address':>18}  {'label':>8}  {'value':>14}  original"
+
+            # status info on top
+            instr = self.mem[self.pc]
+            arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
+            desc, bs = _describe(instr, arg, self._sym, self.mem)
+            n = len(bs.split())
+            tag = f"  {self.last_tag}" if self.last_tag else ""
+            lines.append(f'<b>current step:</b>')
+            lines.append(_esc(f"  ACC={self.acc}=b{self.acc:08b}"))
+            lines.append(_esc(f"  PC={self.pc}"))
+            lines.append(_esc(f"  OP{n}={bs}"))
+            lines.append(_esc(f"  EXPLAIN: {desc}{tag}"))
+            lines.append('')
+
+            # determine which address the current instruction references
+            cur_arg = None
+            if instr & FETCH:
+                cur_arg = self.mem[(self.pc + 1) % 256]
+
+            # unified memory listing
             lines.append(f'<b>memory:</b>')
-            lines.append(_esc(hdr))
+            lines.append(_esc(f"      {'address':>14}  {'value':>14}  original"))
             for a in sorted(self.visible):
-                if a in self.data_addrs or a in self.touched:
-                    continue
                 marker = ">>" if a == self.pc else "  "
-                label = self.rsym.get(a, '')
-                lbl = f"{label}:" if label else ""
                 v = self.mem[a]
-                comment = self.addr_comments.get(a, '')
-                cmt = f"  {comment}" if comment else ""
-                text = f"  {marker} {a:3d}=b{a:08b}  {lbl:>8}  {v:3d}=b{v:08b}{cmt}"
+                orig = self.addr_orig.get(a, '')
+                orig_str = f"  {orig}" if orig else ""
+                text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}{orig_str}"
                 escaped = _esc(text)
                 if a == self.pc:
                     lines.append(f'<span style="background-color:#ffffaa;">{escaped}</span>')
+                elif a == cur_arg:
+                    lines.append(f'<span style="background-color:#aaffaa;">{escaped}</span>')
                 else:
                     lines.append(escaped)
-
-            lines.append('')
-            lines.append(f'<b>variables:</b>')
-            lines.append(_esc(hdr))
-            for a in sorted(self.visible):
-                if a not in self.data_addrs and a not in self.touched:
-                    continue
-                label = self.rsym.get(a, '')
-                lbl = f"{label}:" if label else ""
-                v = self.mem[a]
-                comment = self.addr_comments.get(a, '')
-                cmt = f"  {comment}" if comment else ""
-                text = f"     {a:3d}=b{a:08b}  {lbl:>8}  {v:3d}=b{v:08b}{cmt}"
-                escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                lines.append(escaped)
 
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.mem_view.setHtml(html)
@@ -616,11 +608,15 @@ def gui_main(mem, listing, syms, data_addrs):
             # describe current instruction at PC
             instr = self.mem[self.pc]
             arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
-            desc, _ = _describe(instr, arg, self._sym, self.mem)
+            desc, bs = _describe(instr, arg, self._sym, self.mem)
+            n = len(bs.split())
             tag = f"  {self.last_tag}" if self.last_tag else ""
             self.status_label.setText(
-                f"ACC={self.acc}=b{self.acc:08b}  PC={self.pc}  {desc}{tag}"
+                f"ACC={self.acc}=b{self.acc:08b}  PC={self.pc}  OP{n}={bs}  {desc}{tag}"
             )
+
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication.instance() or QApplication(sys.argv)
     win = ToyDebugger(mem, listing, syms, data_addrs)
@@ -657,42 +653,21 @@ def main():
         show_assembly(listing, syms, mem)
         export(listing, syms, mem, args.file.rsplit('.', 1)[0] + '.out')
 
-    # build addr→comment map for verbose mode
-    addr_comments = {}
+    # build addr→original source map for verbose mode
+    addr_orig = {}
     if args.verbose:
         for addr, blist, orig, is_data in listing:
             if addr is None:
                 continue
-            src_line = orig.strip()
-            # strip label prefix (e.g. "loop:  ifzero end" -> "ifzero end")
-            code = src_line
-            if ':' in code and not is_data:
-                code = code[code.index(':') + 1:].strip()
-            # separate code from comment
-            if '#' in code:
-                code_part = code[:code.index('#')].strip()
-                comment_part = code[code.index('#'):]
-            else:
-                code_part = code.strip()
-                comment_part = ''
-            # build combined annotation: command + original comment
-            if is_data:
-                # for data, show the value and original comment
-                annotation = comment_part.lstrip('# ').strip() if comment_part else ''
-            else:
-                annotation = code_part
-                if comment_part:
-                    annotation += '  ' + comment_part
-            addr_comments[addr] = '# ' + annotation if annotation else ''
-            # for 2-byte instructions, don't give the operand byte its own comment
+            addr_orig[addr] = orig.rstrip()
             if len(blist) == 2:
-                addr_comments[addr + 1] = ''
+                addr_orig[addr + 1] = ''
 
     print("─"*62)
     if args.export:
         print("execution:\n")
     acc = simulate(mem, syms, data_addrs, step=args.step, show_mem=args.mem,
-                   verbose=args.verbose, addr_comments=addr_comments)
+                   verbose=args.verbose, addr_orig=addr_orig)
     print("─"*62)
     print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")
 
