@@ -1,0 +1,49 @@
+# sum.toy
+# Sums an array of values using self-modifying code
+#
+# Trick: the LOAD instruction is 2 bytes [opcode=20, address].
+# We place the opcode as a raw data byte followed by a patchable
+# address byte. At runtime we overwrite the address byte to
+# iterate through the array.
+#
+# Values: 3, 1, 4, 1, 5, 9, 2  (expected sum = 25)
+
+# ── init: set indirect load to point at arr[0] ──────────
+        load  ptr         # acc = address of arr[0]
+        store iarg        # patch the address byte
+
+# ── main loop ────────────────────────────────────────────
+loop:   load  count
+        ifzero done
+
+iop:    20                # LOAD opcode (raw byte)
+iarg:   0                 # ← address byte, patched to arr[i]
+        add   result
+        store result      # result += arr[i]
+
+        load  iarg        # current pointer
+        add   one
+        store iarg        # ptr++
+
+        load  count
+        sub   one
+        store count       # count--
+        goto  loop
+
+done:   load  result
+        stop
+
+# data
+count:  7
+one:    1
+result: 0
+ptr:    arr               # address of arr[0]
+
+# array (contiguous)
+arr:    3
+        1
+        4
+        1
+        5
+        9
+        2

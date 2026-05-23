@@ -89,9 +89,12 @@ def assemble(src):
                 listing.append((addr, [opc], orig, False))
                 addr += 1
         else:
-            # data byte
-            try:    v = parse_val(mn) & 0xFF
-            except: errors.append(f"Bad value/mnemonic: '{mn}'"); v = 0
+            # data byte (or label used as address constant)
+            if mn in syms:
+                v = syms[mn] & 0xFF
+            else:
+                try:    v = parse_val(mn) & 0xFF
+                except: errors.append(f"Bad value/mnemonic: '{mn}'"); v = 0
             mem[addr] = v
             data_addrs.add(addr)
             listing.append((addr, [v], orig, True))
@@ -113,7 +116,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
              addr_orig=None):
     mem  = list(mem_in)
     rsym = {v: k for k, v in syms.items()}
-    acc, pc = 0, 0
+    acc, pc, step_num = 0, 0, 0
     touched = set(data_addrs)
     if addr_orig is None:
         addr_orig = {}
@@ -129,13 +132,12 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             parts.append(f"{name}={mem[i]}")
         return "  mem: " + ", ".join(parts) if parts else "  mem: (empty)"
 
-    def vertical_mem(cur_pc, cur_acc, cmd_desc="", cmd_bytes="", prev_tag="", cur_arg=None, dump=False):
+    def vertical_mem(cur_pc, cur_acc, step_num=0, cmd_desc="", cmd_bytes="", cur_arg=None, stopped=False, dump=False):
         lines = []
-        # show tag from previous instruction if any
-        if prev_tag:
-            lines.append(f"  {prev_tag}")
-        # current step
-        lines.append("current step:")
+        if stopped:
+            lines.append(f"Stopped after {step_num} steps.")
+        else:
+            lines.append(f"Step #{step_num}:")
         lines.append(f"  ACC={cur_acc}=b{cur_acc:08b}")
         lines.append(f"  PC={cur_pc}")
         if cmd_bytes:
@@ -171,7 +173,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         _instr = mem[pc]
         _arg = mem[(pc+1) % 256] if _instr & FETCH else None
         _desc, _bs = _describe(_instr, _arg, sym, mem)
-        print(vertical_mem(pc, acc, cmd_desc=_desc, cmd_bytes=_bs, cur_arg=_arg, dump=show_mem))
+        print(vertical_mem(pc, acc, step_num=step_num, cmd_desc=_desc, cmd_bytes=_bs, cur_arg=_arg, dump=show_mem))
         print()
         if step:
             try: input("[Enter] > ")
@@ -199,7 +201,6 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             except EOFError: pass
 
         # ── execute ──
-        tag = ""
         if   instr == 0:  break
         elif instr == 1:  acc >>= 1
         elif instr == 2:  acc = (acc << 1) & 0xFF
@@ -211,15 +212,16 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         elif instr == 21: mem[arg_addr] = acc; touched.add(arg_addr)
         elif instr == 22:
             acc += mem[arg_addr]
-            if acc > 255: acc -= 256; tag = " [overflow]"
+            if acc > 255: acc -= 256
         elif instr == 23:
             acc -= mem[arg_addr]
-            if acc < 0:   acc += 256; tag = " [underflow]"
+            if acc < 0:   acc += 256
         elif instr == 24: next_pc = arg_addr
         elif instr == 25:
-            if acc == 0:  next_pc = arg_addr; tag = " -> taken"
-            else:         tag = " -> skip"
+            if acc == 0:  next_pc = arg_addr
         acc &= 0xFF
+
+        step_num += 1
 
         # add runtime-written addresses to visible set
         if verbose:
@@ -230,20 +232,20 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             _ninstr = mem[next_pc]
             _narg = mem[(next_pc+1) % 256] if _ninstr & FETCH else None
             _ndesc, _nbs = _describe(_ninstr, _narg, sym, mem)
-            print(vertical_mem(next_pc, acc, cmd_desc=_ndesc, cmd_bytes=_nbs, prev_tag=tag.strip(), cur_arg=_narg, dump=show_mem))
+            print(vertical_mem(next_pc, acc, step_num=step_num, cmd_desc=_ndesc, cmd_bytes=_nbs, cur_arg=_narg, dump=show_mem))
             print()
             if step:
                 try: input("[Enter] > ")
                 except EOFError: pass
         elif not step:
-            print(f"{line}{tag}")
+            print(line)
             if show_mem: print(mem_dump())
 
         pc = next_pc
 
     # STOP
     if verbose:
-        print(vertical_mem(pc, acc, cmd_bytes="b00000000", dump=show_mem))
+        print(vertical_mem(pc, acc, step_num=step_num, cmd_bytes="b00000000", stopped=True, dump=show_mem))
     else:
         print(f"\nPC={pc:3d}  ACC={acc:3d}  STOP")
         if show_mem: print(mem_dump())
@@ -338,7 +340,7 @@ def gui_main(mem, listing, syms, data_addrs):
     """Launch PySide6 graphical debugger."""
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
-                                   QLabel, QPushButton, QSplitter)
+                                   QPushButton, QSplitter)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
 
@@ -404,9 +406,7 @@ def gui_main(mem, listing, syms, data_addrs):
             bottom = QHBoxLayout()
             main_layout.addLayout(bottom)
 
-            self.status_label = QLabel()
-            self.status_label.setFont(mono)
-            bottom.addWidget(self.status_label, stretch=1)
+            bottom.addStretch(1)
 
             self.btn_step = QPushButton("Step")
             self.btn_run = QPushButton("Run")
@@ -434,7 +434,7 @@ def gui_main(mem, listing, syms, data_addrs):
             self.pc = 0
             self.touched = set(self.data_addrs)
             self.stopped = False
-            self.last_tag = ""
+            self.step_count = 0
             self.arg_addr = None
             self.timer.stop()
             self.btn_step.setEnabled(True)
@@ -458,10 +458,8 @@ def gui_main(mem, listing, syms, data_addrs):
                 next_pc = (self.pc + 1) % 256
 
             # execute
-            tag = ""
             if instr == 0:
                 self.stopped = True
-                self.last_tag = "STOP"
                 self.timer.stop()
                 self.btn_step.setEnabled(False)
                 self.btn_run.setEnabled(False)
@@ -488,24 +486,19 @@ def gui_main(mem, listing, syms, data_addrs):
                 self.acc += self.mem[arg_addr]
                 if self.acc > 255:
                     self.acc -= 256
-                    tag = "[overflow]"
             elif instr == 23:
                 self.acc -= self.mem[arg_addr]
                 if self.acc < 0:
                     self.acc += 256
-                    tag = "[underflow]"
             elif instr == 24:
                 next_pc = arg_addr
             elif instr == 25:
                 if self.acc == 0:
                     next_pc = arg_addr
-                    tag = "-> taken"
-                else:
-                    tag = "-> skip"
 
             self.acc &= 0xFF
             self.pc = next_pc
-            self.last_tag = tag
+            self.step_count += 1
             self.arg_addr = arg_addr
             self.visible.update(self.touched)
             self.refresh()
@@ -571,12 +564,14 @@ def gui_main(mem, listing, syms, data_addrs):
             arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
             desc, bs = _describe(instr, arg, self._sym, self.mem)
             n = len(bs.split())
-            tag = f"  {self.last_tag}" if self.last_tag else ""
-            lines.append(f'<b>current step:</b>')
+            if self.stopped:
+                lines.append(f'<b>Stopped after {self.step_count} steps.</b>')
+            else:
+                lines.append(f'<b>Step #{self.step_count}:</b>')
             lines.append(_esc(f"  ACC={self.acc}=b{self.acc:08b}"))
             lines.append(_esc(f"  PC={self.pc}"))
             lines.append(_esc(f"  OP{n}={bs}"))
-            lines.append(_esc(f"  EXPLAIN: {desc}{tag}"))
+            lines.append(_esc(f"  EXPLAIN: {desc}"))
             lines.append('')
 
             # determine which address the current instruction references
@@ -586,13 +581,11 @@ def gui_main(mem, listing, syms, data_addrs):
 
             # unified memory listing
             lines.append(f'<b>memory:</b>')
-            lines.append(_esc(f"      {'address':>14}  {'value':>14}  original"))
+            lines.append(_esc(f"      {'address':>14}  {'value':>14}"))
             for a in sorted(self.visible):
                 marker = ">>" if a == self.pc else "  "
                 v = self.mem[a]
-                orig = self.addr_orig.get(a, '')
-                orig_str = f"  {orig}" if orig else ""
-                text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}{orig_str}"
+                text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}"
                 escaped = _esc(text)
                 if a == self.pc:
                     lines.append(f'<span style="background-color:#ffffaa;">{escaped}</span>')
@@ -605,15 +598,7 @@ def gui_main(mem, listing, syms, data_addrs):
             self.mem_view.setHtml(html)
 
         def _refresh_status(self):
-            # describe current instruction at PC
-            instr = self.mem[self.pc]
-            arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
-            desc, bs = _describe(instr, arg, self._sym, self.mem)
-            n = len(bs.split())
-            tag = f"  {self.last_tag}" if self.last_tag else ""
-            self.status_label.setText(
-                f"ACC={self.acc}=b{self.acc:08b}  PC={self.pc}  OP{n}={bs}  {desc}{tag}"
-            )
+            pass
 
     import signal
     signal.signal(signal.SIGINT, signal.SIG_DFL)
