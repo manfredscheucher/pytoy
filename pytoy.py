@@ -367,6 +367,7 @@ def gui_main(mem, listing, syms, data_addrs):
                     self.addr_orig[addr] = orig.rstrip()
                     if blist and len(blist) == 2:
                         self.addr_orig[addr + 1] = ''
+                        self.addr_to_line[addr + 1] = i
 
             # collect all visible addresses
             self.visible = set(self.addr_orig.keys())
