@@ -1,0 +1,64 @@
+# max.toy
+# Finds the maximum of an array using self-modifying code
+#
+# Algorithm:
+#   best = 0
+#   for each element in arr:
+#       if element > best: best = element
+#
+# Compare trick: compute element - best.
+# If no underflow (bit 7 clear), element >= best.
+#
+# Values: 3, 1, 4, 1, 5, 9, 2  (expected max = 9)
+
+# ── init: set indirect load to point at arr[0] ──────────
+        load  ptr
+        store iarg
+
+# ── main loop ────────────────────────────────────────────
+loop:   load  count
+        ifzero done
+
+        # load arr[i]
+        20                # LOAD opcode
+iarg:   0                 # ← patched to arr[i]
+        store cur         # cur = arr[i]
+
+        # compare: cur - best
+        sub   best        # acc = cur - best
+        and   mask        # bit 7 set if cur < best (underflow)
+        ifzero update     # bit 7 clear -> cur >= best -> update
+
+        goto  next
+
+update: load  cur
+        store best        # best = cur
+
+next:   load  iarg
+        add   one
+        store iarg        # ptr++
+
+        load  count
+        sub   one
+        store count       # count--
+        goto  loop
+
+done:   load  best
+        stop
+
+# data
+count:  7
+one:    1
+mask:   128
+best:   0
+cur:    0
+ptr:    arr
+
+# array (contiguous)
+arr:    3
+        1
+        4
+        1
+        5
+        9
+        2

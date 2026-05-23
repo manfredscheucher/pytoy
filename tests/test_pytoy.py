@@ -287,6 +287,16 @@ val:    42
 """
     assert _run(src) == 42
 
+def test_sim_sum():
+    """sum.toy with [3,1,4,1,5,9,2] should produce 25."""
+    src = open('examples/sum.toy').read()
+    assert _run(src) == 25
+
+def test_sim_max():
+    """max.toy with [3,1,4,1,5,9,2] should produce 9."""
+    src = open('examples/max.toy').read()
+    assert _run(src) == 9
+
 def test_sim_multiply():
     """multiply.toy with a=7, b=6 should produce 42."""
     src = open('examples/multiply.toy').read()
