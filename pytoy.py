@@ -3,11 +3,7 @@
 Toy CPU Assembler + Simulator
 Based on https://github.com/freedosproject/toycpu
 
-Usage:
-    python pytoy.py prog.toy          # assemble + run, trace every step
-    python pytoy.py prog.toy -s       # step-by-step (press Enter each op)
-    python pytoy.py prog.toy -m       # + memory dump each step (data only)
-    python pytoy.py prog.toy -x       # export compiled listing to .out file
+Usage:  python pytoy.py prog.toy [options]
 """
 
 import sys, argparse
@@ -649,9 +645,8 @@ def gui_main(mem, listing, syms, data_addrs):
 def main():
     ap = argparse.ArgumentParser(description="Toy CPU Assembler + Simulator")
     ap.add_argument('file')
-    ap.add_argument('-s', '--step',    action='store_true', help='step-by-step (Enter per op)')
-    ap.add_argument('-m', '--mem',     action='store_true', help='show memory dump each step')
-    ap.add_argument('-v', '--verbose', action='store_true', help='vertical memory listing each step')
+    ap.add_argument('-r', '--run',     action='store_true', help='run all steps without pausing')
+    ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output')
     ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .out')
     ap.add_argument('-g', '--gui',     action='store_true', help='open graphical interface')
     args = ap.parse_args()
@@ -675,7 +670,7 @@ def main():
 
     # build addr→original source map for verbose mode
     addr_orig = {}
-    if args.verbose:
+    if not args.quiet:
         for addr, blist, orig, is_data in listing:
             if addr is None:
                 continue
@@ -686,8 +681,8 @@ def main():
     print("─"*62)
     if args.export:
         print("execution:\n")
-    acc = simulate(mem, syms, data_addrs, step=args.step, show_mem=args.mem,
-                   verbose=args.verbose, addr_orig=addr_orig)
+    acc = simulate(mem, syms, data_addrs, step=not args.run, show_mem=not args.quiet,
+                   verbose=not args.quiet, addr_orig=addr_orig)
     print("─"*62)
     print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")
 

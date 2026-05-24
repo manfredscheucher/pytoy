@@ -34,17 +34,10 @@ The Toy CPU is a minimal 8-bit processor with 256 bytes of memory, one accumulat
 ## Usage
 
 ```bash
-python3 pytoy.py prog.toy -s -m
+python3 pytoy.py prog.toy
 ```
 
-Options:
-- `-s` — step-by-step mode (press Enter per instruction)
-- `-m` — show memory dump each step (data cells that were ever non-zero)
-- `-v` — verbose output with binary encoding of instructions
-- `-x` — export compiled listing to `.out` file
-- `-g` — open graphical interface (requires PySide6)
-
-All flags can be combined freely. Without any flags, the program runs with a compact trace showing `PC`, `ACC`, and the command for each step.
+By default, pytoy runs step-by-step with full verbose output. Press Enter to advance each instruction. Use `python3 pytoy.py -h` for all options.
 
 ## GUI
 
