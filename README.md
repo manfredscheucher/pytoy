@@ -1,3 +1,8 @@
+
+
+<img src="screenshot.png" alt="pytoy" width="100%"/>
+
+
 # pytoy
 
 Assembler and simulator for the [Toy CPU](https://github.com/freedosproject/toycpu) in Python.
@@ -54,8 +59,6 @@ PySide6 is only required for the GUI — the command-line mode works without it.
 pip install PySide6   # only needed for --gui
 python3 pytoy.py examples/fibonacci.toy --gui
 ```
-
-![pytoy](screenshot.png)
 
 ## Assembly Syntax
 
