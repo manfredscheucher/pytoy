@@ -1,0 +1,16 @@
+// expect: 42
+/*
+ * multiply.c - compute a * b.
+ *
+ * Port of examples/multiply.toy. The Toy CPU has no multiply instruction,
+ * so the '*' operator is compiled to repeated addition.
+ *
+ * With a = 7, b = 6: result = 42.
+ *
+ * Expected result: ACC = 42
+ */
+int main(void) {
+    int a = 7;
+    int b = 6;
+    return a * b;
+}

@@ -1,5 +1,3 @@
-
-
 <img src="screenshot.png" alt="pytoy" width="100%"/>
 
 
@@ -7,81 +5,72 @@
 
 Assembler and simulator for the [Toy CPU](https://github.com/freedosproject/toycpu) in Python.
 
-The Toy CPU is a minimal 8-bit processor with 256 bytes of memory, one accumulator, and a program counter. Originally built as a FreeDOS learning tool with a switch-based interface (like an Altair 8800) — pytoy replaces the binary input with readable assembly.
+The Toy CPU is a minimal 8-bit processor with 256 bytes of memory, one
+accumulator, and a program counter. It was built as a FreeDOS learning tool
+with a switch-based interface (like an Altair 8800); pytoy keeps the same CPU
+but replaces the binary switch input with readable assembly, a GUI, and a CLI.
 
-## Architecture
-
-- **256 bytes RAM** — code and data share the same address space
-- **Accumulator** — the only arithmetic register, 8-bit (0–255)
-- **Program Counter (PC)** — points to the current instruction
-
-### Instruction Set
-
-| Mnemonic | Opcode | Bytes | Description |
-|----------|--------|-------|-------------|
-| `stop`   | 0x00   | 1     | Halt the program |
-| `right`  | 0x01   | 1     | ACC >> 1 (shift right) |
-| `left`   | 0x02   | 1     | ACC << 1 (shift left) |
-| `not`    | 0x0F   | 1     | ACC = ~ACC (bitwise NOT) |
-| `nop`    | 0x80   | 1     | No operation |
-| `and`    | 0x11   | 2     | ACC = ACC & mem[addr] |
-| `or`     | 0x12   | 2     | ACC = ACC \| mem[addr] |
-| `xor`    | 0x13   | 2     | ACC = ACC ^ mem[addr] |
-| `load`   | 0x14   | 2     | ACC = mem[addr] |
-| `store`  | 0x15   | 2     | mem[addr] = ACC |
-| `add`    | 0x16   | 2     | ACC = ACC + mem[addr] |
-| `sub`    | 0x17   | 2     | ACC = ACC - mem[addr] |
-| `goto`   | 0x18   | 2     | PC = addr |
-| `ifzero` | 0x19   | 2     | if ACC == 0: PC = addr |
-
-1-byte vs. 2-byte is determined by bit 4 (FETCH_BIT). Unrecognized opcodes act as NOP.
-
-## Usage
+## Quick start
 
 ```bash
-python3 pytoy.py prog.toy
+pip install PySide6                          # required for the default GUI
+python3 pytoy.py examples/fibonacci.toy      # opens the GUI
+python3 pytoy.py examples/fibonacci.toy -c   # or run in the terminal (--cli)
 ```
 
-By default, pytoy runs step-by-step with full verbose output. Press Enter to advance each instruction. Use `python3 pytoy.py -h` for all options.
+By default pytoy opens a graphical interface (source + memory panels, with
+Step / Run / Reset). Use `-c` / `--cli` to run in the terminal instead — that
+mode needs no PySide6. Run `python3 pytoy.py -h` for all options.
 
-## GUI
+## A taste of the syntax
 
-The `-g` / `--gui` flag opens a PySide6-based graphical interface with:
+```
+        load  a         # acc = a
+        add   b         # acc = a + b
+        stop
+a:      10              # data goes after stop
+b:      20
+```
 
-- Source code panel with highlighted current instruction (yellow) and referenced memory (green)
-- Memory panel showing addresses and values in binary
-- Step, Run, and Reset controls (also via Space, R, Escape)
-- Click any line to highlight it (orange) on both panels
+See [`examples/`](examples/) for complete programs (Fibonacci, multiply, array
+sum/max, …).
 
-PySide6 is only required for the GUI — the command-line mode works without it.
+## Write it in C instead
+
+pytoy also ships **toycc**, a compiler for a small subset of C that targets the
+Toy CPU — often nicer than writing assembly by hand:
+
+```c
+int main(void) {
+    int a = 7;
+    int b = 6;
+    return a * b;   // no multiply opcode -> compiled to repeated addition
+}
+```
 
 ```bash
-pip install PySide6   # only needed for --gui
-python3 pytoy.py examples/fibonacci.toy --gui
+python3 toy-c-compiler/toycc.py toy-c-compiler/examples/multiply.c --run  # -> ACC = 42
 ```
 
-## Assembly Syntax
+See [`toy-c-compiler/`](toy-c-compiler/) and the
+[compiler pipeline docs](docs/compiler-pipeline.md).
 
-```
-# comments with #
-label:  load  var       # labels for jump targets and variables
-        add   other
-        goto  label
+## Documentation
 
-# data at the end
-var:    42              # decimal
-flags:  0b00001111      # binary
-mask:   0xFF            # hex
-```
+Full docs live in **[`docs/`](docs/)** — written for newcomers with no assembly
+background:
 
-## Examples
-
-See [`examples/`](examples/) — e.g. `fibonacci.toy` computes the n-th Fibonacci number.
-
-```bash
-python3 pytoy.py examples/fibonacci.toy
-```
+- [Concepts](docs/concepts.md) — how a CPU works: memory, accumulator, program
+  counter, the fetch–execute cycle.
+- [Instruction set](docs/instruction-set.md) — every opcode and how bytes are
+  encoded.
+- [Assembly syntax](docs/assembly.md) — writing `.toy` programs.
+- [Writing programs](docs/writing-programs.md) — worked examples: loops,
+  conditionals, self-modifying code.
+- [Using pytoy](docs/usage.md) — the GUI and CLI in detail.
+- [About the Toy CPU](docs/toycpu.md) — background and origins.
 
 ## Credits
 
-Based on the [Toy CPU](https://github.com/freedosproject/toycpu) by Jim Hall (FreeDOS Project).
+Based on the [Toy CPU](https://github.com/freedosproject/toycpu) by Jim Hall
+(FreeDOS Project).

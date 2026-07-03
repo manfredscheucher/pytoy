@@ -1,0 +1,164 @@
+# toycc — a tiny C-to-assembly compiler for the Toy CPU
+
+`toycc` compiles a small, standard-looking subset of C into `.toy` assembly
+that the [pytoy](../pytoy.py) assembler/simulator can run.
+
+It is a single self-contained Python program (`toycc.py`): a hand-written
+lexer, a recursive-descent parser, and a straightforward code generator that
+emits readable Toy assembly. No external libraries — Python standard library
+only.
+
+## The target machine (and why C is so restricted here)
+
+The Toy CPU (see [../docs/](../docs/)) is deliberately minimal:
+
+- **256 bytes of memory total.** Code and data share this one address space
+  (addresses 0–255). A whole program — instructions *and* variables — must fit
+  in 256 bytes.
+- **One 8-bit accumulator (ACC).** All values are 0–255 and **all arithmetic
+  wraps modulo 256** (`255 + 1 == 0`, `0 - 1 == 255`). There is no overflow
+  flag.
+- **The only conditional is `ifzero`** (branch when ACC == 0); the only jump is
+  `goto`. Every `if`/`while`/comparison is built from these.
+- **No multiply, divide, compare, or index register** in hardware.
+
+Consequences for the C you can write:
+
+- Every `int` is an **unsigned 8-bit** value (0–255) that wraps mod 256. A
+  `char` and an `int` would be the same thing here. Keep results small.
+- `*` is real multiplication, but it is compiled to a **runtime
+  repeated-addition loop** (there is no multiply opcode). The product is taken
+  mod 256.
+- **Arrays, pointers, functions other than `main`, and I/O are not supported.**
+
+## Supported C subset
+
+**Program shape**
+
+```
+int main(void) { ... }      // or  int main() { ... }
+```
+
+Exactly one function, named `main`, no parameters. Execution result is
+whatever value `return expr;` leaves in the accumulator when the program stops.
+
+**Statements**
+
+- Local declarations: `int x;` and `int x = expr;`
+- Assignment: `x = expr;`
+- Compound assignment: `+=  -=  *=  &=  |=  ^=  <<=  >>=`
+- `if (cond) { ... }` and `if (cond) { ... } else { ... }`
+- `while (cond) { ... }`
+- `for (init; cond; post) { ... }` (desugars to `while`; `init` may declare a
+  variable, e.g. `for (int i = 0; i < n; i += 1)`)
+- Nested blocks `{ ... }`
+- `return expr;`
+- `//` and `/* ... */` comments
+
+**Expressions / operators** (standard C precedence)
+
+| Category      | Operators                        | Notes |
+|---------------|----------------------------------|-------|
+| Arithmetic    | `+`  `-`  `*`                    | `*` is a repeated-addition loop; all wrap mod 256 |
+| Unary         | `-x`  `~x`  `!x`                 | `-x` is `0 - x` mod 256; `!x` yields 0/1 |
+| Bitwise       | `&`  `\|`  `^`  `~`              | direct opcodes (`and`/`or`/`xor`/`not`) |
+| Shifts        | `<<`  `>>`                       | constant amount → unrolled; variable amount → loop |
+| Comparisons   | `==`  `!=`  `<`  `>`  `<=`  `>=` | yield 0/1; see note below |
+| Grouping      | `( ... )`                        | |
+
+Constants may be decimal (`42`) or hexadecimal (`0xF0`).
+
+**Comparisons — what actually works.** `==` and `!=` are exact (via
+subtraction + `ifzero`). The ordering comparisons `<`, `>`, `<=`, `>=` use the
+sign-bit trick from `max.toy`: bit 7 of the mod-256 difference `a - b` tells
+you whether `a < b`. This is correct as long as the two operands **differ by
+less than 128**, which holds for the small unsigned values these programs work
+with. It is *not* a signed comparison and it is not reliable if operands can be
+more than 127 apart. Treat values as unsigned and keep them modest.
+
+## What is NOT supported
+
+- Arrays and pointers (the assembler's array examples use self-modifying code;
+  `toycc` deliberately does not generate that — arrays are hard here and left
+  out for clarity). Use separate `int` variables instead, as `sum.c`/`max.c`
+  demonstrate.
+- Multiple functions, function calls, parameters, recursion.
+- Types other than `int` (`char`, `unsigned`, pointers, `float`, …).
+- `do/while`, `switch`, `break`, `continue`, `goto`, the ternary `?:`.
+- Short-circuit `&&` / `||` (the tokens are lexed but not compiled; build
+  conditions with nested `if` instead).
+- Standard library / `printf` / any I/O. The only "output" is the final ACC.
+- Signed arithmetic and values/comparisons that rely on more than 8 bits.
+
+If a program is too large to fit in 256 bytes it will still be emitted but may
+overflow memory when assembled; keep programs small.
+
+## Usage
+
+```bash
+# compile program.c -> program.toy
+python3 toy-c-compiler/toycc.py toy-c-compiler/examples/fibonacci.c
+
+# choose the output path
+python3 toy-c-compiler/toycc.py program.c -o build/program.toy
+
+# compile and immediately run through pytoy (CLI, no pausing)
+python3 toy-c-compiler/toycc.py toy-c-compiler/examples/fibonacci.c --run
+```
+
+Run a produced `.toy` directly through pytoy in the terminal (the graphical
+debugger is pytoy's default, so pass `--cli`):
+
+```bash
+# from the repo root
+python3 pytoy.py toy-c-compiler/examples/fibonacci.toy --cli --run --quiet
+# ...
+# Result:  ACC = 55  (00110111  0x37  dec 55)
+```
+
+pytoy CLI flags used above: `--cli`/`-c` run in the terminal instead of the
+GUI, `--run`/`-r` run all steps without pausing, `--quiet`/`-q` compact output.
+Drop `--run` to single-step, or drop `--cli` to open the graphical debugger.
+
+## Example programs
+
+All examples live in [`examples/`](examples/) and are verified to produce the
+expected accumulator result.
+
+| File            | Computes                                   | Expected ACC |
+|-----------------|--------------------------------------------|-------------:|
+| `fibonacci.c`   | fib(10) with an 8-bit overflow limit       | 55  |
+| `multiply.c`    | 7 * 6 via repeated addition (`*`)          | 42  |
+| `sevenfold.c`   | 7 * 4                                       | 28  |
+| `sum.c`         | 3+1+4+1+5+9+2 (separate vars, no arrays)    | 25  |
+| `max.c`         | max(3,1,4,1,5,9,2) using `>`               | 9   |
+| `countdown.c`   | 5+4+3+2+1 via a countdown `while` loop      | 15  |
+| `bitops.c`      | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F` | 36  |
+| `factorial.c`   | 5! via a `for` loop and `*`                | 120 |
+| `gcd.c`         | gcd(48, 36) by subtraction, `if/else`, `>` | 12  |
+| `ifelse.c`      | if/else picking `b - a` for `a < b`         | 5   |
+
+Regenerate and re-verify them all:
+
+```bash
+cd /Users/manfred/github/pytoy
+for f in toy-c-compiler/examples/*.c; do
+  python3 toy-c-compiler/toycc.py "$f"
+  python3 pytoy.py "${f%.c}.toy" --cli --run --quiet | tail -1
+done
+```
+
+## How the compiler works (brief)
+
+- **Lexer** turns the source into tokens, skipping `//` and `/* */` comments.
+- **Parser** is recursive descent with a precedence-climbing expression parser;
+  `for` is desugared to `while`, and compound assignments to `x = x op rhs`.
+- **Code generator** evaluates every expression into ACC. Binary operators
+  spill the right operand to a fresh temporary data byte, then reload the left
+  operand and apply the matching opcode. Each C variable, each integer constant,
+  and each temporary gets one named data byte placed after the code (so it is
+  never executed). Comparisons and `!` materialize a 0/1 boolean; `if`/`while`
+  conditions use a fast path that branches directly with `ifzero` where
+  possible. `return` moves the value into ACC and emits `stop`.
+
+The emitted `.toy` is commented and maps back to the source where helpful.

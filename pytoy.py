@@ -648,7 +648,7 @@ def main():
     ap.add_argument('-r', '--run',     action='store_true', help='run all steps without pausing')
     ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output')
     ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .out')
-    ap.add_argument('-g', '--gui',     action='store_true', help='open graphical interface')
+    ap.add_argument('-c', '--cli',     action='store_true', help='run in the terminal instead of the graphical interface')
     args = ap.parse_args()
 
     try:    src = open(args.file).read()
@@ -659,7 +659,8 @@ def main():
         for e in errors: print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if args.gui:
+    # graphical interface is the default; --cli opts into terminal mode
+    if not args.cli:
         gui_main(mem, listing, syms, data_addrs)
         return
 

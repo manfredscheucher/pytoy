@@ -1,0 +1,13 @@
+// expect: 28
+/*
+ * sevenfold.c - compute 7 * a.
+ *
+ * Port of examples/sevenfold.toy. Uses the '*' operator (repeated addition).
+ * With a = 4: result = 28.
+ *
+ * Expected result: ACC = 28
+ */
+int main(void) {
+    int a = 4;
+    return 7 * a;
+}
