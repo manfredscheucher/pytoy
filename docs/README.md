@@ -22,3 +22,20 @@ Read them roughly in this order:
    from and how pytoy relates to the original.
 
 If you just want to run something, jump to **[Using pytoy](usage.md)**.
+
+## Why the project is structured this way
+
+- **`toyasm.py` bundles the assembler, the simulator, and the GUI together.**
+  That is deliberate. The whole point of the Toy CPU is to *see* how a CPU
+  executes assembly / bytecode — and assembly maps 1:1 to machine code, so
+  human-readable and machine form are the same thing. The GUI visualization
+  (watch the program counter move, the accumulator change, the bytes in
+  memory) *is* the lesson. Keeping these in one file means the entire machine
+  is readable in one place; splitting it into separate modules would serve
+  code tidiness at the expense of that clarity.
+
+- **`toycc` (the C compiler) lives in its own `compiler/` folder because it is
+  optional pre-processing.** You can understand the Toy CPU completely without
+  ever writing C — toycc is just a convenience layer that produces `.toys`
+  assembly for you. It sits *in front of* the CPU, it is not part of it, and
+  the separate folder signals exactly that.
