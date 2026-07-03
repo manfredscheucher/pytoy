@@ -14,13 +14,13 @@ but replaces the binary switch input with readable assembly, a GUI, and a CLI.
 
 ```bash
 pip install PySide6                          # required for the default GUI
-python3 pytoy.py examples/fibonacci.toy      # opens the GUI
-python3 pytoy.py examples/fibonacci.toy -c   # or run in the terminal (--cli)
+python3 toyasm.py examples/fibonacci.toys    # opens the GUI
+python3 toyasm.py examples/fibonacci.toys -c # or run in the terminal (--cli)
 ```
 
 By default pytoy opens a graphical interface (source + memory panels, with
 Step / Run / Reset). Use `-c` / `--cli` to run in the terminal instead — that
-mode needs no PySide6. Run `python3 pytoy.py -h` for all options.
+mode needs no PySide6. Run `python3 toyasm.py -h` for all options.
 
 ## A taste of the syntax
 
@@ -49,10 +49,10 @@ int main(void) {
 ```
 
 ```bash
-python3 toy-c-compiler/toycc.py toy-c-compiler/examples/multiply.c --run  # -> ACC = 42
+python3 compiler/toycc.py compiler/examples/multiply.toyc --run  # -> ACC = 42
 ```
 
-See [`toy-c-compiler/`](toy-c-compiler/) and the
+See [`compiler/`](compiler/) and the
 [compiler pipeline docs](docs/compiler-pipeline.md).
 
 ## Documentation
@@ -64,7 +64,7 @@ background:
   counter, the fetch–execute cycle.
 - [Instruction set](docs/instruction-set.md) — every opcode and how bytes are
   encoded.
-- [Assembly syntax](docs/assembly.md) — writing `.toy` programs.
+- [Assembly syntax](docs/assembly.md) — writing `.toys` programs.
 - [Writing programs](docs/writing-programs.md) — worked examples: loops,
   conditionals, self-modifying code.
 - [Using pytoy](docs/usage.md) — the GUI and CLI in detail.

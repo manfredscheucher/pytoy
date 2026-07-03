@@ -1,7 +1,7 @@
 # toycc — a tiny C-to-assembly compiler for the Toy CPU
 
-`toycc` compiles a small, standard-looking subset of C into `.toy` assembly
-that the [pytoy](../pytoy.py) assembler/simulator can run.
+`toycc` compiles a small, standard-looking subset of C into `.toys` assembly
+that the [pytoy](../toyasm.py) assembler/simulator can run.
 
 It is a single self-contained Python program (`toycc.py`): a hand-written
 lexer, a recursive-descent parser, and a straightforward code generator that
@@ -70,7 +70,7 @@ Constants may be decimal (`42`) or hexadecimal (`0xF0`).
 
 **Comparisons — what actually works.** `==` and `!=` are exact (via
 subtraction + `ifzero`). The ordering comparisons `<`, `>`, `<=`, `>=` use the
-sign-bit trick from `max.toy`: bit 7 of the mod-256 difference `a - b` tells
+sign-bit trick from `max.toys`: bit 7 of the mod-256 difference `a - b` tells
 you whether `a < b`. This is correct as long as the two operands **differ by
 less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
@@ -80,7 +80,7 @@ more than 127 apart. Treat values as unsigned and keep them modest.
 
 - Arrays and pointers (the assembler's array examples use self-modifying code;
   `toycc` deliberately does not generate that — arrays are hard here and left
-  out for clarity). Use separate `int` variables instead, as `sum.c`/`max.c`
+  out for clarity). Use separate `int` variables instead, as `sum.toyc`/`max.toyc`
   demonstrate.
 - Multiple functions, function calls, parameters, recursion.
 - Types other than `int` (`char`, `unsigned`, pointers, `float`, …).
@@ -96,22 +96,22 @@ overflow memory when assembled; keep programs small.
 ## Usage
 
 ```bash
-# compile program.c -> program.toy
-python3 toy-c-compiler/toycc.py toy-c-compiler/examples/fibonacci.c
+# compile program.toyc -> program.toys
+python3 compiler/toycc.py compiler/examples/fibonacci.toyc
 
 # choose the output path
-python3 toy-c-compiler/toycc.py program.c -o build/program.toy
+python3 compiler/toycc.py program.toyc -o build/program.toys
 
 # compile and immediately run through pytoy (CLI, no pausing)
-python3 toy-c-compiler/toycc.py toy-c-compiler/examples/fibonacci.c --run
+python3 compiler/toycc.py compiler/examples/fibonacci.toyc --run
 ```
 
-Run a produced `.toy` directly through pytoy in the terminal (the graphical
+Run a produced `.toys` directly through pytoy in the terminal (the graphical
 debugger is pytoy's default, so pass `--cli`):
 
 ```bash
 # from the repo root
-python3 pytoy.py toy-c-compiler/examples/fibonacci.toy --cli --run --quiet
+python3 toyasm.py compiler/examples/fibonacci.toys --cli --run --quiet
 # ...
 # Result:  ACC = 55  (00110111  0x37  dec 55)
 ```
@@ -127,24 +127,24 @@ expected accumulator result.
 
 | File            | Computes                                   | Expected ACC |
 |-----------------|--------------------------------------------|-------------:|
-| `fibonacci.c`   | fib(10) with an 8-bit overflow limit       | 55  |
-| `multiply.c`    | 7 * 6 via repeated addition (`*`)          | 42  |
-| `sevenfold.c`   | 7 * 4                                       | 28  |
-| `sum.c`         | 3+1+4+1+5+9+2 (separate vars, no arrays)    | 25  |
-| `max.c`         | max(3,1,4,1,5,9,2) using `>`               | 9   |
-| `countdown.c`   | 5+4+3+2+1 via a countdown `while` loop      | 15  |
-| `bitops.c`      | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F` | 36  |
-| `factorial.c`   | 5! via a `for` loop and `*`                | 120 |
-| `gcd.c`         | gcd(48, 36) by subtraction, `if/else`, `>` | 12  |
-| `ifelse.c`      | if/else picking `b - a` for `a < b`         | 5   |
+| `fibonacci.toyc` | fib(10) with an 8-bit overflow limit       | 55  |
+| `multiply.toyc`  | 7 * 6 via repeated addition (`*`)          | 42  |
+| `sevenfold.toyc` | 7 * 4                                       | 28  |
+| `sum.toyc`       | 3+1+4+1+5+9+2 (separate vars, no arrays)    | 25  |
+| `max.toyc`       | max(3,1,4,1,5,9,2) using `>`               | 9   |
+| `countdown.toyc` | 5+4+3+2+1 via a countdown `while` loop      | 15  |
+| `bitops.toyc`    | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F` | 36  |
+| `factorial.toyc` | 5! via a `for` loop and `*`                | 120 |
+| `gcd.toyc`       | gcd(48, 36) by subtraction, `if/else`, `>` | 12  |
+| `ifelse.toyc`    | if/else picking `b - a` for `a < b`         | 5   |
 
 Regenerate and re-verify them all:
 
 ```bash
 cd /Users/manfred/github/pytoy
-for f in toy-c-compiler/examples/*.c; do
-  python3 toy-c-compiler/toycc.py "$f"
-  python3 pytoy.py "${f%.c}.toy" --cli --run --quiet | tail -1
+for f in compiler/examples/*.toyc; do
+  python3 compiler/toycc.py "$f"
+  python3 toyasm.py "${f%.toyc}.toys" --cli --run --quiet | tail -1
 done
 ```
 
@@ -161,4 +161,4 @@ done
   conditions use a fast path that branches directly with `ifzero` where
   possible. `return` moves the value into ACC and emits `stop`.
 
-The emitted `.toy` is commented and maps back to the source where helpful.
+The emitted `.toys` is commented and maps back to the source where helpful.

@@ -2,8 +2,8 @@
 """
 toycc - a tiny C-to-assembly compiler for the pytoy "Toy CPU".
 
-It compiles a small, standard-looking subset of C into a .toy assembly file
-that the pytoy assembler/simulator (../pytoy.py) can run.
+It compiles a small, standard-looking subset of C into a .toys assembly file
+that the pytoy assembler/simulator (../toyasm.py) can run.
 
 Target machine (see ../docs/):
   - 256 bytes of memory total; code and data share the address space.
@@ -15,9 +15,9 @@ Because the machine is 8-bit, every C `int` here is an unsigned 8-bit value
 (0..255) that wraps modulo 256. This is documented in the README.
 
 Usage:
-    python3 toycc.py program.c                 # writes program.toy
-    python3 toycc.py program.c -o out.toy      # custom output path
-    python3 toycc.py program.c --run           # compile, then run via pytoy CLI
+    python3 toycc.py program.toyc              # writes program.toys
+    python3 toycc.py program.toyc -o out.toys  # custom output path
+    python3 toycc.py program.toyc --run        # compile, then run via toyasm CLI
 
 Design: hand-written lexer + recursive-descent parser + a straightforward
 code generator that emits Toy assembly text. Standard library only.
@@ -599,7 +599,7 @@ class CodeGen:
         # == / != : test whether (left - right) is zero.
         # < / > / <= / >= : use the sign bit (bit 7) of (left - right).
         #   For unsigned 8-bit a,b with the mod-256 subtraction:
-        #     bit7 of (a-b) is set  <=>  a < b   (this is the max.toy trick,
+        #     bit7 of (a-b) is set  <=>  a < b   (this is the max.toys trick,
         #     valid when a and b differ by less than 128, which holds for the
         #     small values this compiler targets).
         if op in ('==', '!='):
@@ -726,7 +726,7 @@ class CodeGen:
         self.emit(f"        goto  {l_top}")
         self.emit(f"{l_end}: nop")
 
-    # -- assemble the whole .toy file --
+    # -- assemble the whole .toys file --
     def generate(self, ast, source_name):
         # main body
         self.gen_stmt(ast)
@@ -765,11 +765,11 @@ def compile_source(src, source_name):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="toycc - compile a C subset to Toy CPU assembly (.toy)")
-    ap.add_argument('file', help='input C file (.c)')
-    ap.add_argument('-o', '--output', help='output .toy path')
+        description="toycc - compile a C subset to Toy CPU assembly (.toys)")
+    ap.add_argument('file', help='input C file (.toyc)')
+    ap.add_argument('-o', '--output', help='output .toys path')
     ap.add_argument('-r', '--run', action='store_true',
-                    help='after compiling, run the .toy through pytoy (CLI)')
+                    help='after compiling, run the .toys through toyasm (CLI)')
     args = ap.parse_args()
 
     try:
@@ -786,18 +786,18 @@ def main():
     out_path = args.output
     if out_path is None:
         base = args.file
-        if base.endswith('.c'):
-            base = base[:-2]
-        out_path = base + '.toy'
+        if base.endswith('.toyc'):
+            base = base[:-5]
+        out_path = base + '.toys'
 
     with open(out_path, 'w') as f:
         f.write(asm)
     print(f"wrote {out_path}")
 
     if args.run:
-        pytoy = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), 'pytoy.py')
-        cmd = [sys.executable, pytoy, out_path, '--cli', '--run', '--quiet']
+        toyasm = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), 'toyasm.py')
+        cmd = [sys.executable, toyasm, out_path, '--cli', '--run', '--quiet']
         print(f"running: {' '.join(cmd)}")
         subprocess.run(cmd)
 

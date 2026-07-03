@@ -2,7 +2,7 @@
 
 Programming the original Toy CPU meant flipping switches to enter raw binary
 (see [toycpu.md](toycpu.md)). pytoy lets you write the same programs as
-readable text in a `.toy` file, and it does the tedious part — turning
+readable text in a `.toys` file, and it does the tedious part — turning
 mnemonics and labels into the right bytes at the right addresses.
 
 ## The shape of a program

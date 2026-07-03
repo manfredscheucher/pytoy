@@ -2,13 +2,13 @@
 
 Pipeline under test (one stage feeds the next):
 
-    C source ──toycc.compile_source()──▶ .toy assembly text
-             ──pytoy.assemble()────────▶ memory image  (must have 0 errors)
-             ──pytoy.simulate()────────▶ final accumulator (ACC)
+    C source ──toycc.compile_source()──▶ .toys assembly text
+             ──toyasm.assemble()───────▶ memory image  (must have 0 errors)
+             ──toyasm.simulate()───────▶ final accumulator (ACC)
                                          ▲ assert ACC == expected
 
 For the example programs the expected result lives WITH the data: each
-`toy-c-compiler/examples/*.c` file carries a machine-readable `// expect: N`
+`compiler/examples/*.toyc` file carries a machine-readable `// expect: N`
 annotation, so adding a new example needs no change to this test file.
 """
 
@@ -20,30 +20,30 @@ import contextlib
 
 import pytest
 
-from pytoy import assemble, simulate
+from toyasm import assemble, simulate
 from toycc import compile_source, CompileError
 
 
 EXAMPLES_DIR = os.path.join(
-    os.path.dirname(__file__), '..', 'toy-c-compiler', 'examples')
+    os.path.dirname(__file__), '..', 'compiler', 'examples')
 
 
 # ── Pipeline helpers ────────────────────────────────────────────────────────
 
-def compile_c(src, name="test.c"):
-    """Stage 1: C source -> .toy assembly text."""
+def compile_c(src, name="test.toyc"):
+    """Stage 1: C source -> .toys assembly text."""
     return compile_source(src, name)
 
 
 def run_asm(asm):
-    """Stages 2+3: assemble the .toy text, simulate it, return ACC."""
+    """Stages 2+3: assemble the .toys text, simulate it, return ACC."""
     mem, listing, syms, data_addrs, errors = assemble(asm)
     assert errors == [], f"assembler errors: {errors}\n--- asm ---\n{asm}"
     with contextlib.redirect_stdout(io.StringIO()):
         return simulate(mem, syms, data_addrs)
 
 
-def run_c(src, name="test.c"):
+def run_c(src, name="test.toyc"):
     """Full pipeline: C source -> ACC result."""
     return run_asm(compile_c(src, name))
 
@@ -60,7 +60,7 @@ _EXPECT_RE = re.compile(r'//\s*expect:\s*(\d+)', re.IGNORECASE)
 
 def _collect_examples():
     cases = []
-    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, '*.c'))):
+    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, '*.toyc'))):
         with open(path) as f:
             src = f.read()
         m = _EXPECT_RE.search(src)
@@ -75,9 +75,9 @@ EXAMPLE_CASES = _collect_examples()
 def test_examples_present():
     """Guard against the examples folder silently going missing/empty."""
     names = {name for name, _, _ in EXAMPLE_CASES}
-    assert names, "no .c examples found"
+    assert names, "no .toyc examples found"
     # the ports of the assembler examples must exist
-    for expected in {'fibonacci.c', 'multiply.c', 'sevenfold.c', 'sum.c', 'max.c'}:
+    for expected in {'fibonacci.toyc', 'multiply.toyc', 'sevenfold.toyc', 'sum.toyc', 'max.toyc'}:
         assert expected in names, f"missing example {expected}"
 
 

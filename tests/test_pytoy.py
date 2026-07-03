@@ -3,7 +3,7 @@
 import io
 import sys
 import contextlib
-from pytoy import assemble, simulate, parse_val, OPCODES, has_operand
+from toyasm import assemble, simulate, parse_val, OPCODES, has_operand
 
 
 # ── Value parser ──────────────────────────────────────────────────────────
@@ -265,8 +265,8 @@ b:      20
     assert _run(src) == 246  # 10 - 20 + 256
 
 def test_sim_fibonacci():
-    """fibonacci.toy with n=7 should produce fib(7) = 13."""
-    src = open('examples/fibonacci.toy').read()
+    """fibonacci.toys with n=7 should produce fib(7) = 13."""
+    src = open('examples/fibonacci.toys').read()
     assert _run(src) == 13
 
 def test_sim_left_shift_overflow():
@@ -288,18 +288,18 @@ val:    42
     assert _run(src) == 42
 
 def test_sim_sum():
-    """sum.toy with [3,1,4,1,5,9,2] should produce 25."""
-    src = open('examples/sum.toy').read()
+    """sum.toys with [3,1,4,1,5,9,2] should produce 25."""
+    src = open('examples/sum.toys').read()
     assert _run(src) == 25
 
 def test_sim_max():
-    """max.toy with [3,1,4,1,5,9,2] should produce 9."""
-    src = open('examples/max.toy').read()
+    """max.toys with [3,1,4,1,5,9,2] should produce 9."""
+    src = open('examples/max.toys').read()
     assert _run(src) == 9
 
 def test_sim_multiply():
-    """multiply.toy with a=7, b=6 should produce 42."""
-    src = open('examples/multiply.toy').read()
+    """multiply.toys with a=7, b=6 should produce 42."""
+    src = open('examples/multiply.toys').read()
     assert _run(src) == 42
 
 def test_sim_loop_countdown():

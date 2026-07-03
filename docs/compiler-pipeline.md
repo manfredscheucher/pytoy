@@ -1,27 +1,27 @@
 # The C → assembly → CPU pipeline
 
 pytoy ships with **toycc**, a small compiler that turns a simplified subset of
-C into Toy CPU assembly (`.toy`). Writing C is more pleasant than hand-writing
+C into Toy CPU assembly (`.toys`). Writing C is more pleasant than hand-writing
 assembly, and it lets you see, stage by stage, how a high-level program becomes
 raw machine bytes. This page describes that pipeline and how it is tested.
 
-The compiler lives in [`toy-c-compiler/`](../toy-c-compiler/); see its
-[README](../toy-c-compiler/README.md) for the exact supported C subset.
+The compiler lives in [`compiler/`](../compiler/); see its
+[README](../compiler/README.md) for the exact supported C subset.
 
 ## The stages
 
 ```
- program.c                                          (simplified C source)
+ program.toyc                                       (simplified C source)
      │
      │  toycc  —  lex → parse → code generation
      ▼
- program.toy                                        (Toy CPU assembly text)
+ program.toys                                       (Toy CPU assembly text)
      │
-     │  pytoy assembler (two-pass)
+     │  toyasm assembler (two-pass)
      ▼
  256-byte memory image  +  symbol table             (opcodes & data bytes)
      │
-     │  pytoy simulator (fetch → decode → execute)
+     │  toyasm simulator (fetch → decode → execute)
      ▼
  final accumulator (ACC)                            (the program's result)
 ```
@@ -30,9 +30,9 @@ Each stage has one job and a well-defined output that the next stage consumes:
 
 | Stage | Tool | Input | Output |
 |-------|------|-------|--------|
-| 1. Compile | `toycc` (`compile_source`) | `.c` source text | `.toy` assembly text |
-| 2. Assemble | pytoy (`assemble`) | `.toy` text | memory image + symbols, or errors |
-| 3. Simulate | pytoy (`simulate`) | memory image | final ACC value |
+| 1. Compile | `toycc` (`compile_source`) | `.toyc` source text | `.toys` assembly text |
+| 2. Assemble | toyasm (`assemble`) | `.toys` text | memory image + symbols, or errors |
+| 3. Simulate | toyasm (`simulate`) | memory image | final ACC value |
 
 ### Stage 1 — toycc (C → assembly)
 
@@ -48,17 +48,17 @@ inspect in the output:
 - `a * b` becomes a **repeated-addition loop** (there is no multiply opcode).
 - Comparisons are reduced to the one available conditional, `ifzero` — e.g.
   `a == b` compiles to `a - b` followed by `ifzero`, and ordering uses the
-  sign-bit-of-difference trick from `max.toy`.
+  sign-bit-of-difference trick from `max.toys`.
 - `while` / `for` / `if` become `goto` and `ifzero` with generated labels.
 
-The emitted `.toy` is ordinary assembly with comments — read it to see exactly
+The emitted `.toys` is ordinary assembly with comments — read it to see exactly
 how your C was translated. (See [assembly.md](assembly.md) and
 [instruction-set.md](instruction-set.md).)
 
 ### Stage 2 — the assembler (assembly → bytes)
 
 pytoy's two-pass assembler resolves labels to addresses and emits the 256-byte
-memory image. This is the same assembler used for hand-written `.toy` programs;
+memory image. This is the same assembler used for hand-written `.toys` programs;
 toycc's output is nothing special to it. If toycc ever emitted something
 invalid, this stage reports errors instead of a memory image.
 
@@ -72,15 +72,15 @@ program's `return` value in the accumulator. pytoy prints it as the final
 
 ```bash
 # Stage 1: compile C to assembly
-python3 toy-c-compiler/toycc.py toy-c-compiler/examples/multiply.c
-#   -> writes toy-c-compiler/examples/multiply.toy
+python3 compiler/toycc.py compiler/examples/multiply.toyc
+#   -> writes compiler/examples/multiply.toys
 
 # Stages 2+3: assemble and simulate
-python3 pytoy.py toy-c-compiler/examples/multiply.toy --cli --run --quiet
+python3 toyasm.py compiler/examples/multiply.toys --cli --run --quiet
 #   -> Result: ACC = 42
 
 # Or do all three at once with toycc's --run flag:
-python3 toy-c-compiler/toycc.py toy-c-compiler/examples/multiply.c --run
+python3 compiler/toycc.py compiler/examples/multiply.toyc --run
 ```
 
 ## How the pipeline is tested
@@ -92,7 +92,7 @@ The whole pipeline is exercised by automated tests in
 python3 -m pytest -q
 ```
 
-The tests are **data-driven**: every `toy-c-compiler/examples/*.c` file carries
+The tests are **data-driven**: every `compiler/examples/*.toyc` file carries
 a machine-readable `// expect: N` annotation stating its correct result. The
 test harness, for each example, runs all three stages —
 `compile_source → assemble → simulate` — and asserts that the accumulator

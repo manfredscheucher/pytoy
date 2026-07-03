@@ -47,7 +47,7 @@ the arrow keys and Space, mimicking the switch panel. **pytoy keeps the same
 CPU** — identical memory model, accumulator, program counter, and opcodes —
 but replaces the switch-flipping input with:
 
-- **Readable assembly** in `.toy` files (labels, named data, comments) instead
+- **Readable assembly** in `.toys` files (labels, named data, comments) instead
   of hand-entered binary. See [assembly.md](assembly.md).
 - **A modern GUI and a CLI** for running and stepping through programs. See
   [usage.md](usage.md).

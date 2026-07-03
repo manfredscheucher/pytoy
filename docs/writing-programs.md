@@ -12,7 +12,7 @@ and that every calculation flows through the accumulator.
 ## 1. Straight-line: `a + b + c`
 
 The simplest programs just do one thing after another. Load a value, combine
-in more values, stop. `sevenfold.toy` computes `7 * a` with only adds:
+in more values, stop. `sevenfold.toys` computes `7 * a` with only adds:
 
 ```
         load  a         # acc = a
@@ -39,7 +39,7 @@ data (`a`, `b`, `c`) sits after `stop` so it's never executed.
 
 The Toy CPU has no multiply instruction, so you build it. Keep a counter in
 memory, do work each pass, decrement the counter, and jump back until it hits
-zero. `multiply.toy` computes `a * b`:
+zero. `multiply.toys` computes `a * b`:
 
 ```
         load  a         # acc = a  (used as loop counter)
@@ -78,7 +78,7 @@ like it:
   equal. Follow with `ifzero` to branch on "equal".
 - **Countdown to a condition:** `sub` until you reach `0`, then `ifzero`.
 
-`fibonacci.toy` uses the countdown form to run its loop `n` times:
+`fibonacci.toys` uses the countdown form to run its loop `n` times:
 
 ```
         load  n
@@ -98,7 +98,7 @@ The Toy CPU has no index register, so to walk through an array you modify the
 program itself while it runs — because code and data are the same memory,
 you can `store` a new address into an instruction's operand byte.
 
-`sum.toy` and `max.toy` do this. The key trick is writing a `load` as two raw
+`sum.toys` and `max.toys` do this. The key trick is writing a `load` as two raw
 bytes so the address byte is a normal, patchable memory box:
 
 ```
@@ -118,7 +118,7 @@ and dangerous). Read the comments in those files for the full walkthrough.
   writing instructions — the original Toy CPU author recommends the same.
 - **Put all data after a `stop` or `goto`** so it's never executed.
 - **Watch for wraparound.** Values are mod 256; `fib(14) = 377` overflows, so
-  `fibonacci.toy` only works up to `n = 13`.
+  `fibonacci.toys` only works up to `n = 13`.
 - **Step through in the GUI** when something's wrong — watching the PC move
   and the accumulator change makes bugs obvious.
 

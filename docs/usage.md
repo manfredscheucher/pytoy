@@ -1,6 +1,6 @@
 # Using pytoy
 
-pytoy assembles a `.toy` file and then either opens a graphical interface
+pytoy assembles a `.toys` file and then either opens a graphical interface
 (the default) or runs it in the terminal.
 
 ## Requirements
@@ -18,7 +18,7 @@ pip install PySide6
 Just point pytoy at a program:
 
 ```bash
-python3 pytoy.py examples/fibonacci.toy
+python3 toyasm.py examples/fibonacci.toys
 ```
 
 The window has:
@@ -45,7 +45,7 @@ which memory box a label refers to.
 Use `-c` / `--cli` to run in the terminal instead of opening the window:
 
 ```bash
-python3 pytoy.py examples/fibonacci.toy --cli
+python3 toyasm.py examples/fibonacci.toys --cli
 ```
 
 By default the CLI runs step-by-step with full verbose output; press Enter to
@@ -58,18 +58,18 @@ advance each instruction.
 | `-c`, `--cli`     | Run in the terminal instead of the GUI |
 | `-r`, `--run`     | Run all steps without pausing |
 | `-q`, `--quiet`   | Compact, one line per step |
-| `-x`, `--export`  | Also write the compiled listing to a `.out` file |
+| `-x`, `--export`  | Also write the compiled listing to a `.toyo` file |
 
-Run `python3 pytoy.py -h` for the full list.
+Run `python3 toyasm.py -h` for the full list.
 
 Examples:
 
 ```bash
 # Run to the end, compact output:
-python3 pytoy.py examples/multiply.toy --cli --run --quiet
+python3 toyasm.py examples/multiply.toys --cli --run --quiet
 
-# Assemble and export the byte layout to examples/max.out:
-python3 pytoy.py examples/max.toy --cli --export --run
+# Assemble and export the byte layout to examples/max.toyo:
+python3 toyasm.py examples/max.toys --cli --export --run
 ```
 
 The final line reports the result in the accumulator in binary, hex, and

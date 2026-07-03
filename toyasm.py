@@ -3,7 +3,7 @@
 Toy CPU Assembler + Simulator
 Based on https://github.com/freedosproject/toycpu
 
-Usage:  python pytoy.py prog.toy [options]
+Usage:  python toyasm.py prog.toys [options]
 """
 
 import sys, argparse
@@ -647,7 +647,7 @@ def main():
     ap.add_argument('file')
     ap.add_argument('-r', '--run',     action='store_true', help='run all steps without pausing')
     ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output')
-    ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .out')
+    ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .toyo')
     ap.add_argument('-c', '--cli',     action='store_true', help='run in the terminal instead of the graphical interface')
     args = ap.parse_args()
 
@@ -667,7 +667,7 @@ def main():
     if args.export:
         print("─"*62)
         show_assembly(listing, syms, mem)
-        export(listing, syms, mem, args.file.rsplit('.', 1)[0] + '.out')
+        export(listing, syms, mem, args.file.rsplit('.', 1)[0] + '.toyo')
 
     # build addr→original source map for verbose mode
     addr_orig = {}

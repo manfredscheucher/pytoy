@@ -10,7 +10,7 @@ Read them roughly in this order:
    fetch–decode–execute cycle. Start here if machine language is new to you.
 2. **[Instruction set](instruction-set.md)** — Every opcode, what it does,
    and how instructions are encoded as bytes.
-3. **[Assembly syntax](assembly.md)** — How to write `.toy` programs:
+3. **[Assembly syntax](assembly.md)** — How to write `.toys` programs:
    labels, data, number formats, and how pytoy lays them out in memory.
 4. **[Writing programs](writing-programs.md)** — Worked examples building up
    from a straight-line program to loops and conditionals.

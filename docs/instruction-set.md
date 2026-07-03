@@ -52,7 +52,7 @@ the CPU decides whether to read an address after the opcode.
 The Toy CPU has no multiply, divide, or compare instruction. You build them:
 
 - **Multiply** → repeated `add`, or doubling with `left` (see the
-  `sevenfold.toy` and `multiply.toy` examples).
+  `sevenfold.toys` and `multiply.toys` examples).
 - **Compare for equality** → `xor` two values; the result is `0` exactly when
   they're equal, so follow it with `ifzero`.
 - **Loop N times** → keep a counter in memory, `sub` one each pass, and
