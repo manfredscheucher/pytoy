@@ -4,7 +4,8 @@ toyasm is a Python assembler and simulator for the *Toy CPU*, a minimal
 educational processor created by Jim Hall for the FreeDOS Project. This chapter
 records where the machine comes from and how toyasm relates to it.
 
-- Original project: #link("https://github.com/freedosproject/toycpu")
+- Official page: #link("https://jimhall.itch.io/toy-cpu") (free, MIT-licensed)
+- Source: #link("https://github.com/freedosproject/toycpu")
 - Jim Hall's talk (VCF East, ~50 min):
   #link("https://www.youtube.com/watch?v=zhoL1ZSjGfM")
 
@@ -38,13 +39,21 @@ to give up experimenting before you've really explored. That switch-and-light
 workflow has its own charm --- it's honest about how bare a computer really is
 --- but it's a narrow doorway.
 
-toyasm keeps the tiny, comprehensible machine and widens the doorway. With a
-graphical view of memory and the accumulator, an assembly layer, and a C layer on
-top, you spot your mistakes almost immediately (instead of staring at LEDs that
-tell you nothing) and you can keep experimenting far longer. The limits are still
-real and instructive: 256 addresses means both the assembly and the C you can
-write stay small, and it's easy to run out of room --- which is itself part of
-the lesson (see the note on memory limits below).
+The sharpest difference is what you can _see at once_. On the original front
+panel you look at one value at a time --- one register, one address --- and step
+or click through the rest; the machine only ever shows you a single 8-bit box.
+toyasm shows everything simultaneously: the whole program, every byte of memory,
+the accumulator, and the program counter, all on screen together, updating as you
+step. Watching the PC move and the bytes change in one view is what makes a bug
+obvious instead of invisible.
+
+So toyasm keeps the tiny, comprehensible machine and widens the doorway. With a
+graphical view of all of memory and the accumulator, an assembly layer, and a C
+layer on top, you spot your mistakes almost immediately (instead of staring at
+LEDs that tell you nothing) and you can keep experimenting far longer. The limits
+are still real and instructive: 256 addresses means both the assembly and the C
+you can write stay small, and it's easy to run out of room --- which is itself
+part of the lesson (see the note on memory limits below).
 
 == The machine
 

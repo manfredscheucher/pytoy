@@ -74,8 +74,9 @@ cd doc-typst && ./build.sh   # -> doc-typst/toyasm.pdf
 
 ## Credits & license
 
-The Toy CPU instruction set is by Jim Hall (FreeDOS Project), from the
-[toycpu](https://github.com/freedosproject/toycpu) project. toyasm's own code
+The Toy CPU instruction set is by Jim Hall (FreeDOS Project) — see its
+[official page](https://jimhall.itch.io/toy-cpu) and
+[source](https://github.com/freedosproject/toycpu). toyasm's own code
 (assembler, GUI, CLI, compiler) is independent.
 
 toyasm is MIT-licensed (see [`LICENSE`](LICENSE)). toycpu is MIT too; its
