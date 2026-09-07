@@ -240,8 +240,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
     # show initial state before first instruction
     if verbose:
         # peek at first instruction for description
-        _instr = mem[pc]
-        _arg = mem[(pc+1) % 256] if _instr & FETCH else None
+        _instr, _arg, _ = decode(mem, pc)
         _desc, _bs = _describe(_instr, _arg, sym, mem)
         print(vertical_mem(pc, acc, step_num=step_num, cmd_desc=_desc, cmd_bytes=_bs, cur_arg=_arg, dump=show_mem))
         print()
@@ -287,8 +286,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
 
         if verbose:
             # describe the next instruction at next_pc
-            _ninstr = mem[next_pc]
-            _narg = mem[(next_pc+1) % 256] if _ninstr & FETCH else None
+            _ninstr, _narg, _ = decode(mem, next_pc)
             _ndesc, _nbs = _describe(_ninstr, _narg, sym, mem)
             print(vertical_mem(next_pc, acc, step_num=step_num, cmd_desc=_ndesc, cmd_bytes=_nbs, cur_arg=_narg, dump=show_mem))
             print()
@@ -588,8 +586,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             pc_line = self.addr_to_line.get(self.pc)
             sel_line = self.addr_to_line.get(self.selected_addr) if self.selected_addr is not None else None
             # find which source line the current instruction references
-            instr = self.mem[self.pc]
-            cur_arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
+            instr, cur_arg, _ = decode(self.mem, self.pc)
             arg_line = self.addr_to_line.get(cur_arg) if cur_arg is not None else None
             for i, (addr, blist, orig, is_data) in enumerate(self.listing):
                 if i == pc_line:
@@ -627,9 +624,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             lines = []
 
             # status info on top
-            instr = self.mem[self.pc]
-            arg = self.mem[(self.pc + 1) % 256] if instr & FETCH else None
-            desc, bs = _describe(instr, arg, self._sym, self.mem)
+            instr, cur_arg, _ = decode(self.mem, self.pc)
+            desc, bs = _describe(instr, cur_arg, self._sym, self.mem)
             n = len(bs.split())
             if self.stopped:
                 lines.append(f'<b>Stopped after {self.step_count} steps.</b>')
@@ -640,11 +636,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             lines.append(_esc(f"  OP{n}={bs}"))
             lines.append(_esc(f"  EXPLAIN: {desc}"))
             lines.append('')
-
-            # determine which address the current instruction references
-            cur_arg = None
-            if instr & FETCH:
-                cur_arg = self.mem[(self.pc + 1) % 256]
 
             # unified memory listing
             self._mem_line_addrs = {}
