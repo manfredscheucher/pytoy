@@ -36,11 +36,13 @@ Consequences for the C you can write:
 **Program shape**
 
 ```
-int main(void) { ... }      // or  int main() { ... }
+int main(void) { ... }      // the entry point (no parameters)
+int helper(int a, int b) { ... }   // optional extra functions (see below)
 ```
 
-Exactly one function, named `main`, no parameters. Execution result is
-whatever value `return expr;` leaves in the accumulator when the program stops.
+One `main` is the entry point; you may define additional functions and call
+them (non-recursively — see "Functions" below). The execution result is
+whatever value `return expr;` leaves in the accumulator when `main` stops.
 
 **Statements**
 
@@ -76,23 +78,56 @@ less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
 more than 127 apart. Treat values as unsigned and keep them modest.
 
+## Functions (non-recursive)
+
+`toycc` supports multiple functions with parameters, calling each other — see
+`examples/functions.toyc`:
+
+```c
+int square(int x) { return x * x; }
+int sum_of_squares(int a, int b) { return square(a) + square(b); }
+int main(void) { return sum_of_squares(3, 4); }   // 9 + 16 = 25
+```
+
+There is exactly one `main` (the entry point). Recursion is **not supported
+yet** and is rejected with a clear error (see the memory model below for why).
+
+### How calls work with no call/return instruction
+
+The Toy CPU has no call/return, no stack pointer, and no indirect jump, so
+`toycc` compiles a non-recursive function with **global slots + marker
+dispatch**:
+
+- Each function `f` gets fixed data bytes: one per parameter (`f__p_<name>`), a
+  return-value slot (`f__ret`), and a return-marker slot (`f__mark`).
+- Its body is emitted once, as a labeled block. `return e` stores `e` into
+  `f__ret` and jumps to `f`'s dispatch.
+- A call stores the arguments into the parameter slots, sets `f__mark` to a
+  number identifying *this* call site, and jumps to the body.
+- At the end of the body, a compare-chain on `f__mark` (`load f__mark; sub k;
+  ifzero f__cont_k; …`) jumps back to the correct call site.
+
+Arguments are fully evaluated into temporaries before any parameter slot is
+written, so a nested call to the same function (`f(1, f(2,3))`) works.
+
 ## Memory model: no stack, all variables are static
 
-`toycc` has **no stack and no heap**. Every variable — no matter which block it
-is declared in — is allocated once as a fixed data byte with a label, placed
-after the code. There are no activation frames and no call mechanism. In effect
-every variable is a static global; the "local" vs "global" distinction doesn't
-exist here.
+`toycc` has **no stack and no heap**. Every variable and every function slot is
+allocated once as a fixed data byte, placed after the code. There are no
+activation frames — a function has exactly one set of parameter/return slots,
+shared by every call.
 
-This is why only a single `main` is allowed and there are **no function calls
-or recursion**: recursion needs a stack (each call needs its own copy of the
-locals), and this machine has none. Rather than emit something that would be
-silently wrong, the compiler rejects a second function, a call, or a parameter
-outright (`only a single 'int main' function is supported`).
+This is why **recursion is not supported**: a recursive call would need its own
+copy of the callee's slots, and there's only one set — the second activation
+would clobber the first. Rather than miscompile silently, the compiler rejects
+recursive (and mutually recursive) functions with a clear error. A real stack
+*is* possible on this machine (see `examples/fibonacci_rec.toys`, which builds
+one by hand with self-modifying code); teaching `toycc` to emit it is future
+work.
 
-A useful side effect: because all code is emitted first and all data after it,
-the code/data boundary is fixed and well-defined, which is what
-`--detect-code-overwrite` (see the main README) relies on.
+A useful side effect of the code-then-data layout: the code/data boundary is
+fixed and well-defined, which is what `--detect-code-overwrite` (see the main
+README) relies on.
 
 ## What is NOT supported
 
@@ -100,7 +135,10 @@ the code/data boundary is fixed and well-defined, which is what
   `toycc` deliberately does not generate that — arrays are hard here and left
   out for clarity). Use separate `int` variables instead, as `sum.toyc`/`max.toyc`
   demonstrate.
-- Multiple functions, function calls, parameters, recursion.
+- Recursion (self or mutual) — rejected with a clear error; see above.
+- `void` functions are of limited use (there is no I/O or global state to
+  affect), and a call used as a bare statement (`f();`) or a bare `return;` do
+  not parse. Call functions in expression position: `y = f(a);`, `return f(a);`.
 - Types other than `int` (`char`, `unsigned`, pointers, `float`, …).
 - `do/while`, `switch`, `break`, `continue`, `goto`, the ternary `?:`.
 - Short-circuit `&&` / `||` (the tokens are lexed but not compiled; build

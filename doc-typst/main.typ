@@ -44,4 +44,6 @@
 #pagebreak()
 #include "chapters/05-compiler.typ"
 #pagebreak()
+#include "chapters/08-stack-and-recursion.typ"
+#pagebreak()
 #include "chapters/06-toycpu.typ"

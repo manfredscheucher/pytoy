@@ -51,6 +51,25 @@ the output:
   sign-bit-of-difference trick.
 - `while` / `for` / `if` become `goto` and `ifzero` with generated labels.
 
+=== Functions (non-recursive)
+
+toycc supports multiple functions that call each other (see
+`examples/functions.toyc`). The Toy CPU has no call/return instruction, no stack
+pointer, and no indirect jump, so a non-recursive function is compiled with
+*global slots + marker dispatch*:
+
+- each function `f` gets fixed data bytes --- one per parameter, a return-value
+  slot, and a return-marker slot;
+- its body is emitted once; `return e` stores `e` and jumps to `f`'s dispatch;
+- a call writes the arguments into the parameter slots, sets the marker to a
+  number identifying *this* call site, and jumps to the body;
+- a compare-chain on the marker jumps back to the correct call site.
+
+Because a function has exactly one set of slots (no activation frame),
+*recursion is not supported* --- a recursive call would clobber its own slots.
+The compiler rejects it with a clear error. That a stack (and hence recursion)
+is nonetheless possible on this machine is shown in the next chapter.
+
 === Stage 2 --- the assembler (assembly #sym.arrow bytes)
 
 toyasm's two-pass assembler resolves labels to addresses and emits the 256-byte
