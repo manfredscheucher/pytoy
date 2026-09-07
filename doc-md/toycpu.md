@@ -43,6 +43,22 @@ first lesson; the Toy CPU strips it down to the essentials.
 The original went through three versions: an experimental FreeDOS prototype,
 a Linux/ncurses prototype, and finally a FreeDOS graphics-mode program.
 
+## Building the original (and why v2 on macOS)
+
+The three versions build very differently, which matters if you want to run
+Jim Hall's original alongside toyasm:
+
+- **v3** (current `main`, the FreeDOS graphics-mode program) builds with a
+  `.bat` script that calls **OpenWatcom C** (`wcl -q -2 -os toy.c …`). That
+  toolchain targets DOS; it does not build on macOS out of the box.
+- **v2** (the Linux/ncurses prototype) ships a plain **Makefile** using
+  **gcc** and `-lncurses`. That is the version to check out on macOS — it
+  builds with make + gcc and a terminal ncurses UI, no OpenWatcom or DOS
+  needed.
+
+So on macOS: check out v2 to actually build and run the original. v3 is
+FreeDOS/OpenWatcom-only.
+
 ## How toyasm relates
 
 The original Toy CPU is a C program where you enter programs bit by bit with
