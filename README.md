@@ -53,22 +53,22 @@ python3 compiler/toycc.py compiler/examples/multiply.toyc --run  # -> ACC = 42
 ```
 
 See [`compiler/`](compiler/) and the
-[compiler pipeline docs](docs/compiler-pipeline.md).
+[compiler pipeline docs](doc-md/compiler-pipeline.md).
 
 ## Documentation
 
-Full docs live in **[`docs/`](docs/)** — written for newcomers with no assembly
+Full docs live in **[`doc-md/`](doc-md/)** — written for newcomers with no assembly
 background:
 
-- [Concepts](docs/concepts.md) — how a CPU works: memory, accumulator, program
+- [Concepts](doc-md/concepts.md) — how a CPU works: memory, accumulator, program
   counter, the fetch–execute cycle.
-- [Instruction set](docs/instruction-set.md) — every opcode and how bytes are
+- [Instruction set](doc-md/instruction-set.md) — every opcode and how bytes are
   encoded.
-- [Assembly syntax](docs/assembly.md) — writing `.toys` programs.
-- [Writing programs](docs/writing-programs.md) — worked examples: loops,
+- [Assembly syntax](doc-md/assembly.md) — writing `.toys` programs.
+- [Writing programs](doc-md/writing-programs.md) — worked examples: loops,
   conditionals, self-modifying code.
-- [Using toyasm](docs/usage.md) — the GUI and CLI in detail.
-- [About the Toy CPU](docs/toycpu.md) — background and origins.
+- [Using toyasm](doc-md/usage.md) — the GUI and CLI in detail.
+- [About the Toy CPU](doc-md/toycpu.md) — background and origins.
 
 ## Credits & license
 
@@ -78,5 +78,5 @@ The Toy CPU instruction set is by Jim Hall (FreeDOS Project), from the
 
 toyasm is MIT-licensed (see [`LICENSE`](LICENSE)). toycpu is MIT too; its
 original notice is reproduced in [`NOTICE`](NOTICE). See
-[docs/toycpu.md](docs/toycpu.md) for exactly what was reused vs. written from
+[doc-md/toycpu.md](doc-md/toycpu.md) for exactly what was reused vs. written from
 scratch.
