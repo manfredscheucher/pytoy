@@ -5,7 +5,7 @@ toycc - a tiny C-to-assembly compiler for the toyasm "Toy CPU".
 It compiles a small, standard-looking subset of C into a .toys assembly file
 that the toyasm assembler/simulator (../toyasm.py) can run.
 
-Target machine (see ../doc-md/):
+Target machine (see ../doc-typst/):
   - 256 bytes of memory total; code and data share the address space.
   - One 8-bit accumulator (ACC). All arithmetic wraps modulo 256.
   - The only conditional instruction is `ifzero`; the only jump is `goto`.

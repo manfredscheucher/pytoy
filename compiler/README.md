@@ -10,7 +10,7 @@ only.
 
 ## The target machine (and why C is so restricted here)
 
-The Toy CPU (see [../doc-md/](../doc-md/)) is deliberately minimal:
+The Toy CPU (see the [manual](../doc-typst/)) is deliberately minimal:
 
 - **256 bytes of memory total.** Code and data share this one address space
   (addresses 0–255). A whole program — instructions *and* variables — must fit

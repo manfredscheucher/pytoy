@@ -1,4 +1,4 @@
-<img src="screenshot.png" alt="toyasm" width="100%"/>
+<img src="doc-typst/images/screenshot.png" alt="toyasm" width="100%"/>
 
 
 # toyasm
@@ -9,6 +9,9 @@ The Toy CPU is a minimal 8-bit processor with 256 bytes of memory, one
 accumulator, and a program counter. It was built as a FreeDOS learning tool
 with a switch-based interface (like an Altair 8800); toyasm keeps the same CPU
 but replaces the binary switch input with readable assembly, a GUI, and a CLI.
+
+It's deliberately simple, readable Python — standard library plus PySide6, the
+whole machine in one file — because the point is to *see* how a CPU works.
 
 ## Quick start
 
@@ -52,23 +55,22 @@ int main(void) {
 python3 compiler/toycc.py compiler/examples/multiply.toyc --run  # -> ACC = 42
 ```
 
-See [`compiler/`](compiler/) and the
-[compiler pipeline docs](doc-md/compiler-pipeline.md).
+See [`compiler/`](compiler/) for the C compiler.
 
 ## Documentation
 
-Full docs live in **[`doc-md/`](doc-md/)** — written for newcomers with no assembly
-background:
+The full manual is a PDF built from Typst sources in
+**[`doc-typst/`](doc-typst/)** — written for newcomers with no assembly
+background. It covers: how a CPU works (memory, accumulator, program counter,
+the fetch–execute cycle), the full instruction set, assembly syntax, worked
+example programs, using the GUI and CLI, and the C → assembly pipeline.
 
-- [Concepts](doc-md/concepts.md) — how a CPU works: memory, accumulator, program
-  counter, the fetch–execute cycle.
-- [Instruction set](doc-md/instruction-set.md) — every opcode and how bytes are
-  encoded.
-- [Assembly syntax](doc-md/assembly.md) — writing `.toys` programs.
-- [Writing programs](doc-md/writing-programs.md) — worked examples: loops,
-  conditionals, self-modifying code.
-- [Using toyasm](doc-md/usage.md) — the GUI and CLI in detail.
-- [About the Toy CPU](doc-md/toycpu.md) — background and origins.
+Grab the prebuilt [`doc-typst/toyasm.pdf`](doc-typst/toyasm.pdf), or rebuild it
+with [Typst](https://typst.app):
+
+```bash
+cd doc-typst && ./build.sh   # -> doc-typst/toyasm.pdf
+```
 
 ## Credits & license
 
@@ -77,6 +79,5 @@ The Toy CPU instruction set is by Jim Hall (FreeDOS Project), from the
 (assembler, GUI, CLI, compiler) is independent.
 
 toyasm is MIT-licensed (see [`LICENSE`](LICENSE)). toycpu is MIT too; its
-original notice is reproduced in [`NOTICE`](NOTICE). See
-[doc-md/toycpu.md](doc-md/toycpu.md) for exactly what was reused vs. written from
-scratch.
+original notice is reproduced in [`NOTICE`](NOTICE). The manual's "About the Toy
+CPU" chapter spells out exactly what was reused vs. written from scratch.

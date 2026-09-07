@@ -1,8 +1,8 @@
 // toyasm — documentation (PDF edition)
 //
-// This is the Typst source for the PDF manual. It is maintained in parallel
-// with the Markdown docs in ../doc-md/. Build with ./build.sh (or
-// `typst compile main.typ toyasm.pdf`).
+// This is the Typst source for the PDF manual — the project's primary
+// documentation. Build with ./build.sh (or `typst compile main.typ
+// toyasm.pdf`).
 
 #set document(title: "toyasm — Assembler and Simulator for the Toy CPU", author: "Manfred Scheucher")
 #set page(paper: "a4", numbering: "1", margin: (x: 2.5cm, y: 2.5cm))
@@ -37,6 +37,8 @@
 #include "chapters/02-instruction-set.typ"
 #pagebreak()
 #include "chapters/03-assembly.typ"
+#pagebreak()
+#include "chapters/07-writing-programs.typ"
 #pagebreak()
 #include "chapters/04-usage.typ"
 #pagebreak()
