@@ -1,0 +1,27 @@
+// expect: 25
+/*
+ * functions.c - small helper functions that call each other.
+ *
+ * Demonstrates toycc's function support: functions with parameters, called
+ * from main and from one another. The Toy CPU has no call/return instruction,
+ * so toycc gives each non-recursive function fixed global slots for its
+ * parameters and return value, emits one copy of its body, and jumps back to
+ * the right call site with a marker (see the compiler README and doc-typst).
+ *
+ * square(x) = x * x;  sum_of_squares(a, b) = square(a) + square(b).
+ * With a = 3, b = 4:  square(3) + square(4) = 9 + 16 = 25.
+ *
+ * Expected result: ACC = 25
+ */
+
+int square(int x) {
+    return x * x;
+}
+
+int sum_of_squares(int a, int b) {
+    return square(a) + square(b);
+}
+
+int main(void) {
+    return sum_of_squares(3, 4);
+}
