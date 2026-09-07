@@ -246,7 +246,7 @@ def test_duplicate_function_rejected():
         _parse("int f(void){return 1;} int f(void){return 2;} int main(void){return 0;}")
 
 
-# ── Function inlining (non-recursive calls) ─────────────────────────────────
+# ── Functions (non-recursive: global-slots + marker-dispatch codegen) ───────
 
 def test_inline_simple_call():
     src = "int add(int a,int b){return a+b;} int main(void){return add(2,3);}"
@@ -284,6 +284,30 @@ def test_inline_call_in_while_condition():
     src = ("int below(int x){return x < 5;}"
            " int main(void){ int i=0; while (below(i)) { i = i + 1; } return i; }")
     assert run_c(src) == 5
+
+def test_three_call_sites_each_result_preserved():
+    """Regression: f__ret is a shared slot; several calls in one expression
+    must each keep their own value (this once returned 3*last instead of the
+    sum). sq(2)+sq(3)+sq(4) = 4+9+16 = 29."""
+    src = "int sq(int x){return x*x;} int main(void){return sq(2)+sq(3)+sq(4);}"
+    assert run_c(src) == 29
+
+def test_function_calling_another_function():
+    """Regression: a callee reached only via another function (not main) must
+    still get its slots + body emitted. quad calls dbl; main calls quad."""
+    src = ("int dbl(int x){return x+x;} int quad(int x){return dbl(dbl(x));}"
+           " int main(void){return quad(5);}")
+    assert run_c(src) == 20
+
+def test_call_in_loop_repeated():
+    src = ("int inc(int x){return x+1;}"
+           " int main(void){int i=0;int c=0;while(i<5){c=inc(c);i=i+1;}return c;}")
+    assert run_c(src) == 5
+
+def test_deeply_chained_calls():
+    src = ("int a(int x){return x+1;} int b(int x){return x+2;}"
+           " int main(void){return a(b(a(0)));}")
+    assert run_c(src) == 4
 
 def test_recursive_call_gives_clean_compile_error():
     """A recursive function is not supported yet, but must fail with a clean

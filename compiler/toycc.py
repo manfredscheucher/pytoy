@@ -469,6 +469,10 @@ class CodeGen:
         self.label_n = 0
         self.temp_n = 0
         self.declared_order = []  # variable labels in declaration order
+        # Extra data bytes for the global-slots call scheme (param/return/marker
+        # slots). Kept separate from user variables so `declare()` stays a plain
+        # "did the user declare this twice?" check. Each entry is (label, init).
+        self.global_slots = []
 
     # -- emission helpers --
     def emit(self, text):
@@ -492,6 +496,15 @@ class CodeGen:
         label = f"v_{name}"
         self.vars[name] = label
         self.declared_order.append(label)
+        return label
+
+    def add_global_slot(self, label, init=0):
+        """Register a fixed data byte for the global-slots call scheme (param,
+        return-value or marker slot). Its variable name maps to itself, so the
+        normal ('var'/'assign', label) codegen path reaches it directly."""
+        if label not in self.vars:
+            self.vars[label] = label
+            self.global_slots.append((label, init))
         return label
 
     def const_label(self, value):
@@ -752,14 +765,27 @@ class CodeGen:
             return
         if kind == 'label':
             # A jump target. The Toy CPU has no bare label, so we anchor it on a
-            # nop. Introduced by the inliner so `return` (which becomes a goto)
-            # has a place to land at the end of an inlined body.
+            # nop. Introduced by the CallLifter (e.g. a while-end target, or a
+            # call-site continuation) so a `goto` has a place to land.
             _, name = s
             self.emit(f"{name}: nop")
             return
         if kind == 'goto':
             _, name = s
             self.emit(f"        goto  {name}")
+            return
+        if kind == 'setmark':
+            # Write this call site's marker constant into the callee's marker
+            # slot, so f__dispatch can return control to the right continuation.
+            _, fname, k = s
+            self.emit(f"        load  {self.const_label(k)}")
+            self.emit(f"        store {fname}__mark")
+            return
+        if kind == 'call_jump':
+            # Jump into the callee's single body copy, then land the return here.
+            _, fname, cont = s
+            self.emit(f"        goto  {fname}__body")
+            self.emit(f"{cont}: nop")
             return
         raise CompileError(f"cannot generate statement {s!r}")
 
@@ -792,15 +818,57 @@ class CodeGen:
         self.emit(f"        goto  {l_top}")
         self.emit(f"{l_end}: nop")
 
+    def register_slots(self, name, params):
+        # The fixed global slots this function owns: one per parameter, a
+        # return-value slot and a marker slot. Registering them as variables lets
+        # the body read params (('var', f__p_a)) and the callers write them
+        # (('assign', f__p_a, ...)) through the ordinary codegen path. Must happen
+        # before ANY code is generated, since main references these slots.
+        for p in params:
+            self.add_global_slot(f"{name}__p_{p}")
+        self.add_global_slot(f"{name}__ret")
+        self.add_global_slot(f"{name}__mark")
+
+    # -- one function body block + its marker-dispatch return chain --
+    def gen_function(self, name, params, body_block, n_sites):
+        self.emit("")
+        self.comment(f"function {name}(...) — single body, marker-dispatch return")
+        self.emit(f"{name}__body: nop")
+        self.gen_stmt(body_block)
+        # If control falls off the end without an explicit return, still go to
+        # the dispatch chain (f__ret keeps whatever value it had, default 0).
+        self.emit(f"        goto  {name}__dispatch")
+
+        # Dispatch: compare the marker slot against each call site's constant and
+        # jump back to that site's continuation. Loaded fresh each compare for
+        # simplicity (this is a teaching tool, not optimised).
+        self.emit(f"{name}__dispatch: nop")
+        for k in range(n_sites):
+            self.emit(f"        load  {name}__mark")
+            self.emit(f"        sub   {self.const_label(k)}")
+            self.emit(f"        ifzero {name}__cont_{k}")
+        # No marker matched (shouldn't happen). Halt rather than run into data.
+        self.emit(f"        stop            # unreachable: bad {name} marker")
+
     # -- assemble the whole .toys file --
-    def generate(self, main_body, source_name):
-        # `main_body` is a single ('block', [...]): main with every non-recursive
-        # call already inlined by inline_functions(). Recursive functions are not
-        # supported yet and would have raised before reaching here.
+    def generate(self, main_body, bodies, source_name):
+        # `main_body` is main's ('block', [...]); `bodies` is the list of
+        # (name, params, body_block, n_sites) for every called non-main function
+        # (from CallLifter). Recursive functions raised earlier.
+        # Register every function's global slots up front, because main's code
+        # (generated first) already reads/writes them.
+        for name, params, _body, _n in bodies:
+            self.register_slots(name, params)
+
         self.gen_stmt(main_body)
         # Safety net: if control falls off the end of main without a return,
         # halt anyway (returning whatever is in ACC).
         self.emit("        stop            # fallthrough halt")
+
+        # Emit each function's single body + its dispatch chain after main. main
+        # never falls into them (it always ends in `stop`).
+        for name, params, body_block, n_sites in bodies:
+            self.gen_function(name, params, body_block, n_sites)
 
         lines = []
         lines.append(f"# Generated by toycc from {source_name}")
@@ -813,6 +881,9 @@ class CodeGen:
         # C variables (declared but possibly with runtime init; give initial 0)
         for label in self.declared_order:
             lines.append(f"{label}: 0")
+        # global call slots (param / return-value / marker bytes)
+        for label, init in self.global_slots:
+            lines.append(f"{label}: {init}")
         # temporaries
         for label in self.temps:
             lines.append(f"{label}: 0")
@@ -863,184 +934,99 @@ def find_recursive(graph):
     return {name for name in graph if reaches_self(name)}
 
 
-# ── Function inlining ───────────────────────────────────────────────────────
+# ── Global-slots + marker-dispatch call scheme ──────────────────────────────
 #
-# A pure AST-to-AST pass. It takes the parsed functions and returns a single
-# ('block', [...]) — main's body with every NON-recursive call fully inlined —
-# so the existing single-main codegen (CodeGen.gen_stmt on a block) compiles it
-# unchanged. Recursive functions are left for a future stack-based pass; calling
-# one here raises a clear CompileError.
+# The Toy CPU has no call/return, no stack, no indirect jump. To support real
+# (non-inlined) functions we give each non-recursive function `f` FIXED global
+# data bytes and emit its body EXACTLY ONCE:
 #
-# The two hard parts:
-#   1. `return` can appear anywhere (inside if/while), not just at the tail. We
-#      turn `return e` inside an inlined body into "assign e to a result var,
-#      then goto the body's end label". That needs statement nodes the source
-#      grammar lacks, so the inliner introduces ('label', name) and ('goto',
-#      name) (the codegen above knows how to emit them).
-#   2. A call in EXPRESSION position (y = f(a)+1, return f(a), if (f(a))...) must
-#      be lifted: its inlined statements run first, the result lands in a temp,
-#      and the call sub-expression is replaced by ('var', temp).
+#   f__p_<param>  one byte per parameter   (caller writes the argument here)
+#   f__ret        one byte                 (body writes the return value here)
+#   f__mark       one byte                 (caller writes which call site called)
+#   f__body:      the single copy of f's body
+#   f__dispatch:  a compare-chain over f__mark that jumps back to the caller
+#
+# A CALL f(args) at call site k (0,1,2,…) becomes:
+#   store each arg into f__p_<param>;  set f__mark := k;  goto f__body;
+#   f__cont_k: nop                     ← body returns HERE via the dispatch chain
+# and the call's value is then sitting in f__ret.
+#
+# f__dispatch is: for each site k, `load f__mark; sub k; ifzero f__cont_k`. The
+# body's `return e` becomes `eval e; store f__ret; goto f__dispatch`.
+#
+# This is deliberately the SIMPLEST correct scheme (marker-dispatch is used even
+# for a single call site) — it trades a few extra bytes for uniformity. Global
+# slots are shared across all activations of f, so RECURSION would clobber them;
+# recursive functions still need a stack and are rejected up front.
+#
+# A pure AST-to-AST pass (CallLifter) does the rewrite. It turns each function
+# body into a call-free block using ('label',n)/('goto',n) plus two tiny new
+# statement nodes the codegen understands:
+#   ('setmark', fname, k)        -> load k; store f__mark
+#   ('call_jump', fname, cont)   -> goto f__body; cont: nop
+# A call in EXPRESSION position (y = f(a)+1) is lifted: the call statements run
+# first, then the sub-expression is replaced by ('var', 'f__ret').
 
-class Inliner:
+class CallLifter:
     def __init__(self, funcs, recursive):
         self.funcs = {f[1]: f for f in funcs}
         self.recursive = set(recursive)
-        self.counter = 0          # makes every inlining site's prefix unique
+        self.call_counts = {}     # fname -> number of call sites seen so far
+        self.uid = 0              # unique suffix for local-variable renaming
+
+    def next_site(self, fname):
+        k = self.call_counts.get(fname, 0)
+        self.call_counts[fname] = k + 1
+        return k
 
     def fresh(self, base):
-        self.counter += 1
-        return f"{base}__{self.counter}"
+        self.uid += 1
+        return f"{base}__u{self.uid}"
 
-    # -- main entry: return main's inlined body as a ('block', [...]) --
+    # -- main entry --
+    # Returns (main_block, bodies) where:
+    #   main_block : ('block', [...]) — main's body, call-free
+    #   bodies     : list of (fname, params, body_block, n_sites) in definition
+    #                order (only functions that are actually reachable/emitted)
     def run(self):
         main = self.funcs['main']
         _, _name, params, body = main
         if params:
             raise CompileError("main must take no parameters (or void)")
-        out = []
-        # ret_target=None at the top level: main's own `return` stays a `return`
-        # (it halts). Inside an inlined callee body, ret_target is (result, end)
-        # so `return e` becomes "assign e to result; goto end".
-        self.inline_stmt(body, out, ret_target=None)
-        return ('block', out)
+        # Rewrite main. Any call inside gets lifted, which also records call
+        # sites on the callees. main's own `return` stays a real return (halts).
+        main_out = []
+        self.lift_stmt(body, main_out, ret_slot=None)
+        main_block = ('block', main_out)
 
-    # ── statement pass ──────────────────────────────────────────────────────
-    # Append the call-free translation of statement `s` to `out`. Any call in
-    # `s`'s expressions is inlined into `out` first, leaving a ('var', temp) in
-    # its place, so what we append never contains a 'call' node. `ret_target` is
-    # None at main level, or (result, end) inside an inlined body — see run().
-    def inline_stmt(self, s, out, ret_target):
-        kind = s[0]
+        # Rewrite every non-main function that gets called (transitively). A
+        # called function may itself call others that main never mentions, so
+        # we process a worklist: lifting a body can reveal new callees, which
+        # we then lift too, until no new function appears.
+        lifted = {}                            # name -> (params, block)
+        pending = [n for n in self.call_counts if n != 'main']
+        while pending:
+            name = pending.pop()
+            if name in lifted:
+                continue
+            _, _n, fparams, fbody = self.funcs[name]
+            # Flat per-function namespace: params map to the fixed parameter
+            # slots (f__p_<param>); locals get a unique per-function prefix.
+            rename = {p: f"{name}__p_{p}" for p in fparams}
+            for local in self._declared_names(fbody):
+                if local not in rename:
+                    rename[local] = f"{name}__l_{local}"
+            fbody2 = self._rename(fbody, rename)
+            out = []
+            self.lift_stmt(fbody2, out, ret_slot=f"{name}__ret")
+            lifted[name] = (list(fparams), ('block', out))
+            # Lifting may have discovered calls to not-yet-lifted functions.
+            pending.extend(n for n in self.call_counts
+                           if n != 'main' and n not in lifted)
 
-        if kind == 'block':
-            for st in s[1]:
-                self.inline_stmt(st, out, ret_target)
-            return
-
-        if kind == 'decl':
-            _, name, init = s
-            init2 = None if init is None else self.lift_calls(init, out)
-            out.append(('decl', name, init2))
-            return
-
-        if kind == 'assign':
-            _, name, expr = s
-            out.append(('assign', name, self.lift_calls(expr, out)))
-            return
-
-        if kind == 'return':
-            _, expr = s
-            expr2 = self.lift_calls(expr, out)
-            if ret_target is None:
-                out.append(('return', expr2))       # main: really return/halt
-            else:
-                result, end = ret_target            # callee: store + jump to end
-                out.append(('assign', result, expr2))
-                out.append(('goto', end))
-            return
-
-        if kind == 'if':
-            _, cond, then_body, else_body = s
-            cond2 = self.lift_calls(cond, out)   # cond evaluated before the branch
-            then2 = self.block_of(then_body, ret_target)
-            else2 = None if else_body is None else self.block_of(else_body, ret_target)
-            out.append(('if', cond2, then2, else2))
-            return
-
-        if kind == 'while':
-            # The condition is re-evaluated every iteration, so any call it
-            # contains must be re-inlined each pass. We rewrite
-            #   while (cond) { body }
-            # into
-            #   while (1) { <lift cond>; if (!cond) goto end; body }  end:
-            # so the condition lifting happens inside the loop each iteration.
-            _, cond, body = s
-            end = self.fresh('while_end')
-            inner = []
-            cond2 = self.lift_calls(cond, inner)
-            inner.append(('if', ('unop', '!', cond2), ('goto', end), None))
-            self.inline_stmt(body, inner, ret_target)
-            out.append(('while', ('num', 1), ('block', inner)))
-            out.append(('label', end))
-            return
-
-        if kind in ('label', 'goto'):
-            out.append(s)
-            return
-
-        raise CompileError(f"cannot inline statement {s!r}")
-
-    def block_of(self, s, ret_target):
-        """Inline a sub-statement (if/while branch) into its own block."""
-        inner = []
-        self.inline_stmt(s, inner, ret_target)
-        return ('block', inner)
-
-    # ── expression pass ─────────────────────────────────────────────────────
-    # Returns a call-free copy of `e`; every call inside it is inlined into
-    # `out` (in evaluation order) and replaced by a ('var', temp). Nested calls
-    # f(g(x)) work because we recurse into arguments before inlining the outer
-    # call.
-    def lift_calls(self, e, out):
-        kind = e[0]
-        if kind in ('num', 'var'):
-            return e
-        if kind == 'unop':
-            _, op, operand = e
-            return ('unop', op, self.lift_calls(operand, out))
-        if kind == 'binop':
-            _, op, l, r = e
-            # left is evaluated before right (matches codegen spill order well
-            # enough; there are no side effects other than these lifts).
-            l2 = self.lift_calls(l, out)
-            r2 = self.lift_calls(r, out)
-            return ('binop', op, l2, r2)
-        if kind == 'call':
-            return self.inline_call(e, out)
-        raise CompileError(f"cannot inline expression {e!r}")
-
-    # Inline one call: emit its body into `out`, return ('var', result_temp).
-    def inline_call(self, call, out):
-        _, name, args = call
-        if name not in self.funcs:
-            raise CompileError(f"call to undefined function {name!r}")
-        if name in self.recursive:
-            raise CompileError(
-                f"recursive function {name!r} is not supported yet "
-                f"(it would need a stack; only non-recursive functions, which "
-                f"are inlined, work for now)")
-
-        callee = self.funcs[name]
-        _, _n, params, body = callee
-        if len(args) != len(params):
-            raise CompileError(
-                f"call to {name!r} passes {len(args)} args, expects {len(params)}")
-
-        prefix = self.fresh(name)
-        # Rename params and every locally-declared variable with this prefix so
-        # separate inlinings (and nested ones) never collide.
-        local_names = set(params) | self._declared_names(body)
-        rename = {n: f"{prefix}__{n}" for n in local_names}
-        result = f"{prefix}__ret"
-        end = f"{prefix}__end"
-
-        # Params become decls initialised to the (already call-free) arguments.
-        # Arguments are evaluated in the caller's scope, so lift their calls
-        # *before* renaming and using the callee's local names.
-        for pname, arg in zip(params, args):
-            arg2 = self.lift_calls(arg, out)
-            out.append(('decl', rename[pname], arg2))
-        # Declare the result holder up front (default 0 if the callee never
-        # returns a value on some path).
-        out.append(('decl', result, ('num', 0)))
-
-        # Translate the body with the same statement walker, but with a return
-        # target so `return e` becomes "assign e to result; goto end". Nested
-        # calls inside are lifted too. Renaming already made locals unique.
-        renamed = self._rename(body, rename)
-        self.inline_stmt(renamed, out, ret_target=(result, end))
-        out.append(('label', end))
-        return ('var', result)
+        bodies = [(name, params, block, self.call_counts[name])
+                  for name, (params, block) in lifted.items()]
+        return main_block, bodies
 
     # -- helpers: gather declared names, and rename variables in a subtree --
     def _declared_names(self, node):
@@ -1060,9 +1046,8 @@ class Inliner:
         return names
 
     def _rename(self, node, rename):
-        """Return a copy of `node` with 'var'/'assign'/'decl' names remapped
-        through `rename` (unknown names, e.g. globals, are left as-is). Calls are
-        kept intact — they get inlined afterwards, in evaluation order."""
+        """Copy `node`, remapping 'var'/'assign'/'decl' names through `rename`
+        (unknown names left as-is). Calls are kept intact for later lifting."""
         if not isinstance(node, tuple):
             return node
         tag = node[0]
@@ -1075,7 +1060,6 @@ class Inliner:
         if tag == 'assign':
             _, nm, expr = node
             return ('assign', rename.get(nm, nm), self._rename(expr, rename))
-        # generic structural copy
         parts = [tag]
         for child in node[1:]:
             if isinstance(child, tuple):
@@ -1086,11 +1070,132 @@ class Inliner:
                 parts.append(child)
         return tuple(parts)
 
+    # ── statement pass ──────────────────────────────────────────────────────
+    # Append the call-free translation of `s` to `out`. `ret_slot` is None in
+    # main (a `return` really halts) or 'f__ret' inside f's body (a `return e`
+    # becomes: store e to f__ret; goto f__dispatch).
+    def lift_stmt(self, s, out, ret_slot):
+        kind = s[0]
 
-def inline_functions(funcs, recursive):
-    """Return main's body as a single ('block', [...]) with all non-recursive
-    calls inlined. See the Inliner class for the details."""
-    return Inliner(funcs, recursive).run()
+        if kind == 'block':
+            for st in s[1]:
+                self.lift_stmt(st, out, ret_slot)
+            return
+
+        if kind == 'decl':
+            _, name, init = s
+            init2 = None if init is None else self.lift_calls(init, out)
+            out.append(('decl', name, init2))
+            return
+
+        if kind == 'assign':
+            _, name, expr = s
+            out.append(('assign', name, self.lift_calls(expr, out)))
+            return
+
+        if kind == 'return':
+            _, expr = s
+            expr2 = self.lift_calls(expr, out)
+            if ret_slot is None:
+                out.append(('return', expr2))          # main: really halt
+            else:
+                out.append(('assign', ret_slot, expr2))  # store to f__ret
+                out.append(('goto', f"{ret_slot[:-5]}__dispatch"))
+            return
+
+        if kind == 'if':
+            _, cond, then_body, else_body = s
+            cond2 = self.lift_calls(cond, out)     # cond evaluated before branch
+            then2 = self.block_of(then_body, ret_slot)
+            else2 = None if else_body is None else self.block_of(else_body, ret_slot)
+            out.append(('if', cond2, then2, else2))
+            return
+
+        if kind == 'while':
+            # The condition is re-evaluated every iteration, so a call inside it
+            # must be re-run each pass. Rewrite
+            #   while (cond) { body }
+            # into
+            #   while (1) { <lift cond>; if (!cond) goto end; body }  end:
+            _, cond, body = s
+            end = self.fresh('while_end')
+            inner = []
+            cond2 = self.lift_calls(cond, inner)
+            inner.append(('if', ('unop', '!', cond2), ('goto', end), None))
+            self.lift_stmt(body, inner, ret_slot)
+            out.append(('while', ('num', 1), ('block', inner)))
+            out.append(('label', end))
+            return
+
+        if kind in ('label', 'goto'):
+            out.append(s)
+            return
+
+        raise CompileError(f"cannot compile statement {s!r}")
+
+    def block_of(self, s, ret_slot):
+        inner = []
+        self.lift_stmt(s, inner, ret_slot)
+        return ('block', inner)
+
+    # ── expression pass ─────────────────────────────────────────────────────
+    # Return a call-free copy of `e`; every call is emitted into `out` (in eval
+    # order) as a global-slot call sequence and replaced by ('var', 'f__ret').
+    def lift_calls(self, e, out):
+        kind = e[0]
+        if kind in ('num', 'var'):
+            return e
+        if kind == 'unop':
+            _, op, operand = e
+            return ('unop', op, self.lift_calls(operand, out))
+        if kind == 'binop':
+            _, op, l, r = e
+            l2 = self.lift_calls(l, out)
+            r2 = self.lift_calls(r, out)
+            return ('binop', op, l2, r2)
+        if kind == 'call':
+            return self.lift_call(e, out)
+        raise CompileError(f"cannot compile expression {e!r}")
+
+    # Emit one call's sequence into `out`; return ('var', 'f__ret').
+    def lift_call(self, call, out):
+        _, name, args = call
+        if name not in self.funcs:
+            raise CompileError(f"call to undefined function {name!r}")
+        if name in self.recursive:
+            raise CompileError(
+                f"recursive function {name!r} is not supported yet "
+                f"(global slots would clobber across activations; recursion "
+                f"needs a stack, which is separate future work)")
+
+        _, _n, params, _body = self.funcs[name]
+        if len(args) != len(params):
+            raise CompileError(
+                f"call to {name!r} passes {len(args)} args, expects {len(params)}")
+
+        # Evaluate each argument (lifting any nested calls first) and store it
+        # into the fixed parameter slot. Arguments are lifted in order, so a
+        # nested call f(g(x)) runs g fully before f's slots are written.
+        for pname, arg in zip(params, args):
+            arg2 = self.lift_calls(arg, out)
+            out.append(('assign', f"{name}__p_{pname}", arg2))
+
+        k = self.next_site(name)
+        cont = f"{name}__cont_{k}"
+        out.append(('setmark', name, k))
+        out.append(('call_jump', name, cont))
+        # f__ret is a SHARED slot — the next call overwrites it. Copy the result
+        # into a fresh temp immediately so several calls in one expression
+        # (e.g. sq(3)+sq(4)) each keep their own value.
+        tmp = self.fresh('callret')
+        out.append(('decl', tmp, ('var', f"{name}__ret")))
+        return ('var', tmp)
+
+
+def lift_functions(funcs, recursive):
+    """Return (main_block, bodies) with all calls rewritten to the global-slots
+    + marker-dispatch scheme. See CallLifter for details."""
+    return CallLifter(funcs, recursive).run()
 
 
 def compile_source(src, source_name):
@@ -1107,12 +1212,10 @@ def compile_source(src, source_name):
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
 
-    # Inline all non-recursive calls down to a single main body block, then
-    # hand that to the existing single-main code generator.
-    main_body = inline_functions(funcs, recursive)
+    main_block, bodies = lift_functions(funcs, recursive)
 
     gen = CodeGen()
-    return gen.generate(main_body, source_name)
+    return gen.generate(main_block, bodies, source_name)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────
