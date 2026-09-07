@@ -123,6 +123,52 @@ def _resolve(op, syms, ctx, errors):
     try:    return parse_val(op)
     except: errors.append(f"Unknown label '{op}' for '{ctx}'"); return 0
 
+# ── Instruction execution (shared by the CLI and GUI engines) ──────────────
+
+def decode(mem, pc):
+    """Decode the instruction at pc. Returns (instr, arg_addr, next_pc).
+    arg_addr is None for one-byte instructions."""
+    instr = mem[pc]
+    if instr & FETCH:
+        return instr, mem[(pc + 1) % 256], (pc + 2) % 256
+    return instr, None, (pc + 1) % 256
+
+def execute_one(mem, pc, acc):
+    """Run one instruction. Mutates mem on STORE. Returns
+    (next_pc, acc, arg_addr, stopped). acc is masked to 8 bits.
+
+    The single source of truth for the CPU's semantics — both the CLI
+    simulator and the GUI debugger call this so they can never drift apart.
+    STORE writes unconditionally here; callers that want the code-overwrite
+    guard check is_code_store() *before* calling this and handle the prompt."""
+    instr, arg_addr, next_pc = decode(mem, pc)
+    stopped = False
+    if   instr == 0:  stopped = True
+    elif instr == 1:  acc >>= 1
+    elif instr == 2:  acc <<= 1
+    elif instr == 15: acc = ~acc
+    elif instr == 17: acc &= mem[arg_addr]
+    elif instr == 18: acc |= mem[arg_addr]
+    elif instr == 19: acc ^= mem[arg_addr]
+    elif instr == 20: acc = mem[arg_addr]
+    elif instr == 21: mem[arg_addr] = acc
+    elif instr == 22: acc += mem[arg_addr]
+    elif instr == 23: acc -= mem[arg_addr]
+    elif instr == 24: next_pc = arg_addr
+    elif instr == 25:
+        if acc == 0: next_pc = arg_addr
+    return next_pc, acc & 0xFF, arg_addr, stopped
+
+def is_code_store(mem, pc, code_guard):
+    """True if the instruction at pc is a STORE writing into the code region
+    (below code_guard). Used to trigger the overwrite warning before the
+    store actually happens. Always False when code_guard is None."""
+    if code_guard is None:
+        return False
+    instr, arg_addr, _ = decode(mem, pc)
+    return instr == 21 and arg_addr is not None and arg_addr < code_guard
+
+
 # ── Simulator ──────────────────────────────────────────────────────────────
 
 def _warn_continue(msg):
@@ -204,14 +250,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             except EOFError: pass
 
     while True:
-        instr = mem[pc]
-
-        if instr & FETCH:
-            arg_addr = mem[(pc+1) % 256]
-            next_pc  = (pc+2) % 256
-        else:
-            arg_addr = None
-            next_pc  = (pc+1) % 256
+        instr, arg_addr, _ = decode(mem, pc)
 
         desc, bytes_str = _describe(instr, arg_addr, sym, mem)
 
@@ -224,34 +263,21 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             try: input("       [Enter] > ")
             except EOFError: pass
 
-        # ── execute ──
-        if   instr == 0:  break
-        elif instr == 1:  acc >>= 1
-        elif instr == 2:  acc = (acc << 1) & 0xFF
-        elif instr == 15: acc = (~acc) & 0xFF
-        elif instr == 17: acc = (acc & mem[arg_addr]) & 0xFF
-        elif instr == 18: acc = (acc | mem[arg_addr]) & 0xFF
-        elif instr == 19: acc = (acc ^ mem[arg_addr]) & 0xFF
-        elif instr == 20: acc = mem[arg_addr]
-        elif instr == 21:
-            if code_guard is not None and arg_addr < code_guard:
-                msg = (f"store at PC={pc} writes {acc} into address {arg_addr}, "
-                       f"which is in the code region (below the data start at "
-                       f"{code_guard}) — this overwrites program code.")
-                if not _warn_continue(msg):
-                    print("Aborted.", file=sys.stderr)
-                    return acc
-            mem[arg_addr] = acc; touched.add(arg_addr)
-        elif instr == 22:
-            acc += mem[arg_addr]
-            if acc > 255: acc -= 256
-        elif instr == 23:
-            acc -= mem[arg_addr]
-            if acc < 0:   acc += 256
-        elif instr == 24: next_pc = arg_addr
-        elif instr == 25:
-            if acc == 0:  next_pc = arg_addr
-        acc &= 0xFF
+        if instr == 0:  # STOP
+            break
+
+        # guard: ask before a STORE overwrites code
+        if is_code_store(mem, pc, code_guard):
+            msg = (f"store at PC={pc} writes {acc} into address {arg_addr}, "
+                   f"which is in the code region (below the data start at "
+                   f"{code_guard}) — this overwrites program code.")
+            if not _warn_continue(msg):
+                print("Aborted.", file=sys.stderr)
+                return acc
+
+        next_pc, acc, arg_addr, _ = execute_one(mem, pc, acc)
+        if instr == 21:  # STORE wrote memory
+            touched.add(arg_addr)
 
         step_num += 1
 
@@ -283,25 +309,23 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         if show_mem: print(mem_dump())
     return acc
 
+# opcode -> (mnemonic, operand kind): None = no operand, 'a' = address only,
+# 'av' = address plus the value stored there.
+_INSTR = {
+    0: ("STOP", None), 1: ("RIGHT", None), 2: ("LEFT", None),
+    15: ("NOT", None), 128: ("NOP", None),
+    17: ("AND", 'av'), 18: ("OR", 'av'), 19: ("XOR", 'av'),
+    20: ("LOAD", 'av'), 22: ("ADD", 'av'), 23: ("SUB", 'av'),
+    21: ("STORE", 'a'), 24: ("GOTO", 'a'), 25: ("IFZERO", 'a'),
+}
+
 def _describe(instr, arg_addr, sym, mem):
     bs = f"b{instr:08b}" + (f" b{arg_addr:08b}" if arg_addr is not None else "")
-    def _av(): return f"(addr:{arg_addr}, val:{mem[arg_addr]})"
-    def _a():  return f"(addr:{arg_addr})"
-    if   instr == 0:   return "STOP",                              bs
-    elif instr == 1:   return "RIGHT",                             bs
-    elif instr == 2:   return "LEFT",                              bs
-    elif instr == 15:  return "NOT",                               bs
-    elif instr == 17:  return f"AND   {sym(arg_addr)} {_av()}",    bs
-    elif instr == 18:  return f"OR    {sym(arg_addr)} {_av()}",    bs
-    elif instr == 19:  return f"XOR   {sym(arg_addr)} {_av()}",    bs
-    elif instr == 20:  return f"LOAD  {sym(arg_addr)} {_av()}",    bs
-    elif instr == 21:  return f"STORE {sym(arg_addr)} {_a()}",     bs
-    elif instr == 22:  return f"ADD   {sym(arg_addr)} {_av()}",    bs
-    elif instr == 23:  return f"SUB   {sym(arg_addr)} {_av()}",    bs
-    elif instr == 24:  return f"GOTO  {sym(arg_addr)} {_a()}",     bs
-    elif instr == 25:  return f"IFZERO {sym(arg_addr)} {_a()}",    bs
-    elif instr == 128: return "NOP",                               bs
-    else:              return f"NOP (opcode={instr})",             bs
+    name, kind = _INSTR.get(instr, (f"NOP (opcode={instr})", None))
+    if kind is None:
+        return name, bs
+    tail = f"(addr:{arg_addr}, val:{mem[arg_addr]})" if kind == 'av' else f"(addr:{arg_addr})"
+    return f"{name:<5} {sym(arg_addr)} {tail}", bs
 
 # ── Assembly listing (interactive) ────────────────────────────────────────
 
@@ -485,75 +509,41 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
         def _sym(self, a):
             return self.rsym.get(a, str(a))
 
+        def _halt(self):
+            """Stop execution: freeze the machine and disable Step/Run."""
+            self.stopped = True
+            self.timer.stop()
+            self.btn_step.setEnabled(False)
+            self.btn_run.setEnabled(False)
+            self.refresh()
+
         def step(self):
             if self.stopped:
                 return
 
-            instr = self.mem[self.pc]
+            instr, arg_addr, _ = decode(self.mem, self.pc)
 
-            if instr & FETCH:
-                arg_addr = self.mem[(self.pc + 1) % 256]
-                next_pc = (self.pc + 2) % 256
-            else:
-                arg_addr = None
-                next_pc = (self.pc + 1) % 256
-
-            # execute
-            if instr == 0:
-                self.stopped = True
-                self.timer.stop()
-                self.btn_step.setEnabled(False)
-                self.btn_run.setEnabled(False)
-                self.refresh()
+            if instr == 0:  # STOP
+                self._halt()
                 return
-            elif instr == 1:
-                self.acc >>= 1
-            elif instr == 2:
-                self.acc = (self.acc << 1) & 0xFF
-            elif instr == 15:
-                self.acc = (~self.acc) & 0xFF
-            elif instr == 17:
-                self.acc = (self.acc & self.mem[arg_addr]) & 0xFF
-            elif instr == 18:
-                self.acc = (self.acc | self.mem[arg_addr]) & 0xFF
-            elif instr == 19:
-                self.acc = (self.acc ^ self.mem[arg_addr]) & 0xFF
-            elif instr == 20:
-                self.acc = self.mem[arg_addr]
-            elif instr == 21:
-                if self.code_guard is not None and arg_addr < self.code_guard:
-                    self.timer.stop()   # pause auto-run while asking
-                    msg = (f"STORE at PC={self.pc} writes {self.acc} into "
-                           f"address {arg_addr}, which is in the code region "
-                           f"(below the data start at {self.code_guard}).\n\n"
-                           f"This overwrites program code. Continue anyway?")
-                    reply = QMessageBox.warning(
-                        self, "Code overwrite detected", msg,
-                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    if reply != QMessageBox.Yes:
-                        self.stopped = True
-                        self.btn_step.setEnabled(False)
-                        self.btn_run.setEnabled(False)
-                        self.refresh()
-                        return
-                self.mem[arg_addr] = self.acc
-                self.touched.add(arg_addr)
-            elif instr == 22:
-                self.acc += self.mem[arg_addr]
-                if self.acc > 255:
-                    self.acc -= 256
-            elif instr == 23:
-                self.acc -= self.mem[arg_addr]
-                if self.acc < 0:
-                    self.acc += 256
-            elif instr == 24:
-                next_pc = arg_addr
-            elif instr == 25:
-                if self.acc == 0:
-                    next_pc = arg_addr
 
-            self.acc &= 0xFF
-            self.pc = next_pc
+            # guard: ask before a STORE overwrites code
+            if is_code_store(self.mem, self.pc, self.code_guard):
+                self.timer.stop()   # pause auto-run while asking
+                msg = (f"STORE at PC={self.pc} writes {self.acc} into "
+                       f"address {arg_addr}, which is in the code region "
+                       f"(below the data start at {self.code_guard}).\n\n"
+                       f"This overwrites program code. Continue anyway?")
+                reply = QMessageBox.warning(
+                    self, "Code overwrite detected", msg,
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply != QMessageBox.Yes:
+                    self._halt()
+                    return
+
+            self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
+            if instr == 21:  # STORE wrote memory
+                self.touched.add(arg_addr)
             self.step_count += 1
             self.selected_addr = None
             self.arg_addr = arg_addr
@@ -592,7 +582,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
         def refresh(self):
             self._refresh_source()
             self._refresh_memory()
-            self._refresh_status()
 
         def _refresh_source(self):
             lines = []
@@ -679,9 +668,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
 
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.mem_view.setHtml(html)
-
-        def _refresh_status(self):
-            pass
 
     import signal
     signal.signal(signal.SIGINT, signal.SIG_DFL)
