@@ -16,7 +16,6 @@ OPCODES = {
     'load':20, 'store':21, 'add':22, 'sub':23,
     'goto':24, 'ifzero':25, 'nop':128,
 }
-OPNAMES = {v: k.upper() for k, v in OPCODES.items()}
 FETCH   = 0x10   # bit 4 → instruction has a 2nd address byte
 
 def has_operand(op): return bool(op & FETCH)
@@ -129,7 +128,7 @@ def decode(mem, pc):
     """Decode the instruction at pc. Returns (instr, arg_addr, next_pc).
     arg_addr is None for one-byte instructions."""
     instr = mem[pc]
-    if instr & FETCH:
+    if has_operand(instr):
         return instr, mem[(pc + 1) % 256], (pc + 2) % 256
     return instr, None, (pc + 1) % 256
 
@@ -157,6 +156,7 @@ def execute_one(mem, pc, acc):
     elif instr == 24: next_pc = arg_addr
     elif instr == 25:
         if acc == 0: next_pc = arg_addr
+    # opcode 128 (NOP) and any unrecognized opcode: do nothing, just advance
     return next_pc, acc & 0xFF, arg_addr, stopped
 
 def is_code_store(mem, pc, code_guard):
@@ -317,9 +317,14 @@ _INSTR = {
     21: ("STORE", 'a'), 24: ("GOTO", 'a'), 25: ("IFZERO", 'a'),
 }
 
+def _esc(s):
+    """Escape the three HTML-significant characters for the GUI's rich text."""
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
 def _describe(instr, arg_addr, sym, mem):
     bs = f"b{instr:08b}" + (f" b{arg_addr:08b}" if arg_addr is not None else "")
-    name, kind = _INSTR.get(instr, (f"NOP (opcode={instr})", None))
+    # unknown opcodes behave like NOP but are shown as unknown, not "NOP"
+    name, kind = _INSTR.get(instr, (f"?? (opcode={instr}, treated as NOP)", None))
     if kind is None:
         return name, bs
     tail = f"(addr:{arg_addr}, val:{mem[arg_addr]})" if kind == 'av' else f"(addr:{arg_addr})"
@@ -596,7 +601,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
                 else:
                     marker = "  "
                 text = orig.rstrip() if orig else ""
-                escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                escaped = _esc(text)
                 if i == sel_line:
                     lines.append(f'<span style="background-color:#ffcc66;">{marker} {escaped}</span>')
                 elif i == pc_line:
@@ -618,9 +623,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
                 self.source_view.ensureCursorVisible()
 
         def _refresh_memory(self):
-            def _esc(s):
-                return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
             lines = []
 
             # status info on top
