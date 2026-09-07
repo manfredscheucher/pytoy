@@ -76,6 +76,24 @@ less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
 more than 127 apart. Treat values as unsigned and keep them modest.
 
+## Memory model: no stack, all variables are static
+
+`toycc` has **no stack and no heap**. Every variable — no matter which block it
+is declared in — is allocated once as a fixed data byte with a label, placed
+after the code. There are no activation frames and no call mechanism. In effect
+every variable is a static global; the "local" vs "global" distinction doesn't
+exist here.
+
+This is why only a single `main` is allowed and there are **no function calls
+or recursion**: recursion needs a stack (each call needs its own copy of the
+locals), and this machine has none. Rather than emit something that would be
+silently wrong, the compiler rejects a second function, a call, or a parameter
+outright (`only a single 'int main' function is supported`).
+
+A useful side effect: because all code is emitted first and all data after it,
+the code/data boundary is fixed and well-defined, which is what
+`--detect-code-overwrite` (see the main README) relies on.
+
 ## What is NOT supported
 
 - Arrays and pointers (the assembler's array examples use self-modifying code;
@@ -90,8 +108,9 @@ more than 127 apart. Treat values as unsigned and keep them modest.
 - Standard library / `printf` / any I/O. The only "output" is the final ACC.
 - Signed arithmetic and values/comparisons that rely on more than 8 bits.
 
-If a program is too large to fit in 256 bytes it will still be emitted but may
-overflow memory when assembled; keep programs small.
+If a program compiles to more than 256 bytes, `toycc` reports a clear
+`too big` error and writes nothing (it checks the size via the assembler before
+writing the `.toys`); keep programs small.
 
 ## Usage
 
