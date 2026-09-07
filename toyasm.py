@@ -237,30 +237,37 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             lines.append(f"  {mem_dump()}")
         return "\n".join(lines)
 
-    # show initial state before first instruction
-    if verbose:
-        # peek at first instruction for description
-        _instr, _arg, _ = decode(mem, pc)
-        _desc, _bs = _describe(_instr, _arg, sym, mem)
-        print(vertical_mem(pc, acc, step_num=step_num, cmd_desc=_desc, cmd_bytes=_bs, cur_arg=_arg, dump=show_mem))
+    def emit_verbose_frame(cur_pc, stopped=False):
+        """Print one full verbose frame (state + memory table) and, in step
+        mode, wait for Enter. When stopped, describe the halted machine."""
+        if stopped:
+            print(vertical_mem(cur_pc, acc, step_num=step_num,
+                               cmd_bytes="b00000000", stopped=True, dump=show_mem))
+            return
+        ins, arg, _ = decode(mem, cur_pc)
+        d, bs = _describe(ins, arg, sym, mem)
+        print(vertical_mem(cur_pc, acc, step_num=step_num, cmd_desc=d,
+                           cmd_bytes=bs, cur_arg=arg, dump=show_mem))
         print()
         if step:
             try: input("[Enter] > ")
             except EOFError: pass
 
+    # show initial state before the first instruction
+    if verbose:
+        emit_verbose_frame(pc)
+
     while True:
         instr, arg_addr, _ = decode(mem, pc)
 
-        desc, bytes_str = _describe(instr, arg_addr, sym, mem)
-
         if not verbose:
+            desc, _ = _describe(instr, arg_addr, sym, mem)
             line = f"PC={pc:3d}  ACC={acc:3d}  {desc}"
-
-        if step and not verbose:
-            print(f"\n{line}")
-            if show_mem: print(mem_dump())
-            try: input("       [Enter] > ")
-            except EOFError: pass
+            if step:
+                print(f"\n{line}")
+                if show_mem: print(mem_dump())
+                try: input("       [Enter] > ")
+                except EOFError: pass
 
         if instr == 0:  # STOP
             break
@@ -277,22 +284,11 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         next_pc, acc, arg_addr, _ = execute_one(mem, pc, acc)
         if instr == 21:  # STORE wrote memory
             touched.add(arg_addr)
-
         step_num += 1
 
-        # add runtime-written addresses to visible set
         if verbose:
-            visible.update(touched)
-
-        if verbose:
-            # describe the next instruction at next_pc
-            _ninstr, _narg, _ = decode(mem, next_pc)
-            _ndesc, _nbs = _describe(_ninstr, _narg, sym, mem)
-            print(vertical_mem(next_pc, acc, step_num=step_num, cmd_desc=_ndesc, cmd_bytes=_nbs, cur_arg=_narg, dump=show_mem))
-            print()
-            if step:
-                try: input("[Enter] > ")
-                except EOFError: pass
+            visible.update(touched)   # show any newly written addresses
+            emit_verbose_frame(next_pc)
         elif not step:
             print(line)
             if show_mem: print(mem_dump())
@@ -301,7 +297,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
 
     # STOP
     if verbose:
-        print(vertical_mem(pc, acc, step_num=step_num, cmd_bytes="b00000000", stopped=True, dump=show_mem))
+        emit_verbose_frame(pc, stopped=True)
     else:
         print(f"\nPC={pc:3d}  ACC={acc:3d}  STOP")
         if show_mem: print(mem_dump())
