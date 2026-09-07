@@ -309,6 +309,17 @@ def test_deeply_chained_calls():
            " int main(void){return a(b(a(0)));}")
     assert run_c(src) == 4
 
+def test_nested_call_to_same_function():
+    """Regression: f(1, f(2,3)) — the inner call to the SAME function must not
+    clobber the outer call's param slots before it jumps. Args are all
+    materialised into temps before any param slot is written. 1*10+23 = 33."""
+    src = "int f(int a,int b){return a*10+b;} int main(void){return f(1, f(2,3));}"
+    assert run_c(src) == 33
+
+def test_nested_same_function_both_args():
+    src = "int f(int a,int b){return a*10+b;} int main(void){return f(f(1,2),f(3,4));}"
+    assert run_c(src) == 154   # (1*10+2)=12, (3*10+4)=34, 12*10+34
+
 def test_recursive_call_gives_clean_compile_error():
     """A recursive function is not supported yet, but must fail with a clean
     CompileError (not a raw traceback) so the CLI prints 'compile error: ...'."""

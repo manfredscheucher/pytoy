@@ -1173,12 +1173,19 @@ class CallLifter:
             raise CompileError(
                 f"call to {name!r} passes {len(args)} args, expects {len(params)}")
 
-        # Evaluate each argument (lifting any nested calls first) and store it
-        # into the fixed parameter slot. Arguments are lifted in order, so a
-        # nested call f(g(x)) runs g fully before f's slots are written.
-        for pname, arg in zip(params, args):
+        # Evaluate ALL arguments into fresh temps FIRST, then store into the
+        # parameter slots. Doing it in two phases is essential: a nested call to
+        # the SAME function (e.g. f(1, f(2,3))) would otherwise overwrite this
+        # call's own param slots while evaluating a later argument, before we
+        # jump. Materialising every argument first makes that safe.
+        arg_temps = []
+        for arg in args:
             arg2 = self.lift_calls(arg, out)
-            out.append(('assign', f"{name}__p_{pname}", arg2))
+            tmp = self.fresh('arg')
+            out.append(('decl', tmp, arg2))
+            arg_temps.append(tmp)
+        for pname, tmp in zip(params, arg_temps):
+            out.append(('assign', f"{name}__p_{pname}", ('var', tmp)))
 
         k = self.next_site(name)
         cont = f"{name}__cont_{k}"
