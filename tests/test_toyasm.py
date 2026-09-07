@@ -3,7 +3,8 @@
 import io
 import sys
 import contextlib
-from toyasm import assemble, simulate, parse_val, OPCODES, has_operand
+from toyasm import (assemble, simulate, parse_val, OPCODES, has_operand,
+                    _is_data_marker, DATA_MARKER)
 
 
 # ── Value parser ──────────────────────────────────────────────────────────
@@ -350,6 +351,32 @@ def test_no_data_marker_gives_none():
     src = "load v\nstop\nv: 7\n"
     _, _, _, _, _, data_start = assemble(src)
     assert data_start is None
+
+def test_data_marker_recognized_variants():
+    """All the ways the marker can be written must be recognized, including
+    toycc's decorated '# ── data ──' header."""
+    for good in ["# data", "#data", "#  data", "# data:", "#data:",
+                 "  # data  ", "# ── data ──", DATA_MARKER]:
+        assert _is_data_marker(good), f"should match: {good!r}"
+
+def test_data_marker_rejects_non_markers():
+    """A comment that merely mentions 'data' is not the marker."""
+    for bad in ["# We place the opcode as a raw data byte", "# database stuff",
+                "# my data section here", "load data", "data: 5", "", "# code"]:
+        assert not _is_data_marker(bad), f"should NOT match: {bad!r}"
+
+def test_compiled_program_gets_data_start():
+    """toycc's generated assembly must carry a recognizable data marker so the
+    code-overwrite guard works on compiled programs (regression: it used to
+    emit '# ── data ──' which the parser didn't match)."""
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'compiler'))
+    from toycc import compile_source
+    src = "int main(void){ int a = 7; int b = 6; return a + b; }"
+    asm = compile_source(src, "t.toyc")
+    _, _, _, _, errors, data_start = assemble(asm)
+    assert errors == []
+    assert data_start is not None
 
 def _run_guarded(src, answer):
     """Assemble with its data marker as code_guard, feed `answer` to the

@@ -6,7 +6,7 @@ Based on https://github.com/freedosproject/toycpu
 Usage:  python toyasm.py prog.toys [options]
 """
 
-import sys, argparse
+import sys, argparse, re
 
 # ── Instruction set ────────────────────────────────────────────────────────
 
@@ -50,10 +50,20 @@ def parse_source(src):
 
 # ── Assembler (two-pass) ───────────────────────────────────────────────────
 
+# The canonical "start of data" marker. Tools that generate assembly (toycc)
+# should emit exactly this so --detect-code-overwrite works on their output.
+DATA_MARKER = "# data"
+
+# A data-marker line is a comment whose only word is "data": '#' then optional
+# whitespace/punctuation, then "data", then optional ':' — e.g. "# data",
+# "#data", "#  data:". This is lenient enough to also accept a decorated header
+# like "# ── data ──". It must NOT match a comment that merely contains the word
+# data (e.g. "# a raw data byte"), so "data" must be the whole payload.
+_DATA_MARKER_RE = re.compile(r'^#\W*data\W*$', re.IGNORECASE)
+
 def _is_data_marker(orig):
-    """A line whose only content is the comment '# data' marks the start of the
-    data region (used by --detect-code-overwrite). Matched leniently."""
-    return orig.strip().lower().replace(' ', '') in ('#data', '#data:')
+    """True if a source line is the '# data' region marker (see DATA_MARKER)."""
+    return bool(_DATA_MARKER_RE.match(orig.strip()))
 
 def assemble(src):
     """

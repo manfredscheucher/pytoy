@@ -28,6 +28,12 @@ import os
 import argparse
 import subprocess
 
+# toycc reuses the assembler for the shared 256-byte limit and the canonical
+# data-region marker, so the two tools can't drift apart. toyasm.py sits in the
+# repo root, one level above this compiler/ directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from toyasm import assemble, DATA_MARKER
+
 
 # ── Lexer ──────────────────────────────────────────────────────────────────
 
@@ -741,7 +747,7 @@ class CodeGen:
         lines.append("")
         lines.extend(self.code)
         lines.append("")
-        lines.append("# ── data ──")
+        lines.append(DATA_MARKER)   # canonical marker so --detect-code-overwrite works
         # C variables (declared but possibly with runtime init; give initial 0)
         for label in self.declared_order:
             lines.append(f"{label}: 0")
@@ -787,8 +793,6 @@ def main():
     # the assembler as the single source of truth for sizing. Report the same
     # kind of clean error the assembler would, instead of writing a .toys that
     # only fails later.
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from toyasm import assemble
     _, _, _, _, errors, _ = assemble(asm)
     size_errors = [e for e in errors if "too big" in e]
     if size_errors:
