@@ -207,12 +207,13 @@ def test_parse_multiple_functions():
     funcs = {f[1]: f for f in prog[1]}
     assert set(funcs) == {'add', 'main'}
     assert funcs['add'][2] == ['a', 'b']      # params
-    assert funcs['add'][4] is False           # not inline
 
-def test_parse_inline_keyword():
-    prog = _parse("inline int f(int x){ return x; } int main(void){ return f(1); }")
-    funcs = {f[1]: f for f in prog[1]}
-    assert funcs['f'][4] is True              # inline flag
+def test_inline_keyword_is_gone():
+    """'inline' is no longer a keyword; the compiler chooses global-slot vs
+    stack automatically. Using it as a function name is even fine, but here it
+    parses as an unexpected identifier where a type is expected."""
+    with pytest.raises(CompileError):
+        _parse("inline int f(int x){ return x; } int main(void){ return f(1); }")
 
 def test_call_graph_detects_self_recursion():
     funcs = _parse("int f(int n){ return f(n); } int main(void){ return f(3); }")[1]
@@ -228,9 +229,9 @@ def test_call_graph_non_recursive_is_empty():
                    "int main(void){return add(1,2);}")[1]
     assert find_recursive(build_call_graph(funcs)) == set()
 
-def test_inline_recursive_rejected():
-    with pytest.raises(CompileError, match="cannot inline recursive"):
-        compile_source("inline int f(int n){return f(n);} int main(void){return f(1);}", "t")
+def test_recursive_rejected_for_now():
+    with pytest.raises(CompileError, match="recursive"):
+        compile_source("int f(int n){return f(n);} int main(void){return f(1);}", "t")
 
 def test_call_to_undefined_function_rejected():
     with pytest.raises(CompileError, match="undefined function"):

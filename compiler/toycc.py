@@ -37,7 +37,7 @@ from toyasm import assemble, DATA_MARKER
 
 # ── Lexer ──────────────────────────────────────────────────────────────────
 
-KEYWORDS = {'int', 'void', 'return', 'while', 'if', 'else', 'for', 'inline'}
+KEYWORDS = {'int', 'void', 'return', 'while', 'if', 'else', 'for'}
 
 # Multi-character operators must be tried before single-character ones.
 MULTI_OPS = [
@@ -185,7 +185,7 @@ class Parser:
         return self.next()
 
     # program  := func_def+
-    # func_def := 'inline'? ('int'|'void') NAME '(' params ')' block
+    # func_def := ('int'|'void') NAME '(' params ')' block
     # params   := 'void' | 'int' NAME (',' 'int' NAME)* | (empty)
     # Returns ('program', [func, ...]); exactly one function must be 'main'.
     def parse_program(self):
@@ -201,10 +201,6 @@ class Parser:
         return ('program', funcs)
 
     def parse_func(self):
-        is_inline = False
-        if self.at('kw', 'inline'):
-            self.next()
-            is_inline = True
         # return type: 'int' or 'void'
         if self.at('kw', 'int'):
             self.next()
@@ -219,8 +215,8 @@ class Parser:
         params = self.parse_params()
         self.eat('op', ')')
         body = self.parse_block()
-        # ('func', name, params, body, is_inline)
-        return ('func', name, params, body, is_inline)
+        # ('func', name, params, body)
+        return ('func', name, params, body)
 
     def parse_params(self):
         # 'void' or empty -> no params
@@ -842,11 +838,11 @@ def _calls_in(node):
                 yield from _calls_in(c)
 
 def build_call_graph(funcs):
-    """funcs: list of ('func', name, params, body, is_inline).
+    """funcs: list of ('func', name, params, body).
     Returns {name: set(callee names)} restricted to defined functions."""
     defined = {f[1] for f in funcs}
     graph = {}
-    for _, name, _params, body, _inline in funcs:
+    for _, name, _params, body in funcs:
         graph[name] = {c for c in _calls_in(body) if c in defined}
     return graph
 
@@ -898,7 +894,7 @@ class Inliner:
     # -- main entry: return main's inlined body as a ('block', [...]) --
     def run(self):
         main = self.funcs['main']
-        _, _name, params, body, _inline = main
+        _, _name, params, body = main
         if params:
             raise CompileError("main must take no parameters (or void)")
         out = []
@@ -1015,7 +1011,7 @@ class Inliner:
                 f"are inlined, work for now)")
 
         callee = self.funcs[name]
-        _, _n, params, body, _inline = callee
+        _, _n, params, body = callee
         if len(args) != len(params):
             raise CompileError(
                 f"call to {name!r} passes {len(args)} args, expects {len(params)}")
@@ -1103,19 +1099,13 @@ def compile_source(src, source_name):
 
     # Validate calls: every callee must be a defined function.
     defined = {f[1] for f in funcs}
-    for _, name, _params, body, _inline in funcs:
+    for _, name, _params, body in funcs:
         for callee in _calls_in(body):
             if callee not in defined:
                 raise CompileError(f"call to undefined function {callee!r}")
 
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
-
-    # 'inline' is a hard request: a recursive function cannot be inlined.
-    for _, name, _params, _body, is_inline in funcs:
-        if is_inline and name in recursive:
-            raise CompileError(
-                f"cannot inline recursive function {name!r}")
 
     # Inline all non-recursive calls down to a single main body block, then
     # hand that to the existing single-main code generator.
