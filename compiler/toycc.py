@@ -902,19 +902,23 @@ class Inliner:
         if params:
             raise CompileError("main must take no parameters (or void)")
         out = []
-        self.inline_stmt(body, out)
+        # ret_target=None at the top level: main's own `return` stays a `return`
+        # (it halts). Inside an inlined callee body, ret_target is (result, end)
+        # so `return e` becomes "assign e to result; goto end".
+        self.inline_stmt(body, out, ret_target=None)
         return ('block', out)
 
     # ── statement pass ──────────────────────────────────────────────────────
-    # Appends the (call-free) translation of statement `s` to `out`. Any call in
-    # `s`'s expressions is first inlined into `out`, leaving a ('var', temp) in
-    # its place, so what we append never contains a 'call' node.
-    def inline_stmt(self, s, out):
+    # Append the call-free translation of statement `s` to `out`. Any call in
+    # `s`'s expressions is inlined into `out` first, leaving a ('var', temp) in
+    # its place, so what we append never contains a 'call' node. `ret_target` is
+    # None at main level, or (result, end) inside an inlined body — see run().
+    def inline_stmt(self, s, out, ret_target):
         kind = s[0]
 
         if kind == 'block':
             for st in s[1]:
-                self.inline_stmt(st, out)
+                self.inline_stmt(st, out, ret_target)
             return
 
         if kind == 'decl':
@@ -930,31 +934,36 @@ class Inliner:
 
         if kind == 'return':
             _, expr = s
-            out.append(('return', self.lift_calls(expr, out)))
+            expr2 = self.lift_calls(expr, out)
+            if ret_target is None:
+                out.append(('return', expr2))       # main: really return/halt
+            else:
+                result, end = ret_target            # callee: store + jump to end
+                out.append(('assign', result, expr2))
+                out.append(('goto', end))
             return
 
         if kind == 'if':
             _, cond, then_body, else_body = s
             cond2 = self.lift_calls(cond, out)   # cond evaluated before the branch
-            then2 = self.block_of(then_body)
-            else2 = None if else_body is None else self.block_of(else_body)
+            then2 = self.block_of(then_body, ret_target)
+            else2 = None if else_body is None else self.block_of(else_body, ret_target)
             out.append(('if', cond2, then2, else2))
             return
 
         if kind == 'while':
-            _, cond, body = s
             # The condition is re-evaluated every iteration, so any call it
-            # contains must be re-inlined each pass. Rebuild the loop body as:
-            # { <lift cond>; if (!cond) goto end; <body>; }  wrapped so the goto
-            # lands after the loop. Simpler and still correct: push the cond
-            # lifting *inside* the loop body via an if/break-like structure.
+            # contains must be re-inlined each pass. We rewrite
+            #   while (cond) { body }
+            # into
+            #   while (1) { <lift cond>; if (!cond) goto end; body }  end:
+            # so the condition lifting happens inside the loop each iteration.
+            _, cond, body = s
             end = self.fresh('while_end')
             inner = []
             cond2 = self.lift_calls(cond, inner)
-            # if (!cond) goto end;
             inner.append(('if', ('unop', '!', cond2), ('goto', end), None))
-            self.inline_stmt(body, inner)
-            # while(1) { <cond lifting>; if(!cond) goto end; <body> }  end:
+            self.inline_stmt(body, inner, ret_target)
             out.append(('while', ('num', 1), ('block', inner)))
             out.append(('label', end))
             return
@@ -965,10 +974,10 @@ class Inliner:
 
         raise CompileError(f"cannot inline statement {s!r}")
 
-    def block_of(self, s):
+    def block_of(self, s, ret_target):
         """Inline a sub-statement (if/while branch) into its own block."""
         inner = []
-        self.inline_stmt(s, inner)
+        self.inline_stmt(s, inner, ret_target)
         return ('block', inner)
 
     # ── expression pass ─────────────────────────────────────────────────────
@@ -1029,59 +1038,13 @@ class Inliner:
         # returns a value on some path).
         out.append(('decl', result, ('num', 0)))
 
-        # Translate the body: rename locals, and turn `return e` into
-        # "assign e to result; goto end". Nested calls inside are lifted too.
+        # Translate the body with the same statement walker, but with a return
+        # target so `return e` becomes "assign e to result; goto end". Nested
+        # calls inside are lifted too. Renaming already made locals unique.
         renamed = self._rename(body, rename)
-        self._inline_body(renamed, result, end, out)
+        self.inline_stmt(renamed, out, ret_target=(result, end))
         out.append(('label', end))
         return ('var', result)
-
-    # Recursively inline a (renamed) callee body, translating returns.
-    def _inline_body(self, s, result, end, out):
-        kind = s[0]
-        if kind == 'block':
-            for st in s[1]:
-                self._inline_body(st, result, end, out)
-            return
-        if kind == 'return':
-            _, expr = s
-            expr2 = self.lift_calls(expr, out)
-            out.append(('assign', result, expr2))
-            out.append(('goto', end))
-            return
-        if kind == 'decl':
-            _, nm, init = s
-            init2 = None if init is None else self.lift_calls(init, out)
-            out.append(('decl', nm, init2))
-            return
-        if kind == 'assign':
-            _, nm, expr = s
-            out.append(('assign', nm, self.lift_calls(expr, out)))
-            return
-        if kind == 'if':
-            _, cond, then_body, else_body = s
-            cond2 = self.lift_calls(cond, out)
-            then2 = self._inline_body_block(then_body, result, end)
-            else2 = (None if else_body is None
-                     else self._inline_body_block(else_body, result, end))
-            out.append(('if', cond2, then2, else2))
-            return
-        if kind == 'while':
-            _, cond, body = s
-            e = self.fresh('while_end')
-            inner = []
-            cond2 = self.lift_calls(cond, inner)
-            inner.append(('if', ('unop', '!', cond2), ('goto', e), None))
-            self._inline_body(body, result, end, inner)
-            out.append(('while', ('num', 1), ('block', inner)))
-            out.append(('label', e))
-            return
-        raise CompileError(f"cannot inline body statement {s!r}")
-
-    def _inline_body_block(self, s, result, end):
-        inner = []
-        self._inline_body(s, result, end, inner)
-        return ('block', inner)
 
     # -- helpers: gather declared names, and rename variables in a subtree --
     def _declared_names(self, node):
