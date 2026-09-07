@@ -243,3 +243,50 @@ def test_no_main_rejected():
 def test_duplicate_function_rejected():
     with pytest.raises(CompileError, match="more than once"):
         _parse("int f(void){return 1;} int f(void){return 2;} int main(void){return 0;}")
+
+
+# ── Function inlining (non-recursive calls) ─────────────────────────────────
+
+def test_inline_simple_call():
+    src = "int add(int a,int b){return a+b;} int main(void){return add(2,3);}"
+    assert run_c(src) == 5
+
+def test_inline_call_with_loop_body():
+    src = ("int mul(int a,int b){int r=0; int i=0; while(i<b){r=r+a; i=i+1;} return r;}"
+           " int main(void){return mul(6,7);}")
+    assert run_c(src) == 42
+
+def test_inline_return_inside_if():
+    src = "int max2(int a,int b){ if(a>b) return a; return b;} int main(void){return max2(3,9);}"
+    assert run_c(src) == 9
+
+def test_inline_nested_calls():
+    src = ("int inc(int x){return x+1;} int add(int a,int b){return a+b;}"
+           " int main(void){return add(inc(2),inc(3));}")
+    assert run_c(src) == 7
+
+def test_inline_call_in_expression_position():
+    src = "int sq(int x){return x*x;} int main(void){int y = sq(4)+1; return y;}"
+    assert run_c(src) == 17
+
+def test_inline_same_function_twice_no_collision():
+    src = ("int dbl(int x){return x+x;}"
+           " int main(void){int a = dbl(3); int b = dbl(10); return a+b;}")
+    assert run_c(src) == 26
+
+def test_inline_call_in_if_condition():
+    src = ("int nonzero(int x){return x;}"
+           " int main(void){ if (nonzero(0)) { return 1; } return 2; }")
+    assert run_c(src) == 2
+
+def test_inline_call_in_while_condition():
+    src = ("int below(int x){return x < 5;}"
+           " int main(void){ int i=0; while (below(i)) { i = i + 1; } return i; }")
+    assert run_c(src) == 5
+
+def test_recursive_call_gives_clean_compile_error():
+    """A recursive function is not supported yet, but must fail with a clean
+    CompileError (not a raw traceback) so the CLI prints 'compile error: ...'."""
+    with pytest.raises(CompileError, match="recursive function"):
+        compile_source("int f(int n){ if(n==0) return 0; return f(n-1); } "
+                       "int main(void){ return f(3); }", "t")

@@ -754,6 +754,17 @@ class CodeGen:
         if kind == 'while':
             self.gen_while(s)
             return
+        if kind == 'label':
+            # A jump target. The Toy CPU has no bare label, so we anchor it on a
+            # nop. Introduced by the inliner so `return` (which becomes a goto)
+            # has a place to land at the end of an inlined body.
+            _, name = s
+            self.emit(f"{name}: nop")
+            return
+        if kind == 'goto':
+            _, name = s
+            self.emit(f"        goto  {name}")
+            return
         raise CompileError(f"cannot generate statement {s!r}")
 
     def gen_if(self, s):
@@ -786,20 +797,11 @@ class CodeGen:
         self.emit(f"{l_end}: nop")
 
     # -- assemble the whole .toys file --
-    def generate(self, funcs, source_name, recursive=frozenset()):
-        # Step 1 scope: only a single parameterless, call-free `main` compiles
-        # for now (behaviour identical to the old single-main compiler). Multi-
-        # function / call / recursive codegen lands in the next step.
-        main = next((f for f in funcs if f[1] == 'main'), None)
-        others = [f for f in funcs if f[1] != 'main']
-        _, _name, params, body, _inline = main
-        if others or params or list(_calls_in(body)):
-            raise CompileError(
-                "functions and calls are parsed but code generation for them "
-                "is not implemented yet (single parameterless 'main' only)")
-
-        # main body
-        self.gen_stmt(body)
+    def generate(self, main_body, source_name):
+        # `main_body` is a single ('block', [...]): main with every non-recursive
+        # call already inlined by inline_functions(). Recursive functions are not
+        # supported yet and would have raised before reaching here.
+        self.gen_stmt(main_body)
         # Safety net: if control falls off the end of main without a return,
         # halt anyway (returning whatever is in ACC).
         self.emit("        stop            # fallthrough halt")
@@ -849,34 +851,287 @@ def build_call_graph(funcs):
     return graph
 
 def find_recursive(graph):
-    """Return the set of functions that are part of a cycle (directly or
-    mutually recursive), using graphlib's cycle detection."""
-    import graphlib
-    # A function is 'recursive' if it can reach itself. Detect any cycle via a
-    # topological sort; on CycleError, peel the reported cycle and retry so we
-    # collect every function on some cycle.
-    recursive = set()
-    # direct self-recursion isn't a DAG edge graphlib complains about unless the
-    # node depends on itself, so add self-edges explicitly and check reachability.
+    """Return the set of functions that are part of a cycle in the call graph
+    (self-recursive or mutually recursive). A function is recursive iff it can
+    reach itself by following calls — a plain reachability check via DFS."""
     def reaches_self(start):
-        seen, stack = set(), [start]
-        first = True
+        seen, stack = set(), list(graph.get(start, ()))
         while stack:
             n = stack.pop()
-            if n == start and not first:
+            if n == start:
                 return True
-            first = False
-            for m in graph.get(n, ()):
-                if m == start:
-                    return True
-                if m not in seen:
-                    seen.add(m)
-                    stack.append(m)
+            if n not in seen:
+                seen.add(n)
+                stack.extend(graph.get(n, ()))
         return False
-    for name in graph:
-        if reaches_self(name):
-            recursive.add(name)
-    return recursive
+    return {name for name in graph if reaches_self(name)}
+
+
+# ── Function inlining ───────────────────────────────────────────────────────
+#
+# A pure AST-to-AST pass. It takes the parsed functions and returns a single
+# ('block', [...]) — main's body with every NON-recursive call fully inlined —
+# so the existing single-main codegen (CodeGen.gen_stmt on a block) compiles it
+# unchanged. Recursive functions are left for a future stack-based pass; calling
+# one here raises a clear CompileError.
+#
+# The two hard parts:
+#   1. `return` can appear anywhere (inside if/while), not just at the tail. We
+#      turn `return e` inside an inlined body into "assign e to a result var,
+#      then goto the body's end label". That needs statement nodes the source
+#      grammar lacks, so the inliner introduces ('label', name) and ('goto',
+#      name) (the codegen above knows how to emit them).
+#   2. A call in EXPRESSION position (y = f(a)+1, return f(a), if (f(a))...) must
+#      be lifted: its inlined statements run first, the result lands in a temp,
+#      and the call sub-expression is replaced by ('var', temp).
+
+class Inliner:
+    def __init__(self, funcs, recursive):
+        self.funcs = {f[1]: f for f in funcs}
+        self.recursive = set(recursive)
+        self.counter = 0          # makes every inlining site's prefix unique
+
+    def fresh(self, base):
+        self.counter += 1
+        return f"{base}__{self.counter}"
+
+    # -- main entry: return main's inlined body as a ('block', [...]) --
+    def run(self):
+        main = self.funcs['main']
+        _, _name, params, body, _inline = main
+        if params:
+            raise CompileError("main must take no parameters (or void)")
+        out = []
+        self.inline_stmt(body, out)
+        return ('block', out)
+
+    # ── statement pass ──────────────────────────────────────────────────────
+    # Appends the (call-free) translation of statement `s` to `out`. Any call in
+    # `s`'s expressions is first inlined into `out`, leaving a ('var', temp) in
+    # its place, so what we append never contains a 'call' node.
+    def inline_stmt(self, s, out):
+        kind = s[0]
+
+        if kind == 'block':
+            for st in s[1]:
+                self.inline_stmt(st, out)
+            return
+
+        if kind == 'decl':
+            _, name, init = s
+            init2 = None if init is None else self.lift_calls(init, out)
+            out.append(('decl', name, init2))
+            return
+
+        if kind == 'assign':
+            _, name, expr = s
+            out.append(('assign', name, self.lift_calls(expr, out)))
+            return
+
+        if kind == 'return':
+            _, expr = s
+            out.append(('return', self.lift_calls(expr, out)))
+            return
+
+        if kind == 'if':
+            _, cond, then_body, else_body = s
+            cond2 = self.lift_calls(cond, out)   # cond evaluated before the branch
+            then2 = self.block_of(then_body)
+            else2 = None if else_body is None else self.block_of(else_body)
+            out.append(('if', cond2, then2, else2))
+            return
+
+        if kind == 'while':
+            _, cond, body = s
+            # The condition is re-evaluated every iteration, so any call it
+            # contains must be re-inlined each pass. Rebuild the loop body as:
+            # { <lift cond>; if (!cond) goto end; <body>; }  wrapped so the goto
+            # lands after the loop. Simpler and still correct: push the cond
+            # lifting *inside* the loop body via an if/break-like structure.
+            end = self.fresh('while_end')
+            inner = []
+            cond2 = self.lift_calls(cond, inner)
+            # if (!cond) goto end;
+            inner.append(('if', ('unop', '!', cond2), ('goto', end), None))
+            self.inline_stmt(body, inner)
+            # while(1) { <cond lifting>; if(!cond) goto end; <body> }  end:
+            out.append(('while', ('num', 1), ('block', inner)))
+            out.append(('label', end))
+            return
+
+        if kind in ('label', 'goto'):
+            out.append(s)
+            return
+
+        raise CompileError(f"cannot inline statement {s!r}")
+
+    def block_of(self, s):
+        """Inline a sub-statement (if/while branch) into its own block."""
+        inner = []
+        self.inline_stmt(s, inner)
+        return ('block', inner)
+
+    # ── expression pass ─────────────────────────────────────────────────────
+    # Returns a call-free copy of `e`; every call inside it is inlined into
+    # `out` (in evaluation order) and replaced by a ('var', temp). Nested calls
+    # f(g(x)) work because we recurse into arguments before inlining the outer
+    # call.
+    def lift_calls(self, e, out):
+        kind = e[0]
+        if kind in ('num', 'var'):
+            return e
+        if kind == 'unop':
+            _, op, operand = e
+            return ('unop', op, self.lift_calls(operand, out))
+        if kind == 'binop':
+            _, op, l, r = e
+            # left is evaluated before right (matches codegen spill order well
+            # enough; there are no side effects other than these lifts).
+            l2 = self.lift_calls(l, out)
+            r2 = self.lift_calls(r, out)
+            return ('binop', op, l2, r2)
+        if kind == 'call':
+            return self.inline_call(e, out)
+        raise CompileError(f"cannot inline expression {e!r}")
+
+    # Inline one call: emit its body into `out`, return ('var', result_temp).
+    def inline_call(self, call, out):
+        _, name, args = call
+        if name not in self.funcs:
+            raise CompileError(f"call to undefined function {name!r}")
+        if name in self.recursive:
+            raise CompileError(
+                f"recursive function {name!r} is not supported yet "
+                f"(it would need a stack; only non-recursive functions, which "
+                f"are inlined, work for now)")
+
+        callee = self.funcs[name]
+        _, _n, params, body, _inline = callee
+        if len(args) != len(params):
+            raise CompileError(
+                f"call to {name!r} passes {len(args)} args, expects {len(params)}")
+
+        prefix = self.fresh(name)
+        # Rename params and every locally-declared variable with this prefix so
+        # separate inlinings (and nested ones) never collide.
+        local_names = set(params) | self._declared_names(body)
+        rename = {n: f"{prefix}__{n}" for n in local_names}
+        result = f"{prefix}__ret"
+        end = f"{prefix}__end"
+
+        # Params become decls initialised to the (already call-free) arguments.
+        # Arguments are evaluated in the caller's scope, so lift their calls
+        # *before* renaming and using the callee's local names.
+        for pname, arg in zip(params, args):
+            arg2 = self.lift_calls(arg, out)
+            out.append(('decl', rename[pname], arg2))
+        # Declare the result holder up front (default 0 if the callee never
+        # returns a value on some path).
+        out.append(('decl', result, ('num', 0)))
+
+        # Translate the body: rename locals, and turn `return e` into
+        # "assign e to result; goto end". Nested calls inside are lifted too.
+        renamed = self._rename(body, rename)
+        self._inline_body(renamed, result, end, out)
+        out.append(('label', end))
+        return ('var', result)
+
+    # Recursively inline a (renamed) callee body, translating returns.
+    def _inline_body(self, s, result, end, out):
+        kind = s[0]
+        if kind == 'block':
+            for st in s[1]:
+                self._inline_body(st, result, end, out)
+            return
+        if kind == 'return':
+            _, expr = s
+            expr2 = self.lift_calls(expr, out)
+            out.append(('assign', result, expr2))
+            out.append(('goto', end))
+            return
+        if kind == 'decl':
+            _, nm, init = s
+            init2 = None if init is None else self.lift_calls(init, out)
+            out.append(('decl', nm, init2))
+            return
+        if kind == 'assign':
+            _, nm, expr = s
+            out.append(('assign', nm, self.lift_calls(expr, out)))
+            return
+        if kind == 'if':
+            _, cond, then_body, else_body = s
+            cond2 = self.lift_calls(cond, out)
+            then2 = self._inline_body_block(then_body, result, end)
+            else2 = (None if else_body is None
+                     else self._inline_body_block(else_body, result, end))
+            out.append(('if', cond2, then2, else2))
+            return
+        if kind == 'while':
+            _, cond, body = s
+            e = self.fresh('while_end')
+            inner = []
+            cond2 = self.lift_calls(cond, inner)
+            inner.append(('if', ('unop', '!', cond2), ('goto', e), None))
+            self._inline_body(body, result, end, inner)
+            out.append(('while', ('num', 1), ('block', inner)))
+            out.append(('label', e))
+            return
+        raise CompileError(f"cannot inline body statement {s!r}")
+
+    def _inline_body_block(self, s, result, end):
+        inner = []
+        self._inline_body(s, result, end, inner)
+        return ('block', inner)
+
+    # -- helpers: gather declared names, and rename variables in a subtree --
+    def _declared_names(self, node):
+        names = set()
+        def walk(n):
+            if not isinstance(n, tuple):
+                return
+            if n[0] == 'decl':
+                names.add(n[1])
+            for child in n[1:]:
+                if isinstance(child, tuple):
+                    walk(child)
+                elif isinstance(child, list):
+                    for c in child:
+                        walk(c)
+        walk(node)
+        return names
+
+    def _rename(self, node, rename):
+        """Return a copy of `node` with 'var'/'assign'/'decl' names remapped
+        through `rename` (unknown names, e.g. globals, are left as-is). Calls are
+        kept intact — they get inlined afterwards, in evaluation order."""
+        if not isinstance(node, tuple):
+            return node
+        tag = node[0]
+        if tag == 'var':
+            return ('var', rename.get(node[1], node[1]))
+        if tag == 'decl':
+            _, nm, init = node
+            return ('decl', rename.get(nm, nm),
+                    None if init is None else self._rename(init, rename))
+        if tag == 'assign':
+            _, nm, expr = node
+            return ('assign', rename.get(nm, nm), self._rename(expr, rename))
+        # generic structural copy
+        parts = [tag]
+        for child in node[1:]:
+            if isinstance(child, tuple):
+                parts.append(self._rename(child, rename))
+            elif isinstance(child, list):
+                parts.append([self._rename(c, rename) for c in child])
+            else:
+                parts.append(child)
+        return tuple(parts)
+
+
+def inline_functions(funcs, recursive):
+    """Return main's body as a single ('block', [...]) with all non-recursive
+    calls inlined. See the Inliner class for the details."""
+    return Inliner(funcs, recursive).run()
 
 
 def compile_source(src, source_name):
@@ -899,8 +1154,12 @@ def compile_source(src, source_name):
             raise CompileError(
                 f"cannot inline recursive function {name!r}")
 
+    # Inline all non-recursive calls down to a single main body block, then
+    # hand that to the existing single-main code generator.
+    main_body = inline_functions(funcs, recursive)
+
     gen = CodeGen()
-    return gen.generate(funcs, source_name, recursive)
+    return gen.generate(main_body, source_name)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────
