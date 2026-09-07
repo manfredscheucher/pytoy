@@ -37,7 +37,7 @@ def compile_c(src, name="test.toyc"):
 
 def run_asm(asm):
     """Stages 2+3: assemble the .toys text, simulate it, return ACC."""
-    mem, listing, syms, data_addrs, errors = assemble(asm)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
     assert errors == [], f"assembler errors: {errors}\n--- asm ---\n{asm}"
     with contextlib.redirect_stdout(io.StringIO()):
         return simulate(mem, syms, data_addrs)

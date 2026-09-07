@@ -51,14 +51,21 @@ def parse_source(src):
 
 # ── Assembler (two-pass) ───────────────────────────────────────────────────
 
+def _is_data_marker(orig):
+    """A line whose only content is the comment '# data' marks the start of the
+    data region (used by --detect-code-overwrite). Matched leniently."""
+    return orig.strip().lower().replace(' ', '') in ('#data', '#data:')
+
 def assemble(src):
     """
-    Returns (mem[256], listing, syms, data_addrs, errors)
+    Returns (mem[256], listing, syms, data_addrs, errors, data_start)
     data_addrs: set of addresses that hold data (not code)
+    data_start: address of the first data byte, from the '# data' marker, or
+                None if the program has no such marker
     """
     parsed = parse_source(src)
 
-    # pass 1 – addresses + symbols
+    # pass 1 – addresses + symbols, and total size check
     syms, addr = {}, 0
     for label, mn, _, _ in parsed:
         if label is not None:
@@ -66,10 +73,20 @@ def assemble(src):
         if mn is None: continue
         addr += (2 if (mn in OPCODES and has_operand(OPCODES[mn])) else 1)
 
+    # The Toy CPU has exactly 256 bytes. Report an overflow as a normal error
+    # instead of letting pass 2 crash with an IndexError.
+    if addr > 256:
+        errors = [f"Program is too big: it needs {addr} bytes, but the Toy CPU "
+                  f"has only 256. Remove instructions or data."]
+        return [0]*256, [], syms, set(), errors, None
+
     # pass 2 – emit
     mem, listing, errors, data_addrs = [0]*256, [], [], set()
+    data_start = None
     addr = 0
     for label, mn, op, orig in parsed:
+        if data_start is None and _is_data_marker(orig):
+            data_start = addr
         if mn is None:
             listing.append((None, [], orig, False)); continue
 
@@ -96,7 +113,7 @@ def assemble(src):
             listing.append((addr, [v], orig, True))
             addr += 1
 
-    return mem, listing, syms, data_addrs, errors
+    return mem, listing, syms, data_addrs, errors, data_start
 
 def _resolve(op, syms, ctx, errors):
     if op is None:
@@ -108,8 +125,19 @@ def _resolve(op, syms, ctx, errors):
 
 # ── Simulator ──────────────────────────────────────────────────────────────
 
+def _warn_continue(msg):
+    """Print a warning and ask whether to keep running. Returns True to
+    continue. On a non-interactive terminal (EOF), stops (returns False)."""
+    print(f"\nWARNING: {msg}", file=sys.stderr)
+    try:
+        return input("Continue anyway? [y/N] ").strip().lower().startswith('y')
+    except EOFError:
+        return False
+
 def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False,
-             addr_orig=None):
+             addr_orig=None, code_guard=None):
+    # code_guard: if set (an address), warn when a STORE writes below it, i.e.
+    # into the code region. None disables the check.
     mem  = list(mem_in)
     rsym = {v: k for k, v in syms.items()}
     acc, pc, step_num = 0, 0, 0
@@ -205,7 +233,15 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         elif instr == 18: acc = (acc | mem[arg_addr]) & 0xFF
         elif instr == 19: acc = (acc ^ mem[arg_addr]) & 0xFF
         elif instr == 20: acc = mem[arg_addr]
-        elif instr == 21: mem[arg_addr] = acc; touched.add(arg_addr)
+        elif instr == 21:
+            if code_guard is not None and arg_addr < code_guard:
+                msg = (f"store at PC={pc} writes {acc} into address {arg_addr}, "
+                       f"which is in the code region (below the data start at "
+                       f"{code_guard}) — this overwrites program code.")
+                if not _warn_continue(msg):
+                    print("Aborted.", file=sys.stderr)
+                    return acc
+            mem[arg_addr] = acc; touched.add(arg_addr)
         elif instr == 22:
             acc += mem[arg_addr]
             if acc > 255: acc -= 256
@@ -332,16 +368,16 @@ def export(listing, syms, mem, path):
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
-def gui_main(mem, listing, syms, data_addrs):
+def gui_main(mem, listing, syms, data_addrs, code_guard=None):
     """Launch PySide6 graphical debugger."""
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
-                                   QPushButton, QSplitter)
+                                   QPushButton, QSplitter, QMessageBox)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
 
     class ToyDebugger(QMainWindow):
-        def __init__(self, mem_original, listing, syms, data_addrs):
+        def __init__(self, mem_original, listing, syms, data_addrs, code_guard):
             super().__init__()
             self.setWindowTitle("toyasm")
             self.resize(1000, 700)
@@ -350,6 +386,7 @@ def gui_main(mem, listing, syms, data_addrs):
             self.listing = listing
             self.syms = syms
             self.data_addrs = set(data_addrs)
+            self.code_guard = code_guard   # data-region start, or None
             self.rsym = {v: k for k, v in syms.items()}
 
             # build addr→line map and addr→orig map
@@ -484,6 +521,21 @@ def gui_main(mem, listing, syms, data_addrs):
             elif instr == 20:
                 self.acc = self.mem[arg_addr]
             elif instr == 21:
+                if self.code_guard is not None and arg_addr < self.code_guard:
+                    self.timer.stop()   # pause auto-run while asking
+                    msg = (f"STORE at PC={self.pc} writes {self.acc} into "
+                           f"address {arg_addr}, which is in the code region "
+                           f"(below the data start at {self.code_guard}).\n\n"
+                           f"This overwrites program code. Continue anyway?")
+                    reply = QMessageBox.warning(
+                        self, "Code overwrite detected", msg,
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                    if reply != QMessageBox.Yes:
+                        self.stopped = True
+                        self.btn_step.setEnabled(False)
+                        self.btn_run.setEnabled(False)
+                        self.refresh()
+                        return
                 self.mem[arg_addr] = self.acc
                 self.touched.add(arg_addr)
             elif instr == 22:
@@ -635,7 +687,7 @@ def gui_main(mem, listing, syms, data_addrs):
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication.instance() or QApplication(sys.argv)
-    win = ToyDebugger(mem, listing, syms, data_addrs)
+    win = ToyDebugger(mem, listing, syms, data_addrs, code_guard)
     win.show()
     app.exec()
 
@@ -649,19 +701,27 @@ def main():
     ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output')
     ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .toyo')
     ap.add_argument('-c', '--cli',     action='store_true', help='run in the terminal instead of the graphical interface')
+    ap.add_argument('-dco', '--detect-code-overwrite', action='store_true',
+                    help='warn when a store writes into the code region (below the "# data" marker)')
     args = ap.parse_args()
 
     try:    src = open(args.file).read()
     except: sys.exit(f"File not found: {args.file}")
 
-    mem, listing, syms, data_addrs, errors = assemble(src)
+    mem, listing, syms, data_addrs, errors, data_start = assemble(src)
     if errors:
         for e in errors: print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
+    guard = data_start if args.detect_code_overwrite else None
+    if args.detect_code_overwrite and data_start is None:
+        print("WARNING: --detect-code-overwrite is on but the program has no "
+              "'# data' marker; code-overwrite detection is disabled.",
+              file=sys.stderr)
+
     # graphical interface is the default; --cli opts into terminal mode
     if not args.cli:
-        gui_main(mem, listing, syms, data_addrs)
+        gui_main(mem, listing, syms, data_addrs, guard)
         return
 
     if args.export:
@@ -683,7 +743,7 @@ def main():
     if args.export:
         print("execution:\n")
     acc = simulate(mem, syms, data_addrs, step=not args.run, show_mem=not args.quiet,
-                   verbose=not args.quiet, addr_orig=addr_orig)
+                   verbose=not args.quiet, addr_orig=addr_orig, code_guard=guard)
     print("─"*62)
     print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")
 

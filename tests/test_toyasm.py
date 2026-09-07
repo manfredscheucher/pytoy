@@ -47,7 +47,7 @@ def test_has_operand():
 # ── Assembler ─────────────────────────────────────────────────────────────
 
 def test_assemble_simple_stop():
-    mem, listing, syms, data_addrs, errors = assemble("stop")
+    mem, listing, syms, data_addrs, errors, _ds = assemble("stop")
     assert errors == []
     assert mem[0] == OPCODES['stop']
 
@@ -59,7 +59,7 @@ def test_assemble_load_store():
 x:      10
 y:      0
 """
-    mem, listing, syms, data_addrs, errors = assemble(src)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     assert 'x' in syms
     assert 'y' in syms
@@ -72,7 +72,7 @@ start:  load val
         stop
 val:    42
 """
-    mem, listing, syms, data_addrs, errors = assemble(src)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     assert syms['start'] == 0
     assert syms['val'] == 3
@@ -84,13 +84,13 @@ def test_assemble_data_addrs():
 x:      5
 y:      10
 """
-    mem, listing, syms, data_addrs, errors = assemble(src)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     assert syms['x'] in data_addrs
     assert syms['y'] in data_addrs
 
 def test_assemble_error_unknown_label():
-    mem, listing, syms, data_addrs, errors = assemble("load unknown")
+    mem, listing, syms, data_addrs, errors, _ds = assemble("load unknown")
     assert len(errors) > 0
 
 def test_assemble_comments_ignored():
@@ -100,7 +100,7 @@ def test_assemble_comments_ignored():
         stop
 x:      7
 """
-    mem, listing, syms, data_addrs, errors = assemble(src)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     assert mem[syms['x']] == 7
 
@@ -109,7 +109,7 @@ x:      7
 
 def _run(src):
     """Assemble and simulate, return ACC result."""
-    mem, listing, syms, data_addrs, errors = assemble(src)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == [], f"Assembly errors: {errors}"
     with contextlib.redirect_stdout(io.StringIO()):
         return simulate(mem, syms, data_addrs)
@@ -316,3 +316,85 @@ n:      3
 one:    1
 """
     assert _run(src) == 0
+
+
+# ── Memory limits & code-overwrite detection ──────────────────────────────
+
+def test_assemble_overflow_reports_error():
+    """A program larger than 256 bytes yields a clean error, not an
+    IndexError."""
+    src = "\n".join(["add x"] * 200) + "\nstop\nx: 1\n"  # 200*2 + 1 + 1 = 402
+    mem, listing, syms, data_addrs, errors, data_start = assemble(src)
+    assert errors, "oversized program should report an error"
+    assert "256" in errors[0] and "402" in errors[0]
+
+def test_assemble_exactly_256_is_ok():
+    """256 one-byte instructions fill memory exactly; no overflow."""
+    src = "\n".join(["right"] * 256)  # 256 * 1 = 256, no operands needed
+    mem, listing, syms, data_addrs, errors, data_start = assemble(src)
+    assert errors == []
+
+def test_assemble_257_overflows():
+    src = "\n".join(["right"] * 257)  # 257 bytes
+    _, _, _, _, errors, _ = assemble(src)
+    assert errors and "257" in errors[0]
+
+def test_data_marker_sets_data_start():
+    """The '# data' marker line records where data begins."""
+    src = "load v\nstore v\nstop\n# data\nv: 7\n"
+    _, _, syms, _, errors, data_start = assemble(src)
+    assert errors == []
+    assert data_start == syms['v']  # first byte after the marker
+
+def test_no_data_marker_gives_none():
+    src = "load v\nstop\nv: 7\n"
+    _, _, _, _, _, data_start = assemble(src)
+    assert data_start is None
+
+def _run_guarded(src, answer):
+    """Assemble with its data marker as code_guard, feed `answer` to the
+    interactive prompt, return the ACC result."""
+    mem, listing, syms, data_addrs, errors, data_start = assemble(src)
+    assert errors == [] and data_start is not None
+    with contextlib.redirect_stdout(io.StringIO()), \
+         contextlib.redirect_stderr(io.StringIO()):
+        old_stdin = sys.stdin
+        sys.stdin = io.StringIO(answer)
+        try:
+            return simulate(mem, syms, data_addrs, code_guard=data_start)
+        finally:
+            sys.stdin = old_stdin
+
+# A program that stores into address 0 (its own first code byte).
+_OVERWRITE_SRC = "top: load v\n     store top\n     stop\n# data\nv: 99\n"
+
+def test_code_overwrite_abort_on_no():
+    """Answering 'n' stops before the code byte is overwritten."""
+    # If aborted, execution returns the current ACC (99) without doing the
+    # STORE or reaching a second run; the key check is it does NOT crash and
+    # does NOT continue past the guarded store.
+    acc = _run_guarded(_OVERWRITE_SRC, "n\n")
+    assert acc == 99  # value loaded, store refused, aborted
+
+def test_code_overwrite_continue_on_yes():
+    """Answering 'y' performs the store and runs to STOP."""
+    acc = _run_guarded(_OVERWRITE_SRC, "y\n")
+    assert acc == 99  # ran to completion
+
+def test_code_overwrite_not_triggered_without_guard():
+    """Without code_guard the self-modifying store just happens."""
+    mem, listing, syms, data_addrs, errors, data_start = assemble(_OVERWRITE_SRC)
+    with contextlib.redirect_stdout(io.StringIO()):
+        acc = simulate(mem, syms, data_addrs)  # no code_guard
+    assert acc == 99
+
+def test_store_into_data_region_not_flagged():
+    """A normal store into the data region does not trigger the guard even
+    with code_guard set."""
+    src = "load v\nstore w\nstop\n# data\nv: 42\nw: 0\n"
+    mem, listing, syms, data_addrs, errors, data_start = assemble(src)
+    with contextlib.redirect_stdout(io.StringIO()):
+        # feed nothing; if the guard fired it would try to read stdin and the
+        # store target (w) is in the data region, so it must not prompt.
+        acc = simulate(mem, syms, data_addrs, code_guard=data_start)
+    assert acc == 42

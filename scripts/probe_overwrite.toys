@@ -1,0 +1,6 @@
+top:    load  val       # acc = 99   (top is address 0, in CODE)
+        store top       # writes 99 into address 0 -> overwrites code!
+        stop
+
+# data
+val:    99
