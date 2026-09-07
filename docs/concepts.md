@@ -107,4 +107,43 @@ overflow flags. Values simply wrap around modulo 256. This is a feature —
 with so few parts, you can understand *the entire machine*, and build up
 multiplication, comparison, and loops yourself from the primitives.
 
+## The ladder: from C down to the lights
+
+On the original Toy CPU you enter a program the hard way: one byte at a time,
+in binary, by flipping switches and reading LEDs. That *is* the lesson — with
+no tools, **you are the assembler**, translating in your head. It teaches you
+what the machine really does, but it is slow and error-prone for anything
+longer than a few instructions.
+
+toyasm adds layers on top that make programs easier to write, without ever
+hiding what the machine executes:
+
+```
+  C source        (toycc)        int a = 7; return a * b;   most human
+      |  compile
+      v
+  assembly        (.toys)        load a / add b / stop      readable, named
+      |  assemble  (1:1)
+      v
+  machine code    (bytes)        [20][7][22][8][0]          what the CPU runs
+      |  run
+      v
+  Toy CPU                        LEDs + switches            the bare machine
+```
+
+Two things make this honest rather than a black box:
+
+- **Assembly maps 1:1 to machine code.** Each mnemonic is exactly one opcode
+  byte; a label is just a name for an address. Assembling is a direct
+  substitution, not a clever transformation — so when you step through a
+  program you can see each source line become the very bytes in memory.
+- **The C layer is optional.** `toycc` compiles a small subset of C down to
+  assembly (for example, turning `a * b` into repeated addition, since the CPU
+  has no multiply). It is a convenience on top of the machine, not part of it —
+  you can understand the Toy CPU completely without ever writing a line of C.
+
+So the ladder lets you work at whatever height you want and drop down a rung
+whenever you want to see how it really works — all the way to the switches and
+lights of the original.
+
 Next: **[the instruction set](instruction-set.md)**.

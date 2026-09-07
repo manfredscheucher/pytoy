@@ -1,7 +1,7 @@
 # toycc — a tiny C-to-assembly compiler for the Toy CPU
 
 `toycc` compiles a small, standard-looking subset of C into `.toys` assembly
-that the [pytoy](../toyasm.py) assembler/simulator can run.
+that the [toyasm](../toyasm.py) assembler/simulator can run.
 
 It is a single self-contained Python program (`toycc.py`): a hand-written
 lexer, a recursive-descent parser, and a straightforward code generator that
@@ -102,12 +102,12 @@ python3 compiler/toycc.py compiler/examples/fibonacci.toyc
 # choose the output path
 python3 compiler/toycc.py program.toyc -o build/program.toys
 
-# compile and immediately run through pytoy (CLI, no pausing)
+# compile and immediately run through toyasm (CLI, no pausing)
 python3 compiler/toycc.py compiler/examples/fibonacci.toyc --run
 ```
 
-Run a produced `.toys` directly through pytoy in the terminal (the graphical
-debugger is pytoy's default, so pass `--cli`):
+Run a produced `.toys` directly through toyasm in the terminal (the graphical
+debugger is toyasm's default, so pass `--cli`):
 
 ```bash
 # from the repo root
@@ -116,7 +116,7 @@ python3 toyasm.py compiler/examples/fibonacci.toys --cli --run --quiet
 # Result:  ACC = 55  (00110111  0x37  dec 55)
 ```
 
-pytoy CLI flags used above: `--cli`/`-c` run in the terminal instead of the
+toyasm CLI flags used above: `--cli`/`-c` run in the terminal instead of the
 GUI, `--run`/`-r` run all steps without pausing, `--quiet`/`-q` compact output.
 Drop `--run` to single-step, or drop `--cli` to open the graphical debugger.
 

@@ -1,11 +1,14 @@
 # About the Toy CPU
 
-pytoy is a Python assembler and simulator for the **Toy CPU**, a minimal
+toyasm is a Python assembler and simulator for the **Toy CPU**, a minimal
 educational processor created by Jim Hall for the FreeDOS Project. This page
 summarizes where the machine comes from — helpful for understanding *why* it
 looks the way it does.
 
 Original project: <https://github.com/freedosproject/toycpu>
+
+Jim Hall's own talk on the machine (VCF East, ~50 min):
+<https://www.youtube.com/watch?v=zhoL1ZSjGfM>
 
 ## Why it exists
 
@@ -40,10 +43,10 @@ first lesson; the Toy CPU strips it down to the essentials.
 The original went through three versions: an experimental FreeDOS prototype,
 a Linux/ncurses prototype, and finally a FreeDOS graphics-mode program.
 
-## How pytoy relates
+## How toyasm relates
 
 The original Toy CPU is a C program where you enter programs bit by bit with
-the arrow keys and Space, mimicking the switch panel. **pytoy keeps the same
+the arrow keys and Space, mimicking the switch panel. **toyasm keeps the same
 CPU** — identical memory model, accumulator, program counter, and opcodes —
 but replaces the switch-flipping input with:
 
@@ -55,7 +58,44 @@ but replaces the switch-flipping input with:
 So the concepts you learn here transfer directly to the original hardware-style
 simulator — you're just spared the switch-flipping.
 
-## Credits
+## What comes from toycpu, and what is original
 
-Toy CPU by Jim Hall (FreeDOS Project), MIT-licensed. pytoy is an independent
-assembler/simulator for that same instruction set.
+To keep the provenance honest and precise:
+
+**Taken from toycpu (the instruction set):**
+
+- The opcode values are identical: `STOP=0, RIGHT=1, LEFT=2, NOT=15, AND=17,
+  OR=18, XOR=19, LOAD=20, STORE=21, ADD=22, SUB=23, GOTO=24, IFZERO=25,
+  NOP=128`.
+- The FETCH bit (bit 4, `0x10`) marking instructions that carry a second
+  address byte.
+- The execution semantics of each instruction, including the 8-bit wraparound
+  on ADD/SUB (`>255 → −256`, `<0 → +256`).
+
+This is unavoidable: matching the instruction set *means* matching these
+numbers and their behaviour. It is the specification, not copied code.
+
+**Written from scratch for toyasm (not present in toycpu):**
+
+- The two-pass **assembler** — labels, symbols, comments, data bytes. toycpu
+  has no assembler; it reads pre-built binary via a switch-panel-style input.
+- The **Qt/PySide6 GUI debugger** (source view, memory view, click
+  navigation, Step/Run/Reset). toycpu uses a DOS text-mode display
+  (`conio.h`, `kbhit`) — a different language and toolkit entirely.
+- The **CLI** verbose/step mode, the `EXPLAIN` output, the listing/export, and
+  the `.toys`/`.toyo` file formats.
+
+## Licensing
+
+Both projects are MIT-licensed, so the provenance is clean.
+
+- toycpu is MIT, Copyright (c) 2022 Jim Hall (FreeDOS Project).
+- toyasm is MIT, Copyright (c) 2026 Manfred Scheucher, for its own code
+  (assembler, GUI, CLI).
+
+Strictly, an instruction set on its own (a list of opcodes and what they do)
+is likely not copyrightable — interfaces generally are not. So reusing only
+the opcode numbers and semantics, with everything else rewritten, probably
+carries no attribution obligation at all. But since toycpu is MIT anyway,
+toyasm includes Jim Hall's original MIT notice in a `NOTICE` file, which makes
+the question moot: MIT-on-MIT, both copyright holders credited side by side.

@@ -1,6 +1,6 @@
-# Using pytoy
+# Using toyasm
 
-pytoy assembles a `.toys` file and then either opens a graphical interface
+toyasm assembles a `.toys` file and then either opens a graphical interface
 (the default) or runs it in the terminal.
 
 ## Requirements
@@ -15,7 +15,7 @@ pip install PySide6
 
 ## GUI (default)
 
-Just point pytoy at a program:
+Just point toyasm at a program:
 
 ```bash
 python3 toyasm.py examples/fibonacci.toys

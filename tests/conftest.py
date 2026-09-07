@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for pytoy tests."""
+"""Shared pytest fixtures for toyasm tests."""
 
 import sys, os
 

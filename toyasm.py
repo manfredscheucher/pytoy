@@ -343,7 +343,7 @@ def gui_main(mem, listing, syms, data_addrs):
     class ToyDebugger(QMainWindow):
         def __init__(self, mem_original, listing, syms, data_addrs):
             super().__init__()
-            self.setWindowTitle("pytoy")
+            self.setWindowTitle("toyasm")
             self.resize(1000, 700)
 
             self.mem_original = list(mem_original)

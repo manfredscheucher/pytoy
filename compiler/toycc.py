@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-toycc - a tiny C-to-assembly compiler for the pytoy "Toy CPU".
+toycc - a tiny C-to-assembly compiler for the toyasm "Toy CPU".
 
 It compiles a small, standard-looking subset of C into a .toys assembly file
-that the pytoy assembler/simulator (../toyasm.py) can run.
+that the toyasm assembler/simulator (../toyasm.py) can run.
 
 Target machine (see ../docs/):
   - 256 bytes of memory total; code and data share the address space.

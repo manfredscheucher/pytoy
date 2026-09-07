@@ -1,6 +1,6 @@
 # The C → assembly → CPU pipeline
 
-pytoy ships with **toycc**, a small compiler that turns a simplified subset of
+toyasm ships with **toycc**, a small compiler that turns a simplified subset of
 C into Toy CPU assembly (`.toys`). Writing C is more pleasant than hand-writing
 assembly, and it lets you see, stage by stage, how a high-level program becomes
 raw machine bytes. This page describes that pipeline and how it is tested.
@@ -57,7 +57,7 @@ how your C was translated. (See [assembly.md](assembly.md) and
 
 ### Stage 2 — the assembler (assembly → bytes)
 
-pytoy's two-pass assembler resolves labels to addresses and emits the 256-byte
+toyasm's two-pass assembler resolves labels to addresses and emits the 256-byte
 memory image. This is the same assembler used for hand-written `.toys` programs;
 toycc's output is nothing special to it. If toycc ever emitted something
 invalid, this stage reports errors instead of a memory image.
@@ -65,7 +65,7 @@ invalid, this stage reports errors instead of a memory image.
 ### Stage 3 — the simulator (bytes → result)
 
 The simulator runs the fetch–decode–execute cycle until `stop`, leaving the
-program's `return` value in the accumulator. pytoy prints it as the final
+program's `return` value in the accumulator. toyasm prints it as the final
 `Result: ACC = …` line.
 
 ## Running the pipeline by hand

@@ -1,4 +1,4 @@
-"""Tests for pytoy assembler and simulator."""
+"""Tests for toyasm assembler and simulator."""
 
 import io
 import sys

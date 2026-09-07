@@ -122,4 +122,4 @@ and dangerous). Read the comments in those files for the full walkthrough.
 - **Step through in the GUI** when something's wrong — watching the PC move
   and the accumulator change makes bugs obvious.
 
-Next: **[using pytoy](usage.md)**.
+Next: **[using toyasm](usage.md)**.
