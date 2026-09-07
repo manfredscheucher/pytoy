@@ -182,3 +182,13 @@ def test_line_comment_before_main_is_ignored():
 def test_syntax_error_raises_compile_error():
     with pytest.raises(CompileError):
         compile_c("int main(void) { return }")
+
+def test_oversized_program_overflows_assembler():
+    """A C program that generates more than 256 bytes must be caught (the
+    toycc CLI reports the assembler's 'too big' error instead of writing a
+    .toys that only fails later)."""
+    body = "int a = 0;\n" + "\n".join(f"a = a + {i % 7};" for i in range(150))
+    body += "\nreturn a;"
+    asm = compile_c(wrap(body))
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
+    assert errors and "too big" in errors[0]

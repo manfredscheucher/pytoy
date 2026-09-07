@@ -783,6 +783,17 @@ def main():
     except CompileError as e:
         sys.exit(f"compile error: {e}")
 
+    # Check the generated program actually fits the 256-byte machine, using
+    # the assembler as the single source of truth for sizing. Report the same
+    # kind of clean error the assembler would, instead of writing a .toys that
+    # only fails later.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from toyasm import assemble
+    _, _, _, _, errors, _ = assemble(asm)
+    size_errors = [e for e in errors if "too big" in e]
+    if size_errors:
+        sys.exit(f"compile error: {size_errors[0]}")
+
     out_path = args.output
     if out_path is None:
         base = args.file

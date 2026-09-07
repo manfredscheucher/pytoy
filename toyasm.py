@@ -701,7 +701,7 @@ def main():
     ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output')
     ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .toyo')
     ap.add_argument('-c', '--cli',     action='store_true', help='run in the terminal instead of the graphical interface')
-    ap.add_argument('-dco', '--detect-code-overwrite', action='store_true',
+    ap.add_argument('-d', '--detect-code-overwrite', action='store_true',
                     help='warn when a store writes into the code region (below the "# data" marker)')
     args = ap.parse_args()
 
