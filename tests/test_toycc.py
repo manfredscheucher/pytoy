@@ -21,7 +21,12 @@ import contextlib
 import pytest
 
 from toyasm import assemble, simulate
-from toycc import compile_source, CompileError
+from toycc import (compile_source, CompileError, lex, Parser,
+                   build_call_graph, find_recursive)
+
+
+def _parse(src):
+    return Parser(lex(src)).parse_program()
 
 
 EXAMPLES_DIR = os.path.join(
@@ -192,3 +197,49 @@ def test_oversized_program_overflows_assembler():
     asm = compile_c(wrap(body))
     mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
     assert errors and "too big" in errors[0]
+
+
+# ── Functions: parsing + call-graph analysis (codegen lands next step) ──────
+
+def test_parse_multiple_functions():
+    prog = _parse("int add(int a, int b){ return a+b; } int main(void){ return add(2,3); }")
+    assert prog[0] == 'program'
+    funcs = {f[1]: f for f in prog[1]}
+    assert set(funcs) == {'add', 'main'}
+    assert funcs['add'][2] == ['a', 'b']      # params
+    assert funcs['add'][4] is False           # not inline
+
+def test_parse_inline_keyword():
+    prog = _parse("inline int f(int x){ return x; } int main(void){ return f(1); }")
+    funcs = {f[1]: f for f in prog[1]}
+    assert funcs['f'][4] is True              # inline flag
+
+def test_call_graph_detects_self_recursion():
+    funcs = _parse("int f(int n){ return f(n); } int main(void){ return f(3); }")[1]
+    assert find_recursive(build_call_graph(funcs)) == {'f'}
+
+def test_call_graph_detects_mutual_recursion():
+    funcs = _parse("int a(int n){return b(n);} int b(int n){return a(n);} "
+                   "int main(void){return a(1);}")[1]
+    assert find_recursive(build_call_graph(funcs)) == {'a', 'b'}
+
+def test_call_graph_non_recursive_is_empty():
+    funcs = _parse("int add(int a,int b){return a+b;} "
+                   "int main(void){return add(1,2);}")[1]
+    assert find_recursive(build_call_graph(funcs)) == set()
+
+def test_inline_recursive_rejected():
+    with pytest.raises(CompileError, match="cannot inline recursive"):
+        compile_source("inline int f(int n){return f(n);} int main(void){return f(1);}", "t")
+
+def test_call_to_undefined_function_rejected():
+    with pytest.raises(CompileError, match="undefined function"):
+        compile_source("int main(void){ return nope(1); }", "t")
+
+def test_no_main_rejected():
+    with pytest.raises(CompileError, match="no 'main'"):
+        compile_source("int f(void){ return 1; }", "t")
+
+def test_duplicate_function_rejected():
+    with pytest.raises(CompileError, match="more than once"):
+        _parse("int f(void){return 1;} int f(void){return 2;} int main(void){return 0;}")

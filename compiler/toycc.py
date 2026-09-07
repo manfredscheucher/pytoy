@@ -37,7 +37,7 @@ from toyasm import assemble, DATA_MARKER
 
 # ── Lexer ──────────────────────────────────────────────────────────────────
 
-KEYWORDS = {'int', 'void', 'return', 'while', 'if', 'else', 'for'}
+KEYWORDS = {'int', 'void', 'return', 'while', 'if', 'else', 'for', 'inline'}
 
 # Multi-character operators must be tried before single-character ones.
 MULTI_OPS = [
@@ -184,21 +184,60 @@ class Parser:
                 f"line {t.line}: expected {want!r}, got {t.value!r}")
         return self.next()
 
-    # program := 'int' 'main' '(' ('void')? ')' block
+    # program  := func_def+
+    # func_def := 'inline'? ('int'|'void') NAME '(' params ')' block
+    # params   := 'void' | 'int' NAME (',' 'int' NAME)* | (empty)
+    # Returns ('program', [func, ...]); exactly one function must be 'main'.
     def parse_program(self):
-        self.eat('kw', 'int')
-        name = self.eat('ident')
-        if name.value != 'main':
-            raise CompileError(
-                f"line {name.line}: only a single 'int main' function is "
-                f"supported, found {name.value!r}")
-        self.eat('op', '(')
-        if self.at('kw', 'void'):
+        funcs = []
+        while not self.at('eof'):
+            funcs.append(self.parse_func())
+        names = [f[1] for f in funcs]
+        if 'main' not in names:
+            raise CompileError("no 'main' function found")
+        for n in names:
+            if names.count(n) > 1:
+                raise CompileError(f"function {n!r} defined more than once")
+        return ('program', funcs)
+
+    def parse_func(self):
+        is_inline = False
+        if self.at('kw', 'inline'):
             self.next()
+            is_inline = True
+        # return type: 'int' or 'void'
+        if self.at('kw', 'int'):
+            self.next()
+        elif self.at('kw', 'void'):
+            self.next()
+        else:
+            t = self.peek()
+            raise CompileError(f"line {t.line}: expected 'int' or 'void', "
+                               f"got {t.value!r}")
+        name = self.eat('ident').value
+        self.eat('op', '(')
+        params = self.parse_params()
         self.eat('op', ')')
         body = self.parse_block()
-        self.eat('eof')
-        return body
+        # ('func', name, params, body, is_inline)
+        return ('func', name, params, body, is_inline)
+
+    def parse_params(self):
+        # 'void' or empty -> no params
+        if self.at('op', ')'):
+            return []
+        if self.at('kw', 'void'):
+            self.next()
+            return []
+        params = []
+        while True:
+            self.eat('kw', 'int')
+            params.append(self.eat('ident').value)
+            if self.at('op', ','):
+                self.next()
+                continue
+            break
+        return params
 
     def parse_block(self):
         self.eat('op', '{')
@@ -394,6 +433,11 @@ class Parser:
             return ('num', t.value & 0xFF)
         if t.kind == 'ident':
             self.next()
+            if self.at('op', '('):      # a call: NAME(args...)
+                self.next()
+                args = self.parse_args()
+                self.eat('op', ')')
+                return ('call', t.value, args)
             return ('var', t.value)
         if t.kind == 'op' and t.value == '(':
             self.next()
@@ -401,6 +445,15 @@ class Parser:
             self.eat('op', ')')
             return e
         raise CompileError(f"line {t.line}: unexpected token {t.value!r}")
+
+    def parse_args(self):
+        if self.at('op', ')'):
+            return []
+        args = [self.parse_expr()]
+        while self.at('op', ','):
+            self.next()
+            args.append(self.parse_expr())
+        return args
 
 
 # ── Code generator ─────────────────────────────────────────────────────────
@@ -733,9 +786,20 @@ class CodeGen:
         self.emit(f"{l_end}: nop")
 
     # -- assemble the whole .toys file --
-    def generate(self, ast, source_name):
+    def generate(self, funcs, source_name, recursive=frozenset()):
+        # Step 1 scope: only a single parameterless, call-free `main` compiles
+        # for now (behaviour identical to the old single-main compiler). Multi-
+        # function / call / recursive codegen lands in the next step.
+        main = next((f for f in funcs if f[1] == 'main'), None)
+        others = [f for f in funcs if f[1] != 'main']
+        _, _name, params, body, _inline = main
+        if others or params or list(_calls_in(body)):
+            raise CompileError(
+                "functions and calls are parsed but code generation for them "
+                "is not implemented yet (single parameterless 'main' only)")
+
         # main body
-        self.gen_stmt(ast)
+        self.gen_stmt(body)
         # Safety net: if control falls off the end of main without a return,
         # halt anyway (returning whatever is in ACC).
         self.emit("        stop            # fallthrough halt")
@@ -760,11 +824,83 @@ class CodeGen:
         return "\n".join(lines) + "\n"
 
 
+# ── Call-graph analysis ─────────────────────────────────────────────────────
+
+def _calls_in(node):
+    """Yield the names of every function called anywhere inside an AST node."""
+    if not isinstance(node, tuple):
+        return
+    if node[0] == 'call':
+        yield node[1]
+    for child in node[1:]:
+        if isinstance(child, tuple):
+            yield from _calls_in(child)
+        elif isinstance(child, list):
+            for c in child:
+                yield from _calls_in(c)
+
+def build_call_graph(funcs):
+    """funcs: list of ('func', name, params, body, is_inline).
+    Returns {name: set(callee names)} restricted to defined functions."""
+    defined = {f[1] for f in funcs}
+    graph = {}
+    for _, name, _params, body, _inline in funcs:
+        graph[name] = {c for c in _calls_in(body) if c in defined}
+    return graph
+
+def find_recursive(graph):
+    """Return the set of functions that are part of a cycle (directly or
+    mutually recursive), using graphlib's cycle detection."""
+    import graphlib
+    # A function is 'recursive' if it can reach itself. Detect any cycle via a
+    # topological sort; on CycleError, peel the reported cycle and retry so we
+    # collect every function on some cycle.
+    recursive = set()
+    # direct self-recursion isn't a DAG edge graphlib complains about unless the
+    # node depends on itself, so add self-edges explicitly and check reachability.
+    def reaches_self(start):
+        seen, stack = set(), [start]
+        first = True
+        while stack:
+            n = stack.pop()
+            if n == start and not first:
+                return True
+            first = False
+            for m in graph.get(n, ()):
+                if m == start:
+                    return True
+                if m not in seen:
+                    seen.add(m)
+                    stack.append(m)
+        return False
+    for name in graph:
+        if reaches_self(name):
+            recursive.add(name)
+    return recursive
+
+
 def compile_source(src, source_name):
     toks = lex(src)
-    ast = Parser(toks).parse_program()
+    funcs = Parser(toks).parse_program()[1]
+
+    # Validate calls: every callee must be a defined function.
+    defined = {f[1] for f in funcs}
+    for _, name, _params, body, _inline in funcs:
+        for callee in _calls_in(body):
+            if callee not in defined:
+                raise CompileError(f"call to undefined function {callee!r}")
+
+    graph = build_call_graph(funcs)
+    recursive = find_recursive(graph)
+
+    # 'inline' is a hard request: a recursive function cannot be inlined.
+    for _, name, _params, _body, is_inline in funcs:
+        if is_inline and name in recursive:
+            raise CompileError(
+                f"cannot inline recursive function {name!r}")
+
     gen = CodeGen()
-    return gen.generate(ast, source_name)
+    return gen.generate(funcs, source_name, recursive)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────
