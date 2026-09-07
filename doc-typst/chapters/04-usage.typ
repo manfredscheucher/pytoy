@@ -79,3 +79,36 @@ python3 toyasm.py examples/max.toys --cli --export --run
 
 The final line reports the result in the accumulator in binary, hex, and
 decimal.
+
+== Memory limits and code-overwrite detection
+
+The Toy CPU has exactly 256 bytes, shared by code and data. Two things can go
+wrong at that boundary, and toyasm handles both:
+
+*Too big to fit.* If a program assembles to more than 256 bytes, the assembler
+stops with a clear message rather than crashing:
+
+```
+ERROR: Program is too big: it needs 402 bytes, but the Toy CPU has only 256.
+```
+
+The C compiler `toycc` performs the same check on its generated output, so an
+oversized C program is caught at compile time instead of failing later.
+
+*Overwriting code.* Because code and data share memory, a `store` can write over
+your own instructions. That is a legitimate technique (the array examples use it
+deliberately --- see the writing-programs chapter), so it is allowed by default.
+But when you _don't_ mean to do it, it is a nasty bug. The optional
+`-d` / `--detect-code-overwrite` flag turns on a guard:
+
+```bash
+python3 toyasm.py myprog.toys --cli -d
+```
+
+The guard uses the `# data` marker in your source --- a line whose only content
+is `# data` --- to know where the code region ends and data begins. If a `store`
+writes below that line (into code), toyasm warns and asks whether to continue; in
+the GUI it pops up a dialog. If the program has no `# data` marker, the guard
+can't know the boundary and prints a note that detection is off. The flag is off
+by default, keeping the bare machine's "anything goes" behaviour unless you opt
+in.

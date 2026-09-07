@@ -29,6 +29,23 @@ real Altair opcodes.
     entry, without hiding what it produces.],
 )
 
+== Why toyasm exists
+
+The Toy CPU itself is wonderful because it is _small_ --- the whole machine fits
+in your head. But driving it through LEDs and switches gets tiring fast: entering
+a program bit by bit is slow, you can't see much of what's going on, and you tend
+to give up experimenting before you've really explored. That switch-and-light
+workflow has its own charm --- it's honest about how bare a computer really is
+--- but it's a narrow doorway.
+
+toyasm keeps the tiny, comprehensible machine and widens the doorway. With a
+graphical view of memory and the accumulator, an assembly layer, and a C layer on
+top, you spot your mistakes almost immediately (instead of staring at LEDs that
+tell you nothing) and you can keep experimenting far longer. The limits are still
+real and instructive: 256 addresses means both the assembly and the C you can
+write stay small, and it's easy to run out of room --- which is itself part of
+the lesson (see the note on memory limits below).
+
 == The machine
 
 - *256 bytes of memory*, holding both program and data.
