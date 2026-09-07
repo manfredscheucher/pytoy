@@ -1,0 +1,259 @@
+# fibonacci_rec.toy — RECURSIVE Fibonacci on the Toy CPU
+#
+# Proof that a real call stack (and thus recursion) is possible on this
+# machine, despite no stack pointer register, no call/return, no index
+# register. See doc-typst/design/stack-and-recursion.md for the derivation.
+#
+# fib(n) = n           if n < 2
+#        = fib(n-1) + fib(n-2)   otherwise   (all mod 256)
+#
+# Mechanism:
+#   - `sp` is a byte holding the next free stack address (stack grows up).
+#   - push/pop use self-modifying code: we patch an indirect load/store's
+#     address byte from `sp` on EVERY access (sp changes each time).
+#   - each activation pushes [return_marker][n]; the marker lives on the
+#     stack so recursion can't clobber it.
+#   - return uses a compare-chain dispatch on the popped marker.
+#
+# Set `input` below to choose n. Result (fib(input)) ends in ACC.
+
+# ═══ entry ═══════════════════════════════════════════════════════════════
+        # push return_marker = 0 (top-level), then n = input, then call fib
+        load  input
+        store call_n
+        load  m0
+        store call_m
+        goto  do_call        # returns to entry_ret with fib(input) in ACC
+
+entry_ret:
+        load  result_scratch # fib(input) was stashed to result_scratch on ret
+        stop
+
+# ═══ fib: shared function body ══════════════════════════════════════════
+# On entry the caller has already pushed [marker][n]. We read them.
+fib:
+        # pop n  (top of frame)
+        goto  pop_into_n
+n_ready:
+        # pop marker (below n) into my_marker  — keep it for our own return
+        goto  pop_into_marker
+marker_ready:
+
+        # base case: if n < 2 -> result = n
+        # n < 2  <=>  n == 0 or n == 1. Compute n-2; if it underflows (>=128
+        # after mod, i.e. n was 0 or 1) it's a base case. Simpler: check n==0
+        # then n==1 explicitly.
+        load  cur_n
+        ifzero base_zero     # n == 0 -> fib = 0
+        sub   one
+        ifzero base_one      # n == 1 -> fib = 1
+        goto  recurse
+
+base_zero:
+        load  zero
+        goto  ret            # fib(0) = 0, ACC = 0
+base_one:
+        load  one
+        goto  ret            # fib(1) = 1, ACC = 1
+
+recurse:
+        # compute n-1 and n-2 up front (fix 3)
+        load  cur_n
+        sub   one
+        store nm1            # n-1
+        load  cur_n
+        sub   two
+        store nm2            # n-2
+
+        # save our own marker on the stack (inner calls reuse my_marker slot)
+        load  my_marker
+        store push_val
+        goto  do_push
+
+        # ── call fib(n-1) with return marker 1 ──
+        load  one
+        store call_m
+        load  nm1
+        store call_n
+        goto  do_call        # -> ret dispatch brings us to site1
+site1:
+        # ACC = fib(n-1). Save it on the stack (must survive fib(n-2) call).
+        store push_val
+        goto  do_push
+
+        # ── call fib(n-2) with return marker 2 ──
+        load  two
+        store call_m
+        load  nm2
+        store call_n
+        goto  do_call
+site2:
+        # ACC = fib(n-2). Stash to scratch (only one ACC — fix 2).
+        store fibn2
+        goto  do_pop
+        # do_pop leaves popped value in pop_val
+pop_after_fibn1:
+        load  pop_val        # fib(n-1)
+        add   fibn2          # fib(n-1) + fib(n-2)
+        # fall through to ret
+
+# ═══ return ═════════════════════════════════════════════════════════════
+# ACC holds the result. Restore our marker from the stack and dispatch.
+ret:
+        store ret_result     # stash result across the marker pop
+        goto  do_pop
+ret_after_marker:
+        load  pop_val
+        store my_marker      # our own marker (was saved before recursing)
+        load  ret_result     # bring the result back into ACC
+
+        # dispatch on my_marker: 0 -> entry, 1 -> site1, 2 -> site2
+        store result_scratch # in case marker 0: result lands here for entry
+        load  my_marker
+        ifzero ret0
+        sub   one
+        ifzero ret1
+        goto  ret2
+ret0:
+        goto  entry_ret
+ret1:
+        load  ret_result
+        goto  site1
+ret2:
+        load  ret_result
+        goto  site2
+
+# ═══ do_call: push [marker][n] then jump into fib ═══════════════════════
+# But we need a per-callsite return. We use my_marker dispatch above, so
+# do_call just pushes marker+n and goes to fib; the marker chosen by the
+# caller (call_m) is what fib will return through.
+do_call:
+        load  call_m
+        store push_val
+        goto  push_then_n
+push_then_n:
+        goto  do_push
+        # after pushing marker, push n
+        load  call_n
+        store push_val
+        goto  do_push2
+after_call_pushes:
+        goto  fib
+
+# ═══ push: mem[sp] = push_val ; sp++  (with sp re-patch, fix 1) ═════════
+do_push:
+        load  sp
+        store st_arg         # patch the indirect store's address byte
+        load  push_val
+st_op:  21                   # STORE opcode (raw)
+st_arg: 0                    # <- address, patched to sp
+        load  sp
+        add   one
+        store sp
+        goto  push_return
+
+# second push slot (do_call pushes twice; need distinct return)
+do_push2:
+        load  sp
+        store st_arg2
+        load  push_val
+st_op2: 21
+st_arg2: 0
+        load  sp
+        add   one
+        store sp
+        goto  after_call_pushes
+
+# ═══ pop: sp-- ; pop_val = mem[sp]  (with sp re-patch) ═════════════════
+do_pop:
+        load  sp
+        sub   one
+        store sp
+        store ld_arg         # patch indirect load address = new sp
+ld_op:  20                   # LOAD opcode (raw)
+ld_arg: 0                    # <- address, patched to sp
+        store pop_val
+        goto  pop_return
+
+# pop n at entry
+pop_into_n:
+        load  sp
+        sub   one
+        store sp
+        store ld_arg_n
+ldn_op: 20
+ld_arg_n: 0
+        store cur_n
+        goto  n_ready
+
+# pop marker at entry
+pop_into_marker:
+        load  sp
+        sub   one
+        store sp
+        store ld_arg_m
+ldm_op: 20
+ld_arg_m: 0
+        store my_marker
+        goto  marker_ready
+
+# push/pop return dispatch (which caller wanted the push/pop?)
+# We route via small marker bytes set before each generic push/pop.
+push_return:
+        load  push_ret
+        ifzero pr0
+        sub   one
+        ifzero pr1
+        goto  pr2
+pr0:    goto  after_marker_push   # marker saved in recurse
+pr1:    goto  after_site1_push
+pr2:    goto  after_call_first_push
+
+pop_return:
+        load  pop_ret
+        ifzero por0
+        sub   one
+        ifzero por1
+        goto  por2
+por0:   goto  pop_after_fibn1
+por1:   goto  ret_after_marker
+por2:   goto  entry_ret
+
+# data
+input:  7
+result_scratch: 0
+sp:     stack        # sp starts at the base of the stack region
+m0:     0
+one:    1
+two:    2
+zero:   0
+cur_n:  0
+my_marker: 0
+nm1:    0
+nm2:    0
+fibn2:  0
+ret_result: 0
+call_m: 0
+call_n: 0
+push_val: 0
+pop_val: 0
+push_ret: 0
+pop_ret: 0
+
+# stack region (grows upward). Keep well clear of code above.
+stack:  0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0

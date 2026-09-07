@@ -298,6 +298,16 @@ def test_sim_max():
     src = open('examples/max.toys').read()
     assert _run(src) == 9
 
+def test_sim_fibonacci_rec():
+    """fibonacci_rec.toys computes fib recursively via a self-modifying-code
+    stack. Verify several n by patching only `input`."""
+    import re
+    base = open('examples/fibonacci_rec.toys').read()
+    expected = {0: 0, 1: 1, 2: 1, 5: 5, 7: 13, 10: 55, 13: 233}
+    for n, want in expected.items():
+        src = re.sub(r'(input:\s+)\d+', r'\g<1>' + str(n), base)
+        assert _run(src) == want, f"fib({n}) should be {want}"
+
 def test_sim_multiply():
     """multiply.toys with a=7, b=6 should produce 42."""
     src = open('examples/multiply.toys').read()

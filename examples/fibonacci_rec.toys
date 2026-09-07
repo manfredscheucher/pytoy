@@ -1,0 +1,165 @@
+# Recursive Fibonacci, Toy CPU. fib(n)=n if n<2 else fib(n-1)+fib(n-2) mod 256.
+# Real stack via sp + self-modifying indirect load/store.
+# Frame (pushed by caller): [marker][n]. markers: 0=top,1=after fib(n-1),2=after fib(n-2).
+# The top frame is pre-allocated as data; the entry code seeds its n from
+# `input`, so you only set `input` to choose which fib(n) to compute.
+
+# ---------------- entry: seed the top frame's n from input ----------------
+        load  input
+        store seedn        # top-frame n = input (no manual sync needed)
+        goto  fib
+
+# ---------------- fib body ----------------
+fib:    load  sp
+        sub   one          # acc = sp-1  (address of this frame's n)
+        store pka          # patch indirect-load address
+lop:    20                 # LOAD opcode (raw byte)
+pka:    0                  # <- address of n, patched above
+        store nloc         # nloc = n
+
+        ifzero ret         # n==0 -> result 0 (acc already 0), return
+        load  nloc
+        sub   one
+        ifzero r1          # n==1 -> result 1
+        goto  rec
+r1:     load  one
+        goto  ret
+
+rec:    load  nloc
+        sub   one
+        store nm1          # nm1 = n-1
+        load  nloc
+        sub   two
+        store nm2          # nm2 = n-2
+
+        # push marker=1
+        load  sp
+        store pa1
+        load  one
+so1:    21
+pa1:    0
+        load  sp
+        add   one
+        store sp
+        # push n-1
+        load  sp
+        store pa2
+        load  nm1
+so2:    21
+pa2:    0
+        load  sp
+        add   one
+        store sp
+        goto  fib
+
+r1site: store fret1         # acc=fib(n-1); save it (transient: no call before push)
+        # Re-derive n-2 from THIS frame's n (globals were clobbered by inner calls).
+        # sp still points past our frame, so n is at sp-1, exactly as at fib entry.
+        load  sp
+        sub   one
+        store pka2
+        load  zero
+lop2:   20
+pka2:   0                   # acc = n (from frame)
+        sub   two
+        store nm2           # nm2 = n-2  (fresh)
+        # push saved fib(n-1)
+        load  sp
+        store pa3
+        load  fret1
+so3:    21
+pa3:    0
+        load  sp
+        add   one
+        store sp
+        # push marker=2
+        load  sp
+        store pa4
+        load  two
+so4:    21
+pa4:    0
+        load  sp
+        add   one
+        store sp
+        # push n-2
+        load  sp
+        store pa5
+        load  nm2
+so5:    21
+pa5:    0
+        load  sp
+        add   one
+        store sp
+        goto  fib
+
+r2site: store fscr          # acc = fib(n-2), stash to scratch
+        load  sp
+        sub   one
+        store sp            # pop
+        store pa6
+        load  zero
+lo6:    20
+pa6:    0                   # load saved fib(n-1)
+        add   fscr          # fib(n-1)+fib(n-2)
+
+# ---------------- return: acc=result. pop frame, dispatch on marker ----------
+ret:    store result
+        load  sp
+        sub   two           # pop n and marker (sp -= 2)
+        store sp
+        store pa7           # sp now points at marker slot; patch load addr
+        load  zero
+lo7:    20
+pa7:    0                   # load marker
+        store mk
+        ifzero top          # marker 0 -> top-level
+        load  mk
+        sub   one
+        ifzero r1load       # marker 1 -> after fib(n-1) call
+        load  result        # marker 2 -> after fib(n-2) call; restore result
+        goto  r2site
+
+r1load: load  result        # restore result into ACC for r1site
+        goto  r1site
+
+top:    load  result
+        stop
+
+# data
+zero:   0
+one:    1
+two:    2
+input:  4
+result: 0
+mk:     0
+nloc:   0
+nm1:    0
+nm2:    0
+fret1:  0
+fscr:   0
+sp:     stackbase
+# Pre-seeded top frame sits JUST BELOW stackbase: [marker=0][n=input].
+# sp = stackbase points at the next free slot; peek (sp-1) reads n.
+seedm:  0            # top-frame marker = 0   (addr stackbase-2)
+seedn:  0            # top-frame n, set to `input` by the entry code (addr stackbase-1)
+stackbase: 0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
