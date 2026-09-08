@@ -312,15 +312,15 @@ expected accumulator result.
 | `bubblesort.toyc`  | bubble sort of the 10 pi digits (array in main); a[0] | 1 |
 | `bubblesort_fn.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
 
-Regenerate and re-verify them all:
+The generated `.toys` files are build artifacts (not tracked in git). Build and
+re-verify all of them from the C sources with one command:
 
 ```bash
-cd /Users/manfred/github/pytoy
-for f in compiler/examples/*.toyc; do
-  python3 compiler/toycc.py "$f"
-  python3 toyasm.py "${f%.toyc}.toys" --cli --run --quiet | tail -1
-done
+python3 scripts/build_examples.py
 ```
+
+It compiles every `compiler/examples/*.toyc`, writes the `.toys` next to it, and
+checks each result against its `// expect:` header.
 
 ## How the compiler works (brief)
 
