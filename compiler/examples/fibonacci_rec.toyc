@@ -1,0 +1,26 @@
+// expect: 8
+/*
+ * fibonacci_rec.c - the recursive Fibonacci function.
+ *
+ * fib(n) = n            if n < 2
+ *        = fib(n-1) + fib(n-2)   otherwise
+ *
+ * The Toy CPU has no call/return and no stack, yet toycc compiles this real
+ * recursion by giving each function fixed global slots and bracketing every
+ * call with save/restore of the caller's live-across slots on a stack that
+ * grows down from the top of memory (see doc-typst/design/recursion-codegen.md).
+ *
+ * fib(6) = 8. The whole program (code + data + stack) fits the 256 bytes.
+ *
+ * Expected result: ACC = 8
+ */
+int fib(int n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+int main(void) {
+    return fib(6);
+}

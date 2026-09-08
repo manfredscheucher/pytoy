@@ -520,6 +520,32 @@ class CodeGen:
         self.temps.append(label)
         return label
 
+    # -- stack primitives (self-modifying indirect load/store) --
+    # One byte `sp` points at the last-pushed byte; the stack grows DOWN from the
+    # top of memory. push: sp-=1, mem[sp]=slot;  pop: slot=mem[sp], sp+=1.
+    # The address byte of a raw load/store is re-patched from `sp` on every
+    # access, because sp moves — the same trick as sum.toys.
+    def gen_push(self, slot):
+        addr = self.new_label("push_addr")
+        self.emit(f"        load  sp         # push {slot}")
+        self.emit(f"        sub   {self.const_label(1)}")
+        self.emit(f"        store sp         # sp -= 1")
+        self.emit(f"        store {addr}       # patch store-address to sp")
+        self.emit(f"        load  {slot}")
+        self.emit(f"        21               # STORE opcode (raw)")
+        self.emit(f"{addr}: 0                # <- mem[sp] := {slot}")
+
+    def gen_pop(self, slot):
+        addr = self.new_label("pop_addr")
+        self.emit(f"        load  sp         # pop -> {slot}")
+        self.emit(f"        store {addr}       # patch load-address to sp")
+        self.emit(f"        20               # LOAD opcode (raw)")
+        self.emit(f"{addr}: 0                # <- acc := mem[sp]")
+        self.emit(f"        store {slot}")
+        self.emit(f"        load  sp")
+        self.emit(f"        add   {self.const_label(1)}")
+        self.emit(f"        store sp         # sp += 1")
+
     # -- expression code generation: result left in ACC --
     def gen_expr(self, e):
         kind = e[0]
@@ -576,6 +602,20 @@ class CodeGen:
             self.gen_multiply(left, right)
             return
 
+        mem_op = {'+': 'add', '-': 'sub', '&': 'and', '|': 'or', '^': 'xor'}
+
+        # Fast path: when the right operand is a constant or a plain variable it
+        # already lives in a fixed data byte, so we can evaluate the left operand
+        # into ACC and apply the op against that byte directly — no spill temp.
+        # This saves a `store` (and a data byte) per such op; on the 256-byte
+        # machine that adds up (e.g. every `n-1` in a recursive body).
+        if op in mem_op and right[0] in ('num', 'var'):
+            self.gen_expr(left)
+            slot = (self.const_label(right[1]) if right[0] == 'num'
+                    else self.var_label(right[1]))
+            self.emit(f"        {mem_op[op]:<5} {slot}")
+            return
+
         # Arithmetic / bitwise: evaluate right first, spill it, then left,
         # then apply the op against the spilled right operand.
         self.gen_expr(right)
@@ -583,16 +623,8 @@ class CodeGen:
         self.emit(f"        store {t}")
         self.gen_expr(left)
 
-        if op == '+':
-            self.emit(f"        add   {t}")
-        elif op == '-':
-            self.emit(f"        sub   {t}")
-        elif op == '&':
-            self.emit(f"        and   {t}")
-        elif op == '|':
-            self.emit(f"        or    {t}")
-        elif op == '^':
-            self.emit(f"        xor   {t}")
+        if op in mem_op:
+            self.emit(f"        {mem_op[op]:<5} {t}")
         elif op in ('<<', '>>'):
             self.gen_shift(op, right, t)
         else:
@@ -656,6 +688,14 @@ class CodeGen:
 
     # Produce (left - right) in ACC, used by comparisons. Leaves difference.
     def _gen_diff(self, left, right):
+        # If right is already a fixed data byte (constant or variable), subtract
+        # it directly — no spill temp (same saving as gen_binop's fast path).
+        if right[0] in ('num', 'var'):
+            self.gen_expr(left)
+            slot = (self.const_label(right[1]) if right[0] == 'num'
+                    else self.var_label(right[1]))
+            self.emit(f"        sub   {slot}")
+            return
         self.gen_expr(right)
         t = self.new_temp()
         self.emit(f"        store {t}")
@@ -726,6 +766,28 @@ class CodeGen:
                 # cond true when diff!=0; jump away when diff==0
                 self.emit(f"        ifzero {false_label}")
             return
+        # Relational fast path: branch straight off the sign bit of a difference,
+        # skipping the 0/1 materialisation (saves several bytes per branch — this
+        # matters on the 256-byte machine, and every if/while uses it).
+        if cond[0] == 'binop' and cond[1] in ('<', '>', '<=', '>='):
+            _, op, left, right = cond
+            # bit7 of (a-b) is set  <=>  a < b  (valid for the small values this
+            # compiler targets; same trick as gen_comparison / max.toys).
+            if op == '<':       self._gen_diff(left, right);  true_if_neg = True
+            elif op == '>':     self._gen_diff(right, left);  true_if_neg = True
+            elif op == '>=':    self._gen_diff(left, right);  true_if_neg = False
+            else:               self._gen_diff(right, left);  true_if_neg = False
+            self.emit(f"        and   {self.const_label(0x80)}")
+            if true_if_neg:
+                # true when bit7 set (ACC!=0); jump to false when ACC==0.
+                self.emit(f"        ifzero {false_label}")
+            else:
+                # true when bit7 clear (ACC==0); jump to false when ACC!=0.
+                l_true = self.new_label("cond_true")
+                self.emit(f"        ifzero {l_true}")
+                self.emit(f"        goto  {false_label}")
+                self.emit(f"{l_true}: nop")
+            return
         # General path: evaluate to boolean, branch when zero (false).
         self.gen_expr(cond)
         self.emit(f"        ifzero {false_label}")
@@ -787,6 +849,12 @@ class CodeGen:
             self.emit(f"        goto  {fname}__body")
             self.emit(f"{cont}: nop")
             return
+        if kind == 'push':
+            self.gen_push(self.var_label(s[1]))
+            return
+        if kind == 'pop':
+            self.gen_pop(self.var_label(s[1]))
+            return
         raise CompileError(f"cannot generate statement {s!r}")
 
     def gen_if(self, s):
@@ -837,7 +905,11 @@ class CodeGen:
         self.gen_stmt(body_block)
         # If control falls off the end without an explicit return, still go to
         # the dispatch chain (f__ret keeps whatever value it had, default 0).
-        self.emit(f"        goto  {name}__dispatch")
+        # Skip it when the body already ends by jumping to dispatch (every path
+        # returned) — that goto would be dead code, and on a 256-byte machine
+        # those 2 bytes matter.
+        if self.code[-1].strip() != f"goto  {name}__dispatch":
+            self.emit(f"        goto  {name}__dispatch")
 
         # Dispatch: compare the marker slot against each call site's constant and
         # jump back to that site's continuation. Loaded fresh each compare for
@@ -845,20 +917,73 @@ class CodeGen:
         self.emit(f"{name}__dispatch: nop")
         for k in range(n_sites):
             self.emit(f"        load  {name}__mark")
-            self.emit(f"        sub   {self.const_label(k)}")
+            if k != 0:
+                self.emit(f"        sub   {self.const_label(k)}")
+            # k==0: marker 0 means ACC is already 0, so `ifzero` matches directly
+            # (skipping a `sub 0` no-op saves 2 bytes on the tight budget).
             self.emit(f"        ifzero {name}__cont_{k}")
         # No marker matched (shouldn't happen). Halt rather than run into data.
         self.emit(f"        stop            # unreachable: bad {name} marker")
+
+    def _peephole(self, code):
+        """Drop a `load X` that immediately follows `store X` on the next line:
+        `store` leaves ACC unchanged, so ACC already holds mem[X] and the reload
+        is redundant. Only safe when the `load` line carries NO label (it must
+        not be a jump target). Small but the 256-byte budget is tight."""
+        def parts(line):
+            body = line.split('#', 1)[0].strip()
+            label = None
+            if ':' in body:
+                label, body = body.split(':', 1)
+                label = label.strip()
+                body = body.strip()
+            toks = body.split()
+            return label, (toks[0] if toks else None), (toks[1] if len(toks) > 1 else None)
+        def next_code(j):
+            """Index of the next real instruction line at/after j (skip blank
+            and comment-only lines), or None."""
+            while j < len(code):
+                _, mn, _ = parts(code[j])
+                if mn is not None:
+                    return j
+                j += 1
+            return None
+        out = []
+        i = 0
+        while i < len(code):
+            line = code[i]
+            _, mn, arg = parts(line)
+            if mn == 'store' and arg is not None:
+                j = next_code(i + 1)
+                if j is not None:
+                    lbl2, mn2, arg2 = parts(code[j])
+                    if mn2 == 'load' and arg2 == arg and lbl2 is None:
+                        # emit everything up to (but not incl.) the redundant load,
+                        # then skip that load line.
+                        out.extend(code[i:j])
+                        i = j + 1
+                        continue
+            out.append(line)
+            i += 1
+        return out
 
     # -- assemble the whole .toys file --
     def generate(self, main_body, bodies, source_name):
         # `main_body` is main's ('block', [...]); `bodies` is the list of
         # (name, params, body_block, n_sites) for every called non-main function
-        # (from CallLifter). Recursive functions raised earlier.
+        # (from CallLifter). Recursion works: each call is bracketed by
+        # save/restore of the caller's live-across slots on the stack.
         # Register every function's global slots up front, because main's code
         # (generated first) already reads/writes them.
         for name, params, _body, _n in bodies:
             self.register_slots(name, params)
+
+        # The call stack lives at the very top of memory and grows DOWN. `sp`
+        # points at the last-pushed byte and starts at 255 (byte 255 is left
+        # unused; the first push writes to 254). Overflow into the data region
+        # is unchecked — depth is bounded by the free bytes between end-of-data
+        # and the stack top (see doc-typst/design/recursion-codegen.md).
+        self.add_global_slot("sp", 255)
 
         self.gen_stmt(main_body)
         # Safety net: if control falls off the end of main without a return,
@@ -875,7 +1000,7 @@ class CodeGen:
         lines.append("# Toy CPU assembly. 8-bit values, wraps mod 256.")
         lines.append("# The return value ends up in ACC when the program stops.")
         lines.append("")
-        lines.extend(self.code)
+        lines.extend(self._peephole(self.code))
         lines.append("")
         lines.append(DATA_MARKER)   # canonical marker so --detect-code-overwrite works
         # C variables (declared but possibly with runtime init; give initial 0)
@@ -934,11 +1059,11 @@ def find_recursive(graph):
     return {name for name in graph if reaches_self(name)}
 
 
-# ── Global-slots + marker-dispatch call scheme ──────────────────────────────
+# ── Global-slots + marker-dispatch call scheme, made recursion-safe ─────────
 #
 # The Toy CPU has no call/return, no stack, no indirect jump. To support real
-# (non-inlined) functions we give each non-recursive function `f` FIXED global
-# data bytes and emit its body EXACTLY ONCE:
+# (non-inlined) functions we give each function `f` FIXED global data bytes and
+# emit its body EXACTLY ONCE:
 #
 #   f__p_<param>  one byte per parameter   (caller writes the argument here)
 #   f__ret        one byte                 (body writes the return value here)
@@ -954,25 +1079,34 @@ def find_recursive(graph):
 # f__dispatch is: for each site k, `load f__mark; sub k; ifzero f__cont_k`. The
 # body's `return e` becomes `eval e; store f__ret; goto f__dispatch`.
 #
-# This is deliberately the SIMPLEST correct scheme (marker-dispatch is used even
-# for a single call site) — it trades a few extra bytes for uniformity. Global
-# slots are shared across all activations of f, so RECURSION would clobber them;
-# recursive functions still need a stack and are rejected up front.
+# RECURSION. Those global slots are shared across all activations of f, so a
+# recursive re-entry would clobber the caller's. We make it safe by SAVING the
+# caller's live-across slots on a real stack before the jump and RESTORING them
+# after (uniform save/restore — see doc-typst/design/recursion-codegen.md). The
+# stack grows down from the top of memory via self-modifying indirect push/pop
+# (CodeGen.gen_push/gen_pop). The save set is the caller's slots LIVE ACROSS the
+# call, computed by a live-variable analysis (CallLifter.insert_save_restore);
+# "save everything" would be wrong (it re-saves the temp holding THIS call's
+# result and miscompiles fib(4) to 2). The `-O` flag skips save/restore around
+# calls whose caller is provably non-recursive — a pure size optimisation.
 #
 # A pure AST-to-AST pass (CallLifter) does the rewrite. It turns each function
-# body into a call-free block using ('label',n)/('goto',n) plus two tiny new
+# body into a call-free block using ('label',n)/('goto',n) plus small new
 # statement nodes the codegen understands:
 #   ('setmark', fname, k)        -> load k; store f__mark
 #   ('call_jump', fname, cont)   -> goto f__body; cont: nop
+#   ('push', slot) / ('pop', slot) -> indirect stack save/restore
 # A call in EXPRESSION position (y = f(a)+1) is lifted: the call statements run
-# first, then the sub-expression is replaced by ('var', 'f__ret').
+# first, then the sub-expression is replaced by ('var', capture-temp).
 
 class CallLifter:
-    def __init__(self, funcs, recursive):
+    def __init__(self, funcs, recursive, optimize=False):
         self.funcs = {f[1]: f for f in funcs}
         self.recursive = set(recursive)
+        self.optimize = optimize  # -O: skip save/restore when caller not recursive
         self.call_counts = {}     # fname -> number of call sites seen so far
         self.uid = 0              # unique suffix for local-variable renaming
+        self.cur_caller = None    # name of the function currently being lifted
 
     def next_site(self, fname):
         k = self.call_counts.get(fname, 0)
@@ -995,8 +1129,10 @@ class CallLifter:
             raise CompileError("main must take no parameters (or void)")
         # Rewrite main. Any call inside gets lifted, which also records call
         # sites on the callees. main's own `return` stays a real return (halts).
+        self.cur_caller = 'main'
         main_out = []
         self.lift_stmt(body, main_out, ret_slot=None)
+        main_out = self.insert_save_restore('main', main_out)
         main_block = ('block', main_out)
 
         # Rewrite every non-main function that gets called (transitively). A
@@ -1017,8 +1153,10 @@ class CallLifter:
                 if local not in rename:
                     rename[local] = f"{name}__l_{local}"
             fbody2 = self._rename(fbody, rename)
+            self.cur_caller = name
             out = []
             self.lift_stmt(fbody2, out, ret_slot=f"{name}__ret")
+            out = self.insert_save_restore(name, out)
             lifted[name] = (list(fparams), ('block', out))
             # Lifting may have discovered calls to not-yet-lifted functions.
             pending.extend(n for n in self.call_counts
@@ -1138,6 +1276,231 @@ class CallLifter:
         self.lift_stmt(s, inner, ret_slot)
         return ('block', inner)
 
+    # ── save/restore insertion (live-variable analysis) ──────────────────────
+    # After a function body has been lifted to a call-free tree of
+    # blocks/ifs/whiles/gotos plus ('call_site', ...) nodes, wrap every call
+    # with push/pop of the CALLER's slots that are LIVE ACROSS the call.
+    #
+    # Why liveness (not "save everything"): every named byte (locals, params,
+    # mark, compiler temps) is a single GLOBAL byte shared by all activations, so
+    # a recursive re-entry clobbers all of them. We must restore exactly those
+    # whose value is still needed after the call. "Save all" wrongly re-saves the
+    # capture temp holding THIS call's result and can miscompile fib(4) to 2; the
+    # correct set excludes it because it is written by the call, not before it.
+    #
+    # Save set at a call site = live-out(node) ∩ caller-owned slots − {capture}.
+    # (The capture temp is a DEF at the node, so standard liveness drops it.)
+
+    def insert_save_restore(self, caller, stmts):
+        # -O optimisation: a non-recursive caller can never be re-entered, so no
+        # call from it can clobber its slots — skip save/restore entirely.
+        skip = self.optimize and caller not in self.recursive
+        live_at_label = {}   # label name -> set of vars live just before it
+        caller_slots = self._caller_slots(caller, stmts)
+
+        # Iterate to a fixpoint because gotos create back-edges (loops). Each
+        # pass recomputes label live-in from the current estimates until stable.
+        for _ in range(100):
+            changed = [False]
+            self._live_block(stmts, set(), live_at_label, caller_slots,
+                             changed, record=False)
+            if not changed[0]:
+                break
+        # Final pass with recording: expand call_site nodes using stable liveness.
+        result, _live = self._live_block(stmts, set(), live_at_label, caller_slots,
+                                         [False], record=True, caller=caller,
+                                         skip=skip)
+        return result
+
+    def _caller_slots(self, caller, stmts):
+        """The caller-owned bytes that may need saving: its params, locals, mark,
+        and every compiler temp declared in its body. (Callee slots and shared
+        return slots are never in this set, so they are never saved.)"""
+        slots = {f"{caller}__mark"}
+        _, _n, params, _body = self.funcs[caller]
+        for p in params:
+            slots.add(f"{caller}__p_{p}")
+        def walk(node):
+            if not isinstance(node, tuple):
+                return
+            if node[0] == 'decl':
+                slots.add(node[1])
+            if node[0] == 'call_site':
+                # The capture temp is declared later (during expansion) but is a
+                # caller-owned byte holding a call result; a sibling call may need
+                # it saved across it, so it must be a candidate for the save set.
+                slots.add(node[5])
+            for c in node[1:]:
+                if isinstance(c, tuple):
+                    walk(c)
+                elif isinstance(c, list):
+                    for x in c:
+                        walk(x)
+        for s in stmts:
+            walk(s)
+        return slots
+
+    def _as_stmt(self, x):
+        """Normalise a liveness-pass result (a stmt, a list of stmts, or None)
+        into a single statement: a list becomes a ('block', ...)."""
+        if x is None:
+            return None
+        if isinstance(x, list):
+            return ('block', x)
+        return x
+
+    def _expr_uses(self, e, acc):
+        if not isinstance(e, tuple):
+            return
+        if e[0] == 'var':
+            acc.add(e[1])
+            return
+        for c in e[1:]:
+            if isinstance(c, tuple):
+                self._expr_uses(c, acc)
+
+    # Backward pass over a statement list. `live` is live-out of the list; return
+    # (new_stmts, live-in). When record is True, call_site nodes are expanded
+    # with push/pop; otherwise the tree is only traversed to update label live-in.
+    def _live_block(self, stmts, live, live_at_label, caller_slots,
+                    changed, record, caller=None, skip=False):
+        live = set(live)
+        out_rev = []
+        for s in reversed(stmts):
+            new_s, live = self._live_stmt(s, live, live_at_label, caller_slots,
+                                          changed, record, caller, skip)
+            out_rev.extend(reversed(new_s) if isinstance(new_s, list) else [new_s])
+        result = list(reversed(out_rev))
+        return (result, live) if record else (None, live)
+
+    def _live_stmt(self, s, live, live_at_label, caller_slots,
+                   changed, record, caller, skip):
+        """Return (replacement, live-in). replacement is a stmt or a list."""
+        live = set(live)
+        kind = s[0]
+
+        if kind == 'block':
+            new, live = self._live_block(s[1], live, live_at_label, caller_slots,
+                                         changed, record, caller, skip)
+            return (('block', new) if record else s), live
+
+        if kind == 'decl':
+            _, name, init = s
+            live.discard(name)          # defined here
+            if init is not None:
+                self._expr_uses(init, live)
+            return s, live
+
+        if kind == 'assign':
+            _, name, expr = s
+            live.discard(name)
+            self._expr_uses(expr, live)
+            return s, live
+
+        if kind == 'return':
+            self._expr_uses(s[1], live)
+            return s, live
+
+        if kind == 'if':
+            # then/else may be any statement (block, goto, return, ...), so run
+            # the single-statement pass on each rather than assuming a block.
+            _, cond, then_b, else_b = s
+            new_then, live_then = self._live_stmt(
+                then_b, live, live_at_label, caller_slots, changed, record,
+                caller, skip)
+            if else_b is None:
+                live_else = set(live)
+                new_else = None
+            else:
+                new_else, live_else = self._live_stmt(
+                    else_b, live, live_at_label, caller_slots, changed, record,
+                    caller, skip)
+            live = live_then | live_else
+            self._expr_uses(cond, live)
+            if record:
+                s = ('if', cond, self._as_stmt(new_then), self._as_stmt(new_else))
+            return s, live
+
+        if kind == 'while':
+            # while(1){body}: body's live-out is body's own live-in (loop back).
+            # Fixpoint the body until its live-in stops growing.
+            _, _cond, body = s
+            body_live_out = set(live)
+            for _ in range(100):
+                _, live_in = self._live_block(body[1], body_live_out, live_at_label,
+                                              caller_slots, changed, False,
+                                              caller, skip)
+                if live_in <= body_live_out:
+                    break
+                body_live_out |= live_in
+            if record:
+                new_body, _ = self._live_block(body[1], body_live_out, live_at_label,
+                                               caller_slots, changed, True,
+                                               caller, skip)
+                s = ('while', _cond, ('block', new_body))
+            return s, body_live_out
+
+        if kind == 'label':
+            name = s[1]
+            old = live_at_label.get(name, set())
+            if not (live <= old):
+                live_at_label[name] = old | live
+                changed[0] = True
+            return s, set(live_at_label.get(name, live))
+
+        if kind == 'goto':
+            # control transfers to the label; live-in = live-in recorded there.
+            return s, set(live_at_label.get(s[1], set()))
+
+        if kind == 'call_site':
+            return self._expand_call(s, live, caller_slots, record, caller, skip)
+
+        # setmark / call_jump / push / pop don't appear before this pass runs.
+        raise CompileError(f"liveness: unexpected stmt {s!r}")
+
+    def _expand_call(self, s, live, caller_slots, record, caller, skip):
+        _, name, param_pairs, k, cont, cap, arg_temps = s
+        # live-out of the whole call site is `live`. The capture temp is DEFINED
+        # here, so it is not live before the call. Save set = the caller slots
+        # live across the call (live-out minus the capture temp).
+        live_across = (live & caller_slots) - {cap}
+        # The caller's marker is ALWAYS live across a call: the callee clobbers
+        # C__mark (its setup does setmark), and the caller needs its own marker
+        # later for C__dispatch — which lives OUTSIDE this analysed body, so the
+        # liveness pass can't see that use. main has no dispatch (it halts), so
+        # its non-existent mark is never forced in.
+        if caller != 'main':
+            live_across.add(f"{caller}__mark")
+        save = sorted(live_across)
+
+        # live-in: after the call the value in `cap` came from the call, so cap
+        # is no longer live before it. The param slots are the callee's (not in
+        # caller_slots). The setup USES the arg temps and reads caller state.
+        live = set(live)
+        live.discard(cap)
+        for pslot, tmp in param_pairs:
+            live.add(tmp)              # arg temps are used by the param assigns
+        live |= set(save)              # saved slots must be live before the call
+
+        if not record:
+            return s, live
+
+        # Expand: [push saves] param-assigns setmark call_jump capture [pop rev]
+        do_save = save and not skip
+        stmts = []
+        if do_save:
+            for slot in save:
+                stmts.append(('push', slot))
+        for pslot, tmp in param_pairs:
+            stmts.append(('assign', pslot, ('var', tmp)))
+        stmts.append(('setmark', name, k))
+        stmts.append(('call_jump', name, cont))
+        stmts.append(('decl', cap, ('var', f"{name}__ret")))
+        if do_save:
+            for slot in reversed(save):
+                stmts.append(('pop', slot))
+        return stmts, live
+
     # ── expression pass ─────────────────────────────────────────────────────
     # Return a call-free copy of `e`; every call is emitted into `out` (in eval
     # order) as a global-slot call sequence and replaced by ('var', 'f__ret').
@@ -1157,16 +1520,11 @@ class CallLifter:
             return self.lift_call(e, out)
         raise CompileError(f"cannot compile expression {e!r}")
 
-    # Emit one call's sequence into `out`; return ('var', 'f__ret').
+    # Emit one call's sequence into `out`; return ('var', 'f__ret'-capture-temp).
     def lift_call(self, call, out):
         _, name, args = call
         if name not in self.funcs:
             raise CompileError(f"call to undefined function {name!r}")
-        if name in self.recursive:
-            raise CompileError(
-                f"recursive function {name!r} is not supported yet "
-                f"(global slots would clobber across activations; recursion "
-                f"needs a stack, which is separate future work)")
 
         _, _n, params, _body = self.funcs[name]
         if len(args) != len(params):
@@ -1184,28 +1542,32 @@ class CallLifter:
             tmp = self.fresh('arg')
             out.append(('decl', tmp, arg2))
             arg_temps.append(tmp)
-        for pname, tmp in zip(params, arg_temps):
-            out.append(('assign', f"{name}__p_{pname}", ('var', tmp)))
+        param_pairs = [(f"{name}__p_{pname}", tmp)
+                       for pname, tmp in zip(params, arg_temps)]
 
         k = self.next_site(name)
         cont = f"{name}__cont_{k}"
-        out.append(('setmark', name, k))
-        out.append(('call_jump', name, cont))
-        # f__ret is a SHARED slot — the next call overwrites it. Copy the result
-        # into a fresh temp immediately so several calls in one expression
-        # (e.g. sq(3)+sq(4)) each keep their own value.
-        tmp = self.fresh('callret')
-        out.append(('decl', tmp, ('var', f"{name}__ret")))
-        return ('var', tmp)
+        # f__ret is a SHARED slot — the next call overwrites it. The capture temp
+        # holds this call's result; it is written AFTER the call, so it is never
+        # in the live-across set and restore can't clobber it (design note).
+        cap = self.fresh('callret')
+        # A single structured node marks the call boundary. The save/restore
+        # liveness pass expands it into: [push saves] param-assigns setmark
+        # call_jump capture [pop restores].  arg_temps is recorded so the pass
+        # knows those temps die inside the setup (they are consumed by the
+        # param assigns before the jump) and are therefore never live-across.
+        out.append(('call_site', name, param_pairs, k, cont, cap, arg_temps))
+        return ('var', cap)
 
 
-def lift_functions(funcs, recursive):
+def lift_functions(funcs, recursive, optimize=False):
     """Return (main_block, bodies) with all calls rewritten to the global-slots
-    + marker-dispatch scheme. See CallLifter for details."""
-    return CallLifter(funcs, recursive).run()
+    + marker-dispatch scheme, each call bracketed by save/restore of the
+    caller's live-across slots. See CallLifter for details."""
+    return CallLifter(funcs, recursive, optimize).run()
 
 
-def compile_source(src, source_name):
+def compile_source(src, source_name, optimize=False):
     toks = lex(src)
     funcs = Parser(toks).parse_program()[1]
 
@@ -1219,7 +1581,7 @@ def compile_source(src, source_name):
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
 
-    main_block, bodies = lift_functions(funcs, recursive)
+    main_block, bodies = lift_functions(funcs, recursive, optimize)
 
     gen = CodeGen()
     return gen.generate(main_block, bodies, source_name)
@@ -1234,6 +1596,10 @@ def main():
     ap.add_argument('-o', '--output', help='output .toys path')
     ap.add_argument('-r', '--run', action='store_true',
                     help='after compiling, run the .toys through toyasm (CLI)')
+    ap.add_argument('-O', '--optimize-save-restore', action='store_true',
+                    dest='optimize',
+                    help='skip save/restore at call sites whose caller is not '
+                         'recursive (smaller code, same results; default off)')
     args = ap.parse_args()
 
     try:
@@ -1243,7 +1609,7 @@ def main():
         sys.exit(f"cannot read {args.file}: {e}")
 
     try:
-        asm = compile_source(src, os.path.basename(args.file))
+        asm = compile_source(src, os.path.basename(args.file), args.optimize)
     except CompileError as e:
         sys.exit(f"compile error: {e}")
 

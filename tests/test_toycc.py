@@ -229,10 +229,6 @@ def test_call_graph_non_recursive_is_empty():
                    "int main(void){return add(1,2);}")[1]
     assert find_recursive(build_call_graph(funcs)) == set()
 
-def test_recursive_rejected_for_now():
-    with pytest.raises(CompileError, match="recursive"):
-        compile_source("int f(int n){return f(n);} int main(void){return f(1);}", "t")
-
 def test_call_to_undefined_function_rejected():
     with pytest.raises(CompileError, match="undefined function"):
         compile_source("int main(void){ return nope(1); }", "t")
@@ -320,9 +316,71 @@ def test_nested_same_function_both_args():
     src = "int f(int a,int b){return a*10+b;} int main(void){return f(f(1,2),f(3,4));}"
     assert run_c(src) == 154   # (1*10+2)=12, (3*10+4)=34, 12*10+34
 
-def test_recursive_call_gives_clean_compile_error():
-    """A recursive function is not supported yet, but must fail with a clean
-    CompileError (not a raw traceback) so the CLI prints 'compile error: ...'."""
-    with pytest.raises(CompileError, match="recursive function"):
-        compile_source("int f(int n){ if(n==0) return 0; return f(n-1); } "
-                       "int main(void){ return f(3); }", "t")
+# ── Recursion (uniform save/restore + real stack) ───────────────────────────
+
+def test_fib4_liveness():
+    """The critical liveness case from the design note: fib(4) must be 3, NOT 2.
+    A naive "save all slots" scheme drops the temp holding fib(n-1) while
+    fib(n-2) runs and miscompiles this to 2 (see doc-typst/design/
+    recursion-codegen.md)."""
+    src = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
+           " int main(void){ return fib(4); }")
+    assert run_c(src) == 3
+
+def test_fib_more():
+    fib = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
+           " int main(void){ return fib(%d); }")
+    assert run_c(fib % 6) == 8
+    assert run_c(fib % 10) == 55
+
+def test_recursive_factorial():
+    src = ("int fact(int n){ if(n==0) return 1; return n*fact(n-1); }"
+           " int main(void){ return fact(5); }")
+    assert run_c(src) == 120
+
+def test_mutual_recursion():
+    src = ("int is_even(int n){if(n==0)return 1;return is_odd(n-1);}"
+           " int is_odd(int n){if(n==0)return 0;return is_even(n-1);}"
+           " int main(void){return is_even(%d);}")
+    assert run_c(src % 6) == 1
+    assert run_c(src % 7) == 0
+
+def test_recursive_subtractive_gcd():
+    src = ("int g(int a,int b){ if(a==b) return a; if(a>b) return g(a-b,b);"
+           " return g(a,b-a);} int main(void){return g(48,36);}")
+    assert run_c(src) == 12
+
+def test_fib6_fits_256_bytes():
+    """The recursive fib(6) program must fit the 256-byte machine (no 'too big'
+    assembler error) and still compute 8."""
+    src = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
+           " int main(void){ return fib(6); }")
+    asm = compile_c(src)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
+    assert errors == [], f"fib(6) does not fit: {errors}"
+    assert run_asm(asm) == 8
+
+
+def _program_size(asm):
+    """Bytes of code+data the assembler lays down for a .toys program."""
+    _mem, listing, _syms, _da, errors, _ds = assemble(asm)
+    assert errors == [], errors
+    return max(a for a, *_ in listing if a is not None) + 1
+
+def test_optimize_flag_shrinks_nonrecursive_program():
+    """With -O, save/restore is dropped around calls whose caller is not
+    recursive — so a program of only non-recursive functions must get SMALLER,
+    with the SAME result."""
+    src = ("int sq(int x){return x*x;}"
+           " int main(void){return sq(2)+sq(3)+sq(4);}")
+    plain = compile_source(src, "t", optimize=False)
+    opt = compile_source(src, "t", optimize=True)
+    assert run_asm(plain) == 29
+    assert run_asm(opt) == 29
+    assert _program_size(opt) < _program_size(plain)
+
+def test_optimize_flag_keeps_recursive_results():
+    """-O must never change results: recursive callers keep their save/restore."""
+    src = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
+           " int main(void){ return fib(6); }")
+    assert run_asm(compile_source(src, "t", optimize=True)) == 8
