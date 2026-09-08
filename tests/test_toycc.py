@@ -230,6 +230,17 @@ def test_array_too_many_initializers_rejected():
     with pytest.raises(CompileError):
         compile_c(wrap("int a[2]={1,2,3}; return a[0];"))
 
+def test_array_in_recursive_function_rejected():
+    """Arrays aren't saved across recursive calls, so a recursive function
+    with a local array would silently miscompile — reject it instead."""
+    with pytest.raises(CompileError, match="recursive.*array"):
+        compile_source("int r(int n){int b[2]; b[0]=n; if(n==0)return 0;"
+                       " return b[0]+r(n-1);} int main(void){return r(3);}", "t")
+
+def test_array_and_scalar_same_name_rejected():
+    with pytest.raises(CompileError, match="declared twice"):
+        compile_c(wrap("int a[3]; int a; return 0;"))
+
 
 BUBBLE_SORT_C = """int main(void){
   int a[10] = {3,1,4,1,5,9,2,6,5,3};

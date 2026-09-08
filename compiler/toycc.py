@@ -563,7 +563,7 @@ class CodeGen:
         return self.vars[name]
 
     def declare(self, name):
-        if name in self.vars:
+        if name in self.vars or name in self.arrays:
             raise CompileError(f"variable {name!r} declared twice")
         label = f"v_{name}"
         self.vars[name] = label
@@ -1200,6 +1200,21 @@ def _calls_in(node):
             for c in child:
                 yield from _calls_in(c)
 
+def _declares_array(node):
+    """True if the AST subtree declares a local array anywhere."""
+    if not isinstance(node, tuple):
+        return False
+    if node[0] == 'arraydecl':
+        return True
+    for child in node[1:]:
+        if isinstance(child, tuple):
+            if _declares_array(child):
+                return True
+        elif isinstance(child, list):
+            if any(_declares_array(c) for c in child):
+                return True
+    return False
+
 def build_call_graph(funcs):
     """funcs: list of ('func', name, params, body).
     Returns {name: set(callee names)} restricted to defined functions."""
@@ -1798,6 +1813,17 @@ def compile_source(src, source_name, optimize=False):
 
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
+
+    # Arrays are fixed global bytes and are NOT saved/restored across calls, so
+    # a recursive function that declares an array would silently clobber it on
+    # re-entry. Reject that instead of miscompiling (scalars ARE saved, so this
+    # is the one place arrays and recursion don't mix). See the compiler README.
+    for _, name, _params, body in funcs:
+        if name in recursive and _declares_array(body):
+            raise CompileError(
+                f"function {name!r} is recursive and declares a local array; "
+                f"arrays are not saved across recursive calls (hoist the array "
+                f"out of the recursion, or make the function non-recursive)")
 
     main_block, bodies = lift_functions(funcs, recursive, optimize)
 
