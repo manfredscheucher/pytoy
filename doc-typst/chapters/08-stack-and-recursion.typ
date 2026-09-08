@@ -75,11 +75,13 @@ The subtle point --- pointed out during design and confirmed by hand-tracing
 before starting `fib(n-2)`, because both use the same shared body and the same
 stack. `examples/fibonacci_rec.toys` is verified against `fib(0..13)`.
 
-== Why the compiler doesn't emit this (yet)
+== The compiler emits this automatically
 
-The C compiler `toycc` compiles non-recursive functions with fixed global slots
-(previous chapter) and rejects recursion, because fixed slots would clobber
-across recursive activations. Teaching `toycc` to emit the stack machinery
-shown here --- so that recursive C compiles automatically --- is future work.
-The hand-written `fibonacci_rec.toys` is the proof that the target mechanism is
-sound.
+This hand-written program was the proof of concept; the C compiler `toycc` now
+generates the same kind of stack machinery on its own. It uses a slightly
+different but equivalent scheme --- instead of hand-picking what to stack, it
+saves the caller's live values around each call and restores them after (see the
+recursion section of the previous chapter) --- but the core idea is identical:
+a self-modifying-code stack gives each activation its own copies, so recursion
+works. `examples/fibonacci_rec.toyc` is the C version of this very program,
+compiled and run through the same pipeline.
