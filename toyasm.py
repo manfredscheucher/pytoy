@@ -178,6 +178,13 @@ def is_code_store(mem, pc, code_guard):
     instr, arg_addr, _ = decode(mem, pc)
     return instr == 21 and arg_addr is not None and arg_addr < code_guard
 
+def _overwrite_msg(pc, acc, arg_addr, code_guard):
+    """The shared core of the code-overwrite warning (CLI and GUI). Callers add
+    their own trailing prompt."""
+    return (f"STORE at PC={pc} writes {acc} into address {arg_addr}, which is "
+            f"in the code region (below the data start at {code_guard}) — this "
+            f"overwrites program code.")
+
 
 # ── Simulator ──────────────────────────────────────────────────────────────
 
@@ -284,10 +291,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
 
         # guard: ask before a STORE overwrites code
         if is_code_store(mem, pc, code_guard):
-            msg = (f"store at PC={pc} writes {acc} into address {arg_addr}, "
-                   f"which is in the code region (below the data start at "
-                   f"{code_guard}) — this overwrites program code.")
-            if not _warn_continue(msg):
+            if not _warn_continue(_overwrite_msg(pc, acc, arg_addr, code_guard)):
                 print("Aborted.", file=sys.stderr)
                 return acc
 
@@ -322,6 +326,10 @@ _INSTR = {
     20: ("LOAD", 'av'), 22: ("ADD", 'av'), 23: ("SUB", 'av'),
     21: ("STORE", 'a'), 24: ("GOTO", 'a'), 25: ("IFZERO", 'a'),
 }
+
+# OPCODES (name->number) and _INSTR (number->mnemonic) both list the opcodes;
+# guard against the two drifting apart.
+assert set(OPCODES.values()) == set(_INSTR), "OPCODES and _INSTR disagree"
 
 def _esc(s):
     """Escape the three HTML-significant characters for the GUI's rich text."""
@@ -509,6 +517,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             self.step_count = 0
             self.arg_addr = None
             self.selected_addr = None
+            self.overwrite_ok = False   # re-arm the code-overwrite prompt
             self._mem_line_addrs = {}
             self.timer.stop()
             self.btn_step.setEnabled(True)
@@ -536,19 +545,23 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
                 self._halt()
                 return
 
-            # guard: ask before a STORE overwrites code
-            if is_code_store(self.mem, self.pc, self.code_guard):
+            # guard: ask before a STORE overwrites code (once per run — after
+            # the user says continue, don't nag on every loop iteration)
+            if (is_code_store(self.mem, self.pc, self.code_guard)
+                    and not self.overwrite_ok):
+                was_running = self.timer.isActive()
                 self.timer.stop()   # pause auto-run while asking
-                msg = (f"STORE at PC={self.pc} writes {self.acc} into "
-                       f"address {arg_addr}, which is in the code region "
-                       f"(below the data start at {self.code_guard}).\n\n"
-                       f"This overwrites program code. Continue anyway?")
+                msg = _overwrite_msg(self.pc, self.acc, arg_addr,
+                                     self.code_guard) + "\n\nContinue anyway?"
                 reply = QMessageBox.warning(
                     self, "Code overwrite detected", msg,
                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
                 if reply != QMessageBox.Yes:
                     self._halt()
                     return
+                self.overwrite_ok = True          # don't ask again this run
+                if was_running:
+                    self.timer.start(100)         # resume auto-run
 
             self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
             if instr == 21:  # STORE wrote memory

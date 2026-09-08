@@ -92,8 +92,8 @@ Keep recursion shallow, or use `-O` and small inputs.
 Fixed-size local arrays (`int a[10] = {...};`, `a[i]` read/write with any index
 expression) are supported. With no index register, `a[i]` compiles with
 self-modifying code: compute `base + i`, patch it into a raw load/store's
-address byte, and execute it --- the same trick the `sum` and `bubblesort`
-assembly examples use. `array_sum.toyc`, `array_max.toyc` and `bubblesort.toyc`
+address byte, and execute it --- the same trick the `sum.toys` and
+`bubblesort.toys` assembly examples use. `array_sum.toyc`, `array_max.toyc` and `bubblesort.toyc`
 operate on the ten digits of pi. (Arrays are not saved across recursive calls,
 so a recursive function may not declare one --- the compiler rejects that.)
 
