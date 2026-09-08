@@ -20,7 +20,7 @@ import contextlib
 
 import pytest
 
-from toyasm import assemble, simulate
+from toyasm import assemble, simulate, execute_one
 from toycc import (compile_source, CompileError, lex, Parser,
                    build_call_graph, find_recursive)
 
@@ -56,6 +56,25 @@ def run_c(src, name="test.toyc"):
 def wrap(body):
     """Wrap statements in a minimal int main(void) { ... }."""
     return "int main(void) {\n" + body + "\n}\n"
+
+
+def run_c_read_mem(src, name="test.toyc"):
+    """Full pipeline that also returns the final memory image + symbol table,
+    so a test can read arrays (or any data byte) out of memory after the run.
+    Runs the real fetch/execute loop to STOP (simulate() hides its memory)."""
+    asm = compile_c(src, name)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
+    assert errors == [], f"assembler errors: {errors}\n--- asm ---\n{asm}"
+    mem = list(mem)
+    acc, pc, steps = 0, 0, 0
+    while steps < 1_000_000:
+        if mem[pc] == 0:   # STOP
+            break
+        pc, acc, _arg, _stopped = execute_one(mem, pc, acc)
+        steps += 1
+    else:
+        raise AssertionError("program did not halt")
+    return acc, mem, syms
 
 
 # ── Example programs (data-driven) ──────────────────────────────────────────
@@ -175,6 +194,80 @@ def test_for_loop_sum():
 def test_nested_blocks():
     body = "int x = 0; if (x == 0) { if (x != 1) { x = 9; } } return x;"
     assert run_c(wrap(body)) == 9
+
+
+# ── Fixed-size local arrays (self-modifying indexed access) ─────────────────
+
+def test_array_init_and_constant_index_sum():
+    assert run_c(wrap("int a[3]={5,1,4}; return a[0]+a[1]+a[2];")) == 10
+
+def test_array_write_constant_index():
+    assert run_c(wrap("int a[3]={1,2,3}; a[1]=9; return a[1];")) == 9
+
+def test_array_read_variable_index():
+    assert run_c(wrap("int a[4]={10,20,30,40}; int i=2; return a[i];")) == 30
+
+def test_array_write_variable_index():
+    assert run_c(wrap("int a[3]={0,0,0}; int i=1; a[i]=7; return a[i];")) == 7
+
+def test_array_partial_init_zero_fills():
+    assert run_c(wrap("int a[4]={1,2}; return a[2]+a[3];")) == 0
+
+def test_array_no_init_defaults_zero():
+    assert run_c(wrap("int a[3]; return a[0]+a[1]+a[2];")) == 0
+
+def test_array_index_by_expression():
+    assert run_c(wrap("int a[5]={0,0,0,0,9}; int i=2; return a[i+2];")) == 9
+
+def test_array_compound_index_assign():
+    assert run_c(wrap("int a[3]={1,2,3}; a[2]+=10; return a[2];")) == 13
+
+def test_array_size_must_be_constant():
+    with pytest.raises(CompileError):
+        compile_c(wrap("int n=3; int a[n]; return a[0];"))
+
+def test_array_too_many_initializers_rejected():
+    with pytest.raises(CompileError):
+        compile_c(wrap("int a[2]={1,2,3}; return a[0];"))
+
+
+BUBBLE_SORT_C = """int main(void){
+  int a[10] = {3,1,4,1,5,9,2,6,5,3};
+  int i = 0;
+  while (i < 10) {
+    int j = 0;
+    while (j < 9) {
+      if (a[j] > a[j+1]) {
+        int t = a[j];
+        a[j] = a[j+1];
+        a[j+1] = t;
+      }
+      j = j + 1;
+    }
+    i = i + 1;
+  }
+  return a[0];
+}
+"""
+
+def test_bubblesort_returns_smallest():
+    """The iterative bubble sort of the 10 pi digits returns a[0] = 1."""
+    assert run_c(BUBBLE_SORT_C) == 1
+
+def test_bubblesort_full_array():
+    """The whole array must be sorted in memory, not just a[0] in ACC."""
+    acc, mem, syms = run_c_read_mem(BUBBLE_SORT_C)
+    base = syms['arr_a']
+    arr = [mem[base + k] for k in range(10)]
+    assert arr == [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
+    assert acc == 1
+
+def test_bubblesort_fits_256_bytes():
+    asm = compile_c(BUBBLE_SORT_C)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
+    assert errors == [], f"bubble sort does not fit: {errors}"
+    size = max(a for a, *_ in listing if a is not None) + 1
+    assert size <= 256
 
 
 # ── Compiler diagnostics ────────────────────────────────────────────────────

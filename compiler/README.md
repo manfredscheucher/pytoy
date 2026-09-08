@@ -29,8 +29,9 @@ Consequences for the C you can write:
 - `*` is real multiplication, but it is compiled to a **runtime
   repeated-addition loop** (there is no multiply opcode). The product is taken
   mod 256.
-- **Arrays, pointers, and I/O are not supported.** Functions — including
-  recursive and mutually recursive ones — ARE supported (see below).
+- **Pointers and I/O are not supported.** Fixed-size local arrays ARE supported
+  (see "Arrays" below), and so are functions — including recursive and mutually
+  recursive ones (see below).
 
 ## Supported C subset
 
@@ -48,7 +49,11 @@ whatever value `return expr;` leaves in the accumulator when `main` stops.
 **Statements**
 
 - Local declarations: `int x;` and `int x = expr;`
+- Array declarations: `int a[N];` and `int a[N] = {e0, e1, ...};` (N and the
+  initializers must be constants; missing initializers default to 0)
 - Assignment: `x = expr;`
+- Indexed access: `a[i]` as an rvalue and `a[i] = expr;` (i is any expression);
+  `a[i] += expr;` and the other compound forms work too
 - Compound assignment: `+=  -=  *=  &=  |=  ^=  <<=  >>=`
 - `if (cond) { ... }` and `if (cond) { ... } else { ... }`
 - `while (cond) { ... }`
@@ -78,6 +83,36 @@ you whether `a < b`. This is correct as long as the two operands **differ by
 less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
 more than 127 apart. Treat values as unsigned and keep them modest.
+
+## Arrays (fixed-size, local)
+
+`toycc` supports fixed-size local arrays of `int` bytes — see
+`examples/bubblesort.toyc`:
+
+```c
+int a[10] = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};  // size + initializers are constant
+int a[4];                                     // uninitialized -> all zero
+x = a[i];                                     // indexed read (i any expression)
+a[i] = expr;                                  // indexed write
+```
+
+The size and the initializer values must be compile-time constants. An array is
+laid out as a contiguous block of data bytes (like `arr:` in `examples/sum.toys`)
+plus a base-pointer byte holding its address.
+
+**How indexing works with no index register.** The Toy CPU has no index
+register and no indirect load/store, so `a[i]` is compiled with **self-modifying
+code** (the `sum.toys` / `bubblesort.toys` trick): compute the element address
+`base + i`, write it into the address byte of a raw `LOAD` (or `STORE`)
+instruction, then execute that instruction. `base` is the array's address, held
+in a data byte the assembler fills in.
+
+**Limitation — arrays are not saved/restored across recursive calls.** Scalar
+locals are saved on the recursion stack around calls, but arrays are not (a whole
+block would be expensive on 256 bytes). So a *recursive* function that keeps a
+live array across a self-call would see it clobbered. Arrays in `main` and in
+iterative (non-recursive) helpers are fine — the bubble sort above lives in
+`main` and works. If you need an array preserved across recursion, hoist it out.
 
 ## Functions (non-recursive)
 
@@ -148,10 +183,9 @@ on.
 
 ## What is NOT supported
 
-- Arrays and pointers (the assembler's array examples use self-modifying code;
-  `toycc` deliberately does not generate that — arrays are hard here and left
-  out for clarity). Use separate `int` variables instead, as `sum.toyc`/`max.toyc`
-  demonstrate.
+- Pointers, multi-dimensional arrays, and arrays passed to/returned from
+  functions. Fixed-size local arrays ARE supported (see "Arrays" above), but
+  they are not saved/restored across recursive calls.
 - `void` functions are of limited use (there is no I/O or global state to
   affect), and a call used as a bare statement (`f();`) or a bare `return;` do
   not parse. Call functions in expression position: `y = f(a);`, `return f(a);`.
@@ -210,6 +244,7 @@ expected accumulator result.
 | `factorial.toyc` | 5! via a `for` loop and `*`                | 120 |
 | `gcd.toyc`       | gcd(48, 36) by subtraction, `if/else`, `>` | 12  |
 | `ifelse.toyc`    | if/else picking `b - a` for `a < b`         | 5   |
+| `bubblesort.toyc`| iterative bubble sort of 10 pi digits; returns `a[0]` | 1 |
 
 Regenerate and re-verify them all:
 

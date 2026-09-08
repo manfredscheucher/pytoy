@@ -46,7 +46,7 @@ MULTI_OPS = [
     '+=', '-=', '*=', '&=', '|=', '^=',
     '&&', '||',
 ]
-SINGLE_OPS = set('+-*&|^~<>=(){};,!')
+SINGLE_OPS = set('+-*&|^~<>=(){};,![]')
 
 
 class Token:
@@ -266,6 +266,29 @@ class Parser:
     def parse_decl(self):
         self.eat('kw', 'int')
         name = self.eat('ident').value
+        # array declaration:  int a[N];  or  int a[N] = {e0, e1, ...};
+        if self.at('op', '['):
+            self.next()
+            size_expr = self.parse_expr()
+            self.eat('op', ']')
+            size = self._const_size(size_expr)
+            init = None
+            if self.at('op', '='):
+                self.next()
+                self.eat('op', '{')
+                init = []
+                if not self.at('op', '}'):
+                    init.append(self.parse_expr())
+                    while self.at('op', ','):
+                        self.next()
+                        init.append(self.parse_expr())
+                self.eat('op', '}')
+                if len(init) > size:
+                    raise CompileError(
+                        f"array {name!r} has {len(init)} initializers "
+                        f"but size {size}")
+            self.eat('op', ';')
+            return ('arraydecl', name, size, init)
         init = None
         if self.at('op', '='):
             self.next()
@@ -273,12 +296,36 @@ class Parser:
         self.eat('op', ';')
         return ('decl', name, init)
 
+    def _const_size(self, expr):
+        """Array size must be a compile-time constant."""
+        if expr[0] == 'num':
+            if expr[1] == 0:
+                raise CompileError("array size must be non-zero")
+            return expr[1]
+        raise CompileError("array size must be a constant")
+
     def parse_assign_stmt(self):
         name = self.eat('ident').value
-        op = self.eat('op').value
         compound = {'+=': '+', '-=': '-', '*=': '*',
                     '&=': '&', '|=': '|', '^=': '^',
                     '<<=': '<<', '>>=': '>>'}
+        # indexed assignment:  a[idx] = expr;  (or a compound-assign form)
+        if self.at('op', '['):
+            self.next()
+            idx = self.parse_expr()
+            self.eat('op', ']')
+            op = self.eat('op').value
+            if op == '=':
+                expr = self.parse_expr()
+            elif op in compound:
+                rhs = self.parse_expr()
+                expr = ('binop', compound[op], ('index', name, idx), rhs)
+            else:
+                raise CompileError(
+                    f"expected assignment operator, got {op!r}")
+            self.eat('op', ';')
+            return ('idxassign', name, idx, expr)
+        op = self.eat('op').value
         if op == '=':
             expr = self.parse_expr()
         elif op in compound:
@@ -354,10 +401,23 @@ class Parser:
 
     def parse_assign_no_semi(self):
         name = self.eat('ident').value
-        op = self.eat('op').value
         compound = {'+=': '+', '-=': '-', '*=': '*',
                     '&=': '&', '|=': '|', '^=': '^',
                     '<<=': '<<', '>>=': '>>'}
+        if self.at('op', '['):
+            self.next()
+            idx = self.parse_expr()
+            self.eat('op', ']')
+            op = self.eat('op').value
+            if op == '=':
+                expr = self.parse_expr()
+            elif op in compound:
+                rhs = self.parse_expr()
+                expr = ('binop', compound[op], ('index', name, idx), rhs)
+            else:
+                raise CompileError(f"expected assignment operator, got {op!r}")
+            return ('idxassign', name, idx, expr)
+        op = self.eat('op').value
         if op == '=':
             expr = self.parse_expr()
         elif op in compound:
@@ -434,6 +494,11 @@ class Parser:
                 args = self.parse_args()
                 self.eat('op', ')')
                 return ('call', t.value, args)
+            if self.at('op', '['):      # an indexed read: NAME[expr]
+                self.next()
+                idx = self.parse_expr()
+                self.eat('op', ']')
+                return ('index', t.value, idx)
             return ('var', t.value)
         if t.kind == 'op' and t.value == '(':
             self.next()
@@ -469,6 +534,13 @@ class CodeGen:
         self.label_n = 0
         self.temp_n = 0
         self.declared_order = []  # variable labels in declaration order
+        # Arrays: name -> (data_label, base_label, size). Laid out as a
+        # contiguous block of data bytes after the scalar variables. `base_label`
+        # is a data byte initialised to the array's address (like `arrptr: arr`
+        # in bubblesort.toys), so codegen can load the base as a runtime value
+        # and add the index for self-modifying element access.
+        self.arrays = {}
+        self.array_data = []      # (data_label, [init bytes], base_label) in order
         # Extra data bytes for the global-slots call scheme (param/return/marker
         # slots). Kept separate from user variables so `declare()` stays a plain
         # "did the user declare this twice?" check. Each entry is (label, init).
@@ -497,6 +569,25 @@ class CodeGen:
         self.vars[name] = label
         self.declared_order.append(label)
         return label
+
+    def declare_array(self, name, size, init_bytes):
+        """Register a fixed-size array. `init_bytes` is a list of already-
+        evaluated constant bytes (or None). Reserves `size` contiguous data
+        bytes plus one base-pointer byte holding the array's address."""
+        if name in self.arrays or name in self.vars:
+            raise CompileError(f"variable {name!r} declared twice")
+        data_label = f"arr_{name}"
+        base_label = f"arrbase_{name}"
+        vals = list(init_bytes) if init_bytes else []
+        vals += [0] * (size - len(vals))
+        self.arrays[name] = (data_label, base_label, size)
+        self.array_data.append((data_label, vals, base_label))
+        return data_label
+
+    def array_info(self, name):
+        if name not in self.arrays:
+            raise CompileError(f"use of undeclared array {name!r}")
+        return self.arrays[name]
 
     def add_global_slot(self, label, init=0):
         """Register a fixed data byte for the global-slots call scheme (param,
@@ -561,7 +652,39 @@ class CodeGen:
         if kind == 'binop':
             self.gen_binop(e)
             return
+        if kind == 'index':
+            self.gen_index_read(e)
+            return
         raise CompileError(f"cannot generate expression {e!r}")
+
+    def _gen_element_addr(self, base_label, idx_expr):
+        """Leave (base_label + idx) in ACC — the address of element idx.
+        `base_label` is a data byte holding the array's base address."""
+        # Fast path: constant index folds into a single add against the base.
+        if idx_expr[0] == 'num':
+            self.emit(f"        load  {base_label}")
+            if idx_expr[1] & 0xFF:
+                self.emit(f"        add   {self.const_label(idx_expr[1])}")
+            return
+        # General: evaluate the index into ACC, spill it, then add the base.
+        # (add is commutative, so base + idx == idx + base.)
+        self.gen_expr(idx_expr)
+        t = self.new_temp()
+        self.emit(f"        store {t}")
+        self.emit(f"        load  {base_label}")
+        self.emit(f"        add   {t}")
+
+    def gen_index_read(self, e):
+        # a[idx] : compute element address, patch a raw LOAD's address byte,
+        # then execute that LOAD to bring a[idx] into ACC (self-modifying code,
+        # exactly the sum.toys / bubblesort.toys trick).
+        _, name, idx = e
+        _data, base, _size = self.array_info(name)
+        addr = self.new_label("iload_arg")
+        self._gen_element_addr(base, idx)
+        self.emit(f"        store {addr}       # patch LOAD address to &{name}[idx]")
+        self.emit(f"        20               # LOAD opcode (raw)")
+        self.emit(f"{addr}: 0                # <- acc := {name}[idx]")
 
     def gen_unop(self, e):
         _, op, operand = e
@@ -813,6 +936,25 @@ class CodeGen:
             self.gen_expr(expr)
             self.emit(f"        store {self.var_label(name)}")
             return
+        if kind == 'arraydecl':
+            _, name, size, init = s
+            # Array initializers must be compile-time constants (like the size):
+            # they become the array's initial data bytes. Runtime-computed
+            # element initializers are not supported.
+            self.comment(f"int {name}[{size}]" + (" = {...}" if init else ""))
+            init_bytes = None
+            if init is not None:
+                init_bytes = []
+                for x in init:
+                    if x[0] != 'num':
+                        raise CompileError(
+                            f"array {name!r} initializers must be constants")
+                    init_bytes.append(x[1] & 0xFF)
+            self.declare_array(name, size, init_bytes)
+            return
+        if kind == 'idxassign':
+            self.gen_index_write(s)
+            return
         if kind == 'return':
             _, expr = s
             self.comment("return")
@@ -856,6 +998,23 @@ class CodeGen:
             self.gen_pop(self.var_label(s[1]))
             return
         raise CompileError(f"cannot generate statement {s!r}")
+
+    def gen_index_write(self, s):
+        # a[idx] = expr : evaluate expr into a temp, compute the element address
+        # and patch a raw STORE's address byte, then load the value and run the
+        # STORE (self-modifying code, mirroring gen_index_read).
+        _, name, idx, expr = s
+        _data, base, _size = self.array_info(name)
+        self.comment(f"{name}[idx] = ...")
+        val = self.new_temp()
+        self.gen_expr(expr)
+        self.emit(f"        store {val}")
+        addr = self.new_label("istore_arg")
+        self._gen_element_addr(base, idx)
+        self.emit(f"        store {addr}       # patch STORE address to &{name}[idx]")
+        self.emit(f"        load  {val}")
+        self.emit(f"        21               # STORE opcode (raw)")
+        self.emit(f"{addr}: 0                # <- {name}[idx] := acc")
 
     def gen_if(self, s):
         _, cond, then_body, else_body = s
@@ -1015,6 +1174,14 @@ class CodeGen:
         # constants
         for value, label in sorted(self.consts.items()):
             lines.append(f"{label}: {value}")
+        # arrays: one base-pointer byte (address constant) then the contiguous
+        # element block. Emitting the base right before its data keeps the two
+        # together and readable; the assembler resolves `arr_x` to its address.
+        for data_label, vals, base_label in self.array_data:
+            lines.append(f"{base_label}: {data_label}   # address of {data_label}[0]")
+            lines.append(f"{data_label}: {vals[0]}")
+            for v in vals[1:]:
+                lines.append(f"        {v}")
         return "\n".join(lines) + "\n"
 
 
@@ -1172,7 +1339,7 @@ class CallLifter:
         def walk(n):
             if not isinstance(n, tuple):
                 return
-            if n[0] == 'decl':
+            if n[0] in ('decl', 'arraydecl'):
                 names.add(n[1])
             for child in n[1:]:
                 if isinstance(child, tuple):
@@ -1198,6 +1365,18 @@ class CallLifter:
         if tag == 'assign':
             _, nm, expr = node
             return ('assign', rename.get(nm, nm), self._rename(expr, rename))
+        if tag == 'arraydecl':
+            _, nm, size, init = node
+            init2 = (None if init is None
+                     else [self._rename(x, rename) for x in init])
+            return ('arraydecl', rename.get(nm, nm), size, init2)
+        if tag == 'index':
+            _, nm, idx = node
+            return ('index', rename.get(nm, nm), self._rename(idx, rename))
+        if tag == 'idxassign':
+            _, nm, idx, expr = node
+            return ('idxassign', rename.get(nm, nm),
+                    self._rename(idx, rename), self._rename(expr, rename))
         parts = [tag]
         for child in node[1:]:
             if isinstance(child, tuple):
@@ -1226,9 +1405,23 @@ class CallLifter:
             out.append(('decl', name, init2))
             return
 
+        if kind == 'arraydecl':
+            _, name, size, init = s
+            init2 = (None if init is None
+                     else [self.lift_calls(x, out) for x in init])
+            out.append(('arraydecl', name, size, init2))
+            return
+
         if kind == 'assign':
             _, name, expr = s
             out.append(('assign', name, self.lift_calls(expr, out)))
+            return
+
+        if kind == 'idxassign':
+            _, name, idx, expr = s
+            idx2 = self.lift_calls(idx, out)
+            expr2 = self.lift_calls(expr, out)
+            out.append(('idxassign', name, idx2, expr2))
             return
 
         if kind == 'return':
@@ -1355,6 +1548,11 @@ class CallLifter:
         if e[0] == 'var':
             acc.add(e[1])
             return
+        if e[0] == 'index':
+            # a[idx]: the array itself is not a saveable scalar slot, but the
+            # index expression's variables are used.
+            self._expr_uses(e[2], acc)
+            return
         for c in e[1:]:
             if isinstance(c, tuple):
                 self._expr_uses(c, acc)
@@ -1394,6 +1592,23 @@ class CallLifter:
         if kind == 'assign':
             _, name, expr = s
             live.discard(name)
+            self._expr_uses(expr, live)
+            return s, live
+
+        if kind == 'arraydecl':
+            # The array is not a saveable scalar slot; only its constant/expr
+            # initializers use variables.
+            _, _name, _size, init = s
+            if init:
+                for x in init:
+                    self._expr_uses(x, live)
+            return s, live
+
+        if kind == 'idxassign':
+            # a[idx] = expr : both idx and expr are USES (the array byte written
+            # is not a tracked scalar slot, so nothing is killed here).
+            _, _name, idx, expr = s
+            self._expr_uses(idx, live)
             self._expr_uses(expr, live)
             return s, live
 
@@ -1516,6 +1731,9 @@ class CallLifter:
             l2 = self.lift_calls(l, out)
             r2 = self.lift_calls(r, out)
             return ('binop', op, l2, r2)
+        if kind == 'index':
+            _, name, idx = e
+            return ('index', name, self.lift_calls(idx, out))
         if kind == 'call':
             return self.lift_call(e, out)
         raise CompileError(f"cannot compile expression {e!r}")
