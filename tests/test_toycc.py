@@ -384,3 +384,14 @@ def test_optimize_flag_keeps_recursive_results():
     src = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
            " int main(void){ return fib(6); }")
     assert run_asm(compile_source(src, "t", optimize=True)) == 8
+
+def test_deep_recursion_fits_with_optimize():
+    """A program that overflows the stack without -O (data ends too high,
+    little stack room) fits and is correct WITH -O, because -O drops the
+    unnecessary save/restore in the non-recursive caller (main), leaving more
+    room. This documents the 256-byte stack limit and the -O workaround.
+    Without -O this same program silently overflows — see the compiler README's
+    'recursion depth' note; the CLI warns about low stack space."""
+    src = ("int f(int n){ if(n==0) return 0; return f(n-1)+1; }"
+           " int main(void){ return f(2)+f(3)+f(4); }")   # = 9
+    assert run_asm(compile_source(src, "t", optimize=True)) == 9

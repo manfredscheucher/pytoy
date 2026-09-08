@@ -1617,10 +1617,25 @@ def main():
     # the assembler as the single source of truth for sizing. Report the same
     # kind of clean error the assembler would, instead of writing a .toys that
     # only fails later.
-    _, _, _, _, errors, _ = assemble(asm)
+    _, listing, _, _, errors, _ = assemble(asm)
     size_errors = [e for e in errors if "too big" in e]
     if size_errors:
         sys.exit(f"compile error: {size_errors[0]}")
+
+    # The recursion stack grows DOWN from address 255 into the free space above
+    # the program. There is no hardware bounds check: if recursion goes deeper
+    # than the free space allows, the stack silently overwrites data and the
+    # program computes wrong answers. Warn when a recursive program leaves
+    # little stack room, so the failure is visible rather than silent.
+    funcs = Parser(lex(src)).parse_program()[1]
+    if find_recursive(build_call_graph(funcs)):
+        top = max((a for a, *_ in listing if a is not None), default=0)
+        free = 255 - top
+        if free < 32:
+            print(f"WARNING: only {free} bytes of stack space (data ends at "
+                  f"{top}, stack grows down from 255). Deep recursion will "
+                  f"overflow into data and give wrong results — reduce the "
+                  f"input, or pass -O to shrink the code.", file=sys.stderr)
 
     out_path = args.output
     if out_path is None:

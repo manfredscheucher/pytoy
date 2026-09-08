@@ -29,7 +29,8 @@ Consequences for the C you can write:
 - `*` is real multiplication, but it is compiled to a **runtime
   repeated-addition loop** (there is no multiply opcode). The product is taken
   mod 256.
-- **Arrays, pointers, functions other than `main`, and I/O are not supported.**
+- **Arrays, pointers, and I/O are not supported.** Functions — including
+  recursive and mutually recursive ones — ARE supported (see below).
 
 ## Supported C subset
 
@@ -89,14 +90,13 @@ int sum_of_squares(int a, int b) { return square(a) + square(b); }
 int main(void) { return sum_of_squares(3, 4); }   // 9 + 16 = 25
 ```
 
-There is exactly one `main` (the entry point). Recursion is **not supported
-yet** and is rejected with a clear error (see the memory model below for why).
+There is exactly one `main` (the entry point). **Recursion — self and mutual —
+is supported** (see `examples/fibonacci_rec.toyc`).
 
 ### How calls work with no call/return instruction
 
 The Toy CPU has no call/return, no stack pointer, and no indirect jump, so
-`toycc` compiles a non-recursive function with **global slots + marker
-dispatch**:
+`toycc` compiles each function with **global slots + marker dispatch**:
 
 - Each function `f` gets fixed data bytes: one per parameter (`f__p_<name>`), a
   return-value slot (`f__ret`), and a return-marker slot (`f__mark`).
@@ -110,24 +110,41 @@ dispatch**:
 Arguments are fully evaluated into temporaries before any parameter slot is
 written, so a nested call to the same function (`f(1, f(2,3))`) works.
 
-## Memory model: no stack, all variables are static
+### Recursion: a save/restore stack
 
-`toycc` has **no stack and no heap**. Every variable and every function slot is
-allocated once as a fixed data byte, placed after the code. There are no
-activation frames — a function has exactly one set of parameter/return slots,
-shared by every call.
+Because a function has only one set of slots, a recursive call would clobber its
+caller's values. So around **every** call, `toycc` saves the caller's live
+values (the ones needed after the call) onto a real stack and restores them
+afterward — giving each activation its own copies. The stack is one `sp` byte
+plus self-modifying indirect load/store (the same trick as `sum.toys`), growing
+*down* from address 255. This is the same mechanism the hand-written
+`examples/fibonacci_rec.toys` uses, generated automatically.
 
-This is why **recursion is not supported**: a recursive call would need its own
-copy of the callee's slots, and there's only one set — the second activation
-would clobber the first. Rather than miscompile silently, the compiler rejects
-recursive (and mutually recursive) functions with a clear error. A real stack
-*is* possible on this machine (see `examples/fibonacci_rec.toys`, which builds
-one by hand with self-modifying code); teaching `toycc` to emit it is future
-work.
+### The `-O` flag
 
-A useful side effect of the code-then-data layout: the code/data boundary is
-fixed and well-defined, which is what `--detect-code-overwrite` (see the main
-README) relies on.
+Save/restore around a call is only *needed* when the caller can be re-entered,
+i.e. when the caller is recursive. `-O` / `--optimize-save-restore` (default
+off) builds the call graph and *skips* save/restore at call sites whose caller
+is non-recursive. Same results, smaller code. Default off keeps the compiler
+uniform; `-O` makes it lean.
+
+### Recursion depth limit
+
+The stack grows down from 255 into whatever space is left above the program.
+There is **no hardware bounds check**: if recursion goes deeper than the free
+space, the stack overwrites data and the program gives wrong answers. On a
+256-byte machine this space is small, so deep recursion is genuinely limited.
+When little stack room remains, the compiler prints a warning; `-O` (smaller
+code) and smaller inputs both buy depth. This is a real limit of the machine,
+not a bug — the same "code and data share 256 bytes" reality as everywhere else.
+
+## Memory model
+
+Every variable and every function slot is a fixed data byte placed after the
+code; the recursion stack occupies the top of memory and grows down toward the
+data. A useful side effect of the code-then-data layout: the code/data boundary
+is fixed, which is what `--detect-code-overwrite` (see the main README) relies
+on.
 
 ## What is NOT supported
 
@@ -135,7 +152,6 @@ README) relies on.
   `toycc` deliberately does not generate that — arrays are hard here and left
   out for clarity). Use separate `int` variables instead, as `sum.toyc`/`max.toyc`
   demonstrate.
-- Recursion (self or mutual) — rejected with a clear error; see above.
 - `void` functions are of limited use (there is no I/O or global state to
   affect), and a call used as a bare statement (`f();`) or a bare `return;` do
   not parse. Call functions in expression position: `y = f(a);`, `return f(a);`.
