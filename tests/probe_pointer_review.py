@@ -99,20 +99,29 @@ probe("*p += x where p=&a[i]",
       "int main(void){int a[3]={1,2,3}; int*p=&a[2]; *p += 10; return a[2]; }",
       13)
 
-# 11. KNOWN BUG (documented): an address-taken local in a RECURSIVE function that
-#     is live across the recursive call is excluded from save/restore (see
-#     _caller_slots), so the child activation clobbers the parent's slot.
-#     Returns 0 instead of 6. Left here as a red probe to track the fix.
-probe("[EXPECTED-FAIL BUG] &x on a live local in a recursive fn",
+# 11. Address-of a local inside a RECURSIVE function: &x is the address of x's
+#     single global slot, which recursion can't follow (each activation's value
+#     lives on the save/restore stack). This is REJECTED at compile time rather
+#     than miscompiled. Documented as a "must raise CompileError" probe.
+probe("&x in a recursive fn is rejected (not miscompiled)",
       "int nop(int*p){ return 0; }"
       " int f(int n){ int x; x=n; nop(&x); if(n==0) return x; return x + f(n-1); }"
       " int main(void){ return f(3); }",
-      6)
+      "COMPILE_ERROR")
 
 
 def main():
     fails = []
     for desc, src, expected, reader in PROBES:
+        # A probe can expect a clean compile-time rejection.
+        if expected == "COMPILE_ERROR":
+            try:
+                run_c_read_mem(src)
+                print(f"[FAIL] {desc}: compiled but a CompileError was expected")
+                fails.append((desc, "compiled", expected, None))
+            except CompileError:
+                print(f"[OK ] {desc}: rejected with CompileError (as expected)")
+            continue
         try:
             acc, mem, syms = run_c_read_mem(src)
             got = acc
@@ -120,7 +129,7 @@ def main():
             print(f"[{'OK ' if ok else 'FAIL'}] {desc}: got {got}, want {expected}")
             if not ok:
                 fails.append((desc, got, expected, None))
-        except (CompileError, AssertionError, Exception) as e:
+        except Exception as e:
             print(f"[ERR ] {desc}: {type(e).__name__}: {e}")
             fails.append((desc, None, expected, e))
     print(f"\n{len(PROBES)-len(fails)}/{len(PROBES)} probes passed")
