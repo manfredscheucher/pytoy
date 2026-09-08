@@ -281,6 +281,105 @@ def test_bubblesort_fits_256_bytes():
     assert size <= 256
 
 
+# ── Pointers (&x, *p, int*) and array-decays-to-pointer parameters ──────────
+
+def test_pointer_write_changes_target():
+    """*p = v through a pointer to x changes x itself."""
+    assert run_c("int main(void){ int x=5; int *p; p=&x; *p=9; return x; }") == 9
+
+def test_pointer_read_through_deref():
+    assert run_c("int main(void){ int x=7; int *p=&x; return *p; }") == 7
+
+def test_pointer_decl_with_init_addressof():
+    """int *p = &x; then *p reads x."""
+    assert run_c("int main(void){ int x=42; int *p=&x; return *p; }") == 42
+
+def test_pointer_swap():
+    """Swap two locals via pointers to them."""
+    src = ("int main(void){ int a=3; int b=8; int *pa=&a; int *pb=&b;"
+           " int t=*pa; *pa=*pb; *pb=t; return a; }")
+    assert run_c(src) == 8
+
+def test_pointer_deref_compound_assign():
+    """*p += v accumulates through the pointer."""
+    assert run_c("int main(void){ int x=4; int *p=&x; *p += 6; return x; }") == 10
+
+def test_addressof_array_element():
+    """&a[i] yields an element address; *(&a[i]) reads that element."""
+    assert run_c(wrap("int a[3]={7,8,9}; int *p=&a[1]; return *p;")) == 8
+
+def test_array_decays_to_pointer_param_read():
+    """int f(int a[], int n) reads main's array through the passed base addr."""
+    src = ("int suma(int a[], int n){ int s=0; int i=0;"
+           " while(i<n){ s=s+a[i]; i=i+1; } return s; }"
+           " int main(void){ int v[3]={4,5,6}; return suma(v, 3); }")
+    assert run_c(src) == 15
+
+def test_pointer_param_mutates_caller_local():
+    """Passing &x to a function that writes *p must change main's x — the value
+    must survive the call's save/restore (address-taken locals aren't saved)."""
+    src = ("int inc(int *p){ *p = *p + 1; return 0; }"
+           " int main(void){ int x=5; inc(&x); inc(&x); return x; }")
+    assert run_c(src) == 7
+
+def test_addressof_local_in_recursive_function_rejected():
+    """A pointer to a local is a pointer to that local's single global slot,
+    which the recursion save/restore stack can't follow — reject it instead of
+    silently miscompiling (mirrors the recursive-local-array rejection)."""
+    src = ("int nop(int *p){ return 0; }"
+           " int f(int n){ int x; x=n; nop(&x);"
+           " if(n==0) return x; return x + f(n-1); }"
+           " int main(void){ return f(3); }")
+    with pytest.raises(CompileError, match="recursive.*address"):
+        compile_c(src)
+
+def test_array_decays_to_pointer_param_write():
+    """A function writing a[i] on an array parameter mutates main's array."""
+    src = ("int fill(int a[], int n){ int i=0;"
+           " while(i<n){ a[i]=i+1; i=i+1; } return 0; }"
+           " int main(void){ int v[3]={0,0,0}; fill(v,3); return v[0]+v[1]+v[2]; }")
+    assert run_c(src) == 6
+
+
+# ── Bubble sort as a function taking the array by pointer ────────────────────
+
+BUBBLE_SORT_FN_C = """
+int bubblesort(int a[], int n){
+  int i; int j; int t;
+  i=0;
+  while(i<n){
+    j=0;
+    while(j<n-1-i){
+      if(a[j]>a[j+1]){ t=a[j]; a[j]=a[j+1]; a[j+1]=t; }
+      j=j+1;
+    }
+    i=i+1;
+  }
+  return 0;
+}
+int main(void){ int a[10]={3,1,4,1,5,9,2,6,5,3}; bubblesort(a, 10); return a[0]; }
+"""
+
+def test_bubblesort_fn_returns_smallest():
+    assert run_c(BUBBLE_SORT_FN_C) == 1
+
+def test_bubblesort_fn_sorts_mains_array_in_place():
+    """The function sorts main's array through the decayed pointer; read the
+    sorted result straight out of memory."""
+    acc, mem, syms = run_c_read_mem(BUBBLE_SORT_FN_C)
+    base = syms['arr_a']
+    arr = [mem[base + k] for k in range(10)]
+    assert arr == [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
+    assert acc == 1
+
+def test_bubblesort_fn_fits_256_bytes():
+    asm = compile_c(BUBBLE_SORT_FN_C)
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
+    assert errors == [], f"bubble sort fn does not fit: {errors}"
+    size = max(a for a, *_ in listing if a is not None) + 1
+    assert size <= 256
+
+
 # ── Compiler diagnostics ────────────────────────────────────────────────────
 
 def test_line_comment_before_main_is_ignored():

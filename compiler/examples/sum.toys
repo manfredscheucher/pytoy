@@ -24,29 +24,17 @@
         load  c_2
         store v_g
         # return
-        load  v_g
-        store t1
-        load  v_f
-        store t2
-        load  v_e
-        store t3
-        load  v_d
-        store t4
-        load  v_c
-        store t5
-        load  v_b
-        store t6
         load  v_a
-        add   t6
-        add   t5
-        add   t4
-        add   t3
-        add   t2
-        add   t1
+        add   v_b
+        add   v_c
+        add   v_d
+        add   v_e
+        add   v_f
+        add   v_g
         stop
         stop            # fallthrough halt
 
-# ── data ──
+# data
 v_a: 0
 v_b: 0
 v_c: 0
@@ -54,12 +42,7 @@ v_d: 0
 v_e: 0
 v_f: 0
 v_g: 0
-t1: 0
-t2: 0
-t3: 0
-t4: 0
-t5: 0
-t6: 0
+sp: 255
 c_1: 1
 c_2: 2
 c_3: 3

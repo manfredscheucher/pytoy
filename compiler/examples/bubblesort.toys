@@ -3,133 +3,104 @@
 # The return value ends up in ACC when the program stops.
 
         # int a[10] = {...}
-        # int i = ...
+        # int i
+        # int j
+        # int t
+        # i = ...
         load  c_0
         store v_i
         # while
 L1_while_top: nop
-        load  c_1
-        ifzero L2_while_end
-        # if
         load  v_i
         sub   c_10
         and   c_128
-        ifzero L4_cmp_neg
-        load  c_1
-        goto  L5_cmp_end
-L4_cmp_neg: load  c_0
-L5_cmp_end: nop
-        ifzero L6_not_zero
-        load  c_0
-        goto  L7_not_end
-L6_not_zero: load  c_1
-L7_not_end: nop
-        ifzero L3_if_end
-        goto  while_end__u1
-L3_if_end: nop
-        # int j = ...
+        ifzero L2_while_end
+        # j = ...
         load  c_0
         store v_j
         # while
-L8_while_top: nop
-        load  c_1
-        ifzero L9_while_end
-        # if
+L3_while_top: nop
         load  v_j
         sub   c_9
         and   c_128
-        ifzero L11_cmp_neg
-        load  c_1
-        goto  L12_cmp_end
-L11_cmp_neg: load  c_0
-L12_cmp_end: nop
-        ifzero L13_not_zero
-        load  c_0
-        goto  L14_not_end
-L13_not_zero: load  c_1
-L14_not_end: nop
-        ifzero L10_if_end
-        goto  while_end__u2
-L10_if_end: nop
+        ifzero L4_while_end
         # if
         load  v_j
         store t1
         load  arrbase_a
         add   t1
-        store L16_iload_arg       # patch LOAD address to &a[idx]
+        store L6_iload_arg       # patch LOAD address to &a[idx]
         20               # LOAD opcode (raw)
-L16_iload_arg: 0                # <- acc := a[idx]
+L6_iload_arg: 0                # <- acc := a[idx]
         store t2
         load  v_j
         add   c_1
-        store t3
+        store t1
         load  arrbase_a
-        add   t3
-        store L17_iload_arg       # patch LOAD address to &a[idx]
+        add   t1
+        store L7_iload_arg       # patch LOAD address to &a[idx]
         20               # LOAD opcode (raw)
-L17_iload_arg: 0                # <- acc := a[idx]
+L7_iload_arg: 0                # <- acc := a[idx]
         sub   t2
         and   c_128
-        ifzero L15_if_end
-        # int t = ...
+        ifzero L5_if_end
+        # t = ...
         load  v_j
-        store t4
+        store t1
         load  arrbase_a
-        add   t4
-        store L18_iload_arg       # patch LOAD address to &a[idx]
+        add   t1
+        store L8_iload_arg       # patch LOAD address to &a[idx]
         20               # LOAD opcode (raw)
-L18_iload_arg: 0                # <- acc := a[idx]
+L8_iload_arg: 0                # <- acc := a[idx]
         store v_t
         # a[idx] = ...
         load  v_j
         add   c_1
-        store t6
+        store t1
         load  arrbase_a
-        add   t6
-        store L19_iload_arg       # patch LOAD address to &a[idx]
+        add   t1
+        store L9_iload_arg       # patch LOAD address to &a[idx]
         20               # LOAD opcode (raw)
-L19_iload_arg: 0                # <- acc := a[idx]
-        store t5
+L9_iload_arg: 0                # <- acc := a[idx]
+        store t3
         load  v_j
-        store t7
+        store t1
         load  arrbase_a
-        add   t7
-        store L20_istore_arg       # patch STORE address to &a[idx]
-        load  t5
+        add   t1
+        store L10_istore_arg       # patch STORE address to &a[idx]
+        load  t3
         21               # STORE opcode (raw)
-L20_istore_arg: 0                # <- a[idx] := acc
+L10_istore_arg: 0                # <- a[idx] := acc
         # a[idx] = ...
         load  v_t
-        store t8
+        store t4
         load  v_j
         add   c_1
-        store t9
+        store t1
         load  arrbase_a
-        add   t9
-        store L21_istore_arg       # patch STORE address to &a[idx]
-        load  t8
+        add   t1
+        store L11_istore_arg       # patch STORE address to &a[idx]
+        load  t4
         21               # STORE opcode (raw)
-L21_istore_arg: 0                # <- a[idx] := acc
-L15_if_end: nop
+L11_istore_arg: 0                # <- a[idx] := acc
+L5_if_end: nop
         # j = ...
         load  v_j
         add   c_1
         store v_j
-        goto  L8_while_top
-L9_while_end: nop
-while_end__u2: nop
+        goto  L3_while_top
+L4_while_end: nop
         # i = ...
         load  v_i
         add   c_1
         store v_i
         goto  L1_while_top
 L2_while_end: nop
-while_end__u1: nop
         # return
         load  arrbase_a
-        store L22_iload_arg       # patch LOAD address to &a[idx]
+        store L12_iload_arg       # patch LOAD address to &a[idx]
         20               # LOAD opcode (raw)
-L22_iload_arg: 0                # <- acc := a[idx]
+L12_iload_arg: 0                # <- acc := a[idx]
         stop
         stop            # fallthrough halt
 
@@ -142,11 +113,6 @@ t1: 0
 t2: 0
 t3: 0
 t4: 0
-t5: 0
-t6: 0
-t7: 0
-t8: 0
-t9: 0
 c_0: 0
 c_1: 1
 c_9: 9

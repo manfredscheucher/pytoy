@@ -10,22 +10,16 @@
         store v_total
         # while
 L1_while_top: nop
-        load  c_0
-        store t1
         load  v_i
-        sub   t1
+        sub   c_0
         ifzero L2_while_end
         # total = ...
-        load  v_i
-        store t2
         load  v_total
-        add   t2
+        add   v_i
         store v_total
         # i = ...
-        load  c_1
-        store t3
         load  v_i
-        sub   t3
+        sub   c_1
         store v_i
         goto  L1_while_top
 L2_while_end: nop
@@ -34,12 +28,10 @@ L2_while_end: nop
         stop
         stop            # fallthrough halt
 
-# ── data ──
+# data
 v_i: 0
 v_total: 0
-t1: 0
-t2: 0
-t3: 0
+sp: 255
 c_0: 0
 c_1: 1
 c_5: 5

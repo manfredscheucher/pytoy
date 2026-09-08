@@ -29,9 +29,10 @@ L2_mul_end: load  t3
         stop
         stop            # fallthrough halt
 
-# ── data ──
+# data
 v_a: 0
 v_b: 0
+sp: 255
 t1: 0
 t2: 0
 t3: 0

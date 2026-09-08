@@ -29,9 +29,10 @@ Consequences for the C you can write:
 - `*` is real multiplication, but it is compiled to a **runtime
   repeated-addition loop** (there is no multiply opcode). The product is taken
   mod 256.
-- **Pointers and I/O are not supported.** Fixed-size local arrays ARE supported
-  (see "Arrays" below), and so are functions — including recursive and mutually
-  recursive ones (see below).
+- **I/O is not supported.** Fixed-size local arrays ARE supported (see "Arrays"
+  below), as are one-byte **pointers** (`int *p`, `&x`, `*p` — see "Pointers"),
+  and functions — including recursive and mutually recursive ones (see below).
+  An array can be passed to a function, where it decays to a pointer.
 
 ## Supported C subset
 
@@ -54,6 +55,9 @@ whatever value `return expr;` leaves in the accumulator when `main` stops.
 - Assignment: `x = expr;`
 - Indexed access: `a[i]` as an rvalue and `a[i] = expr;` (i is any expression);
   `a[i] += expr;` and the other compound forms work too
+- Pointers: `int *p;`, `int *p = &x;`, `&x`, `&a[i]`, `*p` (read), `*p = expr;`
+  (write, incl. compound forms) — see "Pointers" below
+- Bare call statement: `f(a);` (the return value is discarded)
 - Compound assignment: `+=  -=  *=  &=  |=  ^=  <<=  >>=`
 - `if (cond) { ... }` and `if (cond) { ... } else { ... }`
 - `while (cond) { ... }`
@@ -113,6 +117,48 @@ block would be expensive on 256 bytes). So a *recursive* function that keeps a
 live array across a self-call would see it clobbered. Arrays in `main` and in
 iterative (non-recursive) helpers are fine — the bubble sort above lives in
 `main` and works. If you need an array preserved across recursion, hoist it out.
+
+## Pointers (one-byte addresses)
+
+An address on the Toy CPU is just a byte (0–255), so a pointer is an ordinary
+one-byte variable that happens to hold an address:
+
+```c
+int x = 5;
+int *p;          // pointer declaration (a one-byte scalar)
+p = &x;          // &x  -> address of x
+*p = 9;          // write through the pointer: x becomes 9
+int y = *p;      // read through the pointer
+int *q = &a[i];  // &a[i]  -> address of an array element
+```
+
+`&x` compiles to a data byte initialised to `x`'s address (the assembler fills
+in the label), exactly like an array's base-pointer byte. `*p` (read) and
+`*p = expr` (write) use the **self-modifying-code trick**: the address in `p` is
+patched into the address byte of a raw `LOAD`/`STORE`, which is then executed —
+the same mechanism as array indexing.
+
+**Arrays decay to pointers as parameters.** A function can take an array:
+
+```c
+int suma(int a[], int n) { int s = 0; for (int i = 0; i < n; i += 1) s += a[i]; return s; }
+int main(void) { int v[3] = {4, 5, 6}; return suma(v, 3); }   // 15
+```
+
+The caller passes the array's base address; inside the function `a` is a pointer
+and `a[i]` means `*(a + i)` — indirect access through the passed address. So a
+function can sort or fill the caller's array **in place** (see
+`examples/bubblesort_fn.toyc`). This unifies indexing: `a[i]` computes
+`(value of a) + i` whether `a` is a real local array (its name evaluates to its
+base address) or a pointer/parameter (its byte holds the address).
+
+**Limitation — no `&local` inside a recursive function.** `&x` is the address of
+`x`'s single global slot, but a recursive function keeps each activation's value
+on the save/restore stack, so a pointer can't follow it. Taking a local's address
+(`&x` or `&a[i]`) inside a recursive function is therefore a **compile error**
+(same spirit as the recursive-local-array rejection). In non-recursive code it
+works fully: a callee that writes `*p` really changes the caller's `x`, because an
+address-taken local is not save/restored (its value lives in its memory slot).
 
 ## Functions (non-recursive)
 
@@ -190,13 +236,16 @@ on.
 
 ## What is NOT supported
 
-- Pointers, multi-dimensional arrays, and arrays passed to/returned from
-  functions. Fixed-size local arrays ARE supported (see "Arrays" above), but
-  they are not saved/restored across recursive calls.
+- Multi-dimensional arrays, pointer arithmetic beyond `p + i` / `&a[i]`,
+  pointers-to-pointers, and returning arrays/pointers from functions.
+  One-byte pointers (`int *p`, `&x`, `*p`) and array-decays-to-pointer
+  parameters ARE supported (see "Pointers" above); local arrays are not
+  saved/restored across recursive calls.
 - `void` functions are of limited use (there is no I/O or global state to
-  affect), and a call used as a bare statement (`f();`) or a bare `return;` do
-  not parse. Call functions in expression position: `y = f(a);`, `return f(a);`.
-- Types other than `int` (`char`, `unsigned`, pointers, `float`, …).
+  affect). A call used as a bare statement (`f(a);`) DOES parse now (its result
+  is discarded); a bare `return;` still does not.
+- Types other than `int` (`char`, `unsigned`, `float`, …). A pointer is just a
+  one-byte `int` holding an address.
 - `do/while`, `switch`, `break`, `continue`, `goto`, the ternary `?:`.
 - Short-circuit `&&` / `||` (the tokens are lexed but not compiled; build
   conditions with nested `if` instead).
@@ -261,6 +310,7 @@ expected accumulator result.
 | `sum.toyc`         | sum of an array (self-modifying indexed access) | 25  |
 | `max.toyc`         | max of an array using `>`                       | 9   |
 | `bubblesort.toyc`  | iterative bubble sort of 10 pi digits; a[0]     | 1   |
+| `bubblesort_fn.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
 
 Regenerate and re-verify them all:
 

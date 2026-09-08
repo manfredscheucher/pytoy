@@ -228,7 +228,16 @@ class Parser:
         params = []
         while True:
             self.eat('kw', 'int')
-            params.append(self.eat('ident').value)
+            # A pointer parameter `int *p` or an array parameter `int a[]` both
+            # decay to a plain one-byte scalar that holds an address; only the
+            # name matters for codegen, so the `*` / `[]` are just consumed.
+            if self.at('op', '*'):
+                self.next()
+            name = self.eat('ident').value
+            if self.at('op', '['):
+                self.next()
+                self.eat('op', ']')
+            params.append(name)
             if self.at('op', ','):
                 self.next()
                 continue
@@ -260,11 +269,35 @@ class Parser:
             return self.parse_while()
         if t.kind == 'kw' and t.value == 'for':
             return self.parse_for()
+        # deref assignment:  *p = expr;  (or a compound form *p += expr;)
+        if t.kind == 'op' and t.value == '*':
+            return self.parse_deref_assign_stmt()
+        # bare call statement:  f(args);  (the result is discarded)
+        if (t.kind == 'ident' and self.toks[self.i + 1].kind == 'op'
+                and self.toks[self.i + 1].value == '('):
+            name = self.eat('ident').value
+            self.eat('op', '(')
+            args = self.parse_args()
+            self.eat('op', ')')
+            self.eat('op', ';')
+            return ('exprstmt', ('call', name, args))
         # else: assignment (possibly compound)
         return self.parse_assign_stmt()
 
     def parse_decl(self):
         self.eat('kw', 'int')
+        # pointer declaration:  int *p;  or  int *p = expr;
+        # A pointer is an ordinary one-byte scalar that holds an address, so it
+        # reuses the plain ('decl', ...) node — the star only affects parsing.
+        if self.at('op', '*'):
+            self.next()
+            name = self.eat('ident').value
+            init = None
+            if self.at('op', '='):
+                self.next()
+                init = self.parse_expr()
+            self.eat('op', ';')
+            return ('decl', name, init)
         name = self.eat('ident').value
         # array declaration:  int a[N];  or  int a[N] = {e0, e1, ...};
         if self.at('op', '['):
@@ -336,6 +369,24 @@ class Parser:
                 f"expected assignment operator, got {op!r}")
         self.eat('op', ';')
         return ('assign', name, expr)
+
+    def parse_deref_assign_stmt(self):
+        # *p = expr;  or  *p OP= expr;   (p is any expression yielding an address)
+        self.eat('op', '*')
+        ptr = self.parse_unary()
+        compound = {'+=': '+', '-=': '-', '*=': '*',
+                    '&=': '&', '|=': '|', '^=': '^',
+                    '<<=': '<<', '>>=': '>>'}
+        op = self.eat('op').value
+        if op == '=':
+            expr = self.parse_expr()
+        elif op in compound:
+            rhs = self.parse_expr()
+            expr = ('binop', compound[op], ('deref', ptr), rhs)
+        else:
+            raise CompileError(f"expected assignment operator, got {op!r}")
+        self.eat('op', ';')
+        return ('deref_assign', ptr, expr)
 
     def parse_if(self):
         self.eat('kw', 'if')
@@ -480,6 +531,21 @@ class Parser:
             op = self.next().value
             operand = self.parse_unary()
             return ('unop', op, operand)
+        if self.at('op', '&'):
+            # &x  -> address of a variable ; &a[i] -> address of an element.
+            self.next()
+            name = self.eat('ident').value
+            if self.at('op', '['):
+                self.next()
+                idx = self.parse_expr()
+                self.eat('op', ']')
+                return ('addrof_index', name, idx)
+            return ('addrof', name)
+        if self.at('op', '*'):
+            # *p  -> dereference (read through a pointer).
+            self.next()
+            operand = self.parse_unary()
+            return ('deref', operand)
         return self.parse_primary()
 
     def parse_primary(self):
@@ -545,6 +611,10 @@ class CodeGen:
         # slots). Kept separate from user variables so `declare()` stays a plain
         # "did the user declare this twice?" check. Each entry is (label, init).
         self.global_slots = []
+        # &x needs a data byte initialised to the address of x's slot (like an
+        # array's arrbase byte). One byte per distinct variable taken address-of;
+        # deduped. Maps a variable's slot label -> its addrof byte label.
+        self.addrof_slots = {}
 
     # -- emission helpers --
     def emit(self, text):
@@ -598,6 +668,16 @@ class CodeGen:
             self.global_slots.append((label, init))
         return label
 
+    def addrof_label(self, name):
+        """Return the label of a data byte initialised to the ADDRESS of variable
+        `name`'s slot (for &name). Deduped: one byte per distinct variable. The
+        byte is emitted as `addrof_<slot>: <slot>`, and the assembler resolves
+        the slot symbol to its address — exactly how an array's arrbase works."""
+        slot = self.var_label(name)
+        if slot not in self.addrof_slots:
+            self.addrof_slots[slot] = f"addrof_{slot}"
+        return self.addrof_slots[slot]
+
     def const_label(self, value):
         value &= 0xFF
         if value not in self.consts:
@@ -610,6 +690,15 @@ class CodeGen:
         label = f"t{self.temp_n}"
         self.temps.append(label)
         return label
+
+    def shared_index_temp(self):
+        """One reused temp byte for element-address index spills. Safe because
+        such a spill is consumed two instructions later and never stays live
+        across another element access (even nested `a[b[i]]` finishes the inner
+        spill before the outer one starts)."""
+        if not hasattr(self, '_ixtmp'):
+            self._ixtmp = self.new_temp()
+        return self._ixtmp
 
     # -- stack primitives (self-modifying indirect load/store) --
     # One byte `sp` points at the last-pushed byte; the stack grows DOWN from the
@@ -644,7 +733,14 @@ class CodeGen:
             self.emit(f"        load  {self.const_label(e[1])}")
             return
         if kind == 'var':
-            self.emit(f"        load  {self.var_label(e[1])}")
+            name = e[1]
+            # An array name used as a value (not indexed) decays to its base
+            # address — e.g. passing `a` to a function taking `int a[]`.
+            if name in self.arrays:
+                _data, base, _size = self.arrays[name]
+                self.emit(f"        load  {base}")
+            else:
+                self.emit(f"        load  {self.var_label(name)}")
             return
         if kind == 'unop':
             self.gen_unop(e)
@@ -654,6 +750,19 @@ class CodeGen:
             return
         if kind == 'index':
             self.gen_index_read(e)
+            return
+        if kind == 'addrof':
+            # &x : load the data byte that holds x's address (a constant).
+            self.emit(f"        load  {self.addrof_label(e[1])}")
+            return
+        if kind == 'addrof_index':
+            # &a[i] == base(a) + i  (same address computation as an element read,
+            # but we KEEP the address in ACC instead of loading through it).
+            _, name, idx = e
+            self._gen_element_addr(self._index_base_label(name), idx)
+            return
+        if kind == 'deref':
+            self.gen_deref_read(e)
             return
         raise CompileError(f"cannot generate expression {e!r}")
 
@@ -667,24 +776,66 @@ class CodeGen:
                 self.emit(f"        add   {self.const_label(idx_expr[1])}")
             return
         # General: evaluate the index into ACC, spill it, then add the base.
-        # (add is commutative, so base + idx == idx + base.)
+        # (add is commutative, so base + idx == idx + base.) The spill uses one
+        # shared temp: an element-address computation never nests inside another
+        # (the index is consumed two instructions later), so a single reused byte
+        # is safe and saves one data byte per element access — this is what makes
+        # the array-parameter bubble sort fit the 256-byte machine.
         self.gen_expr(idx_expr)
-        t = self.new_temp()
+        t = self.shared_index_temp()
         self.emit(f"        store {t}")
         self.emit(f"        load  {base_label}")
         self.emit(f"        add   {t}")
+
+    def _index_base_label(self, name):
+        """The data byte whose VALUE is the base address for `name[idx]`.
+        a[i] == *(a + i): `a` must evaluate to an address. A real local array's
+        name evaluates to its base address (the arrbase byte). A pointer variable
+        (including an array-decayed function parameter) evaluates to its stored
+        value, so the base is just the variable's own slot."""
+        if name in self.arrays:
+            _data, base, _size = self.arrays[name]
+            return base
+        # a pointer/param scalar: its byte already holds the address
+        return self.var_label(name)
 
     def gen_index_read(self, e):
         # a[idx] : compute element address, patch a raw LOAD's address byte,
         # then execute that LOAD to bring a[idx] into ACC (self-modifying code,
         # exactly the sum.toys / bubblesort.toys trick).
         _, name, idx = e
-        _data, base, _size = self.array_info(name)
+        base = self._index_base_label(name)
         addr = self.new_label("iload_arg")
         self._gen_element_addr(base, idx)
         self.emit(f"        store {addr}       # patch LOAD address to &{name}[idx]")
         self.emit(f"        20               # LOAD opcode (raw)")
         self.emit(f"{addr}: 0                # <- acc := {name}[idx]")
+
+    def gen_deref_read(self, e):
+        # *p : evaluate p (an address) into ACC, patch a raw LOAD's address byte,
+        # then execute it to bring mem[p] into ACC. Like gen_index_read, but the
+        # address comes from an arbitrary expression instead of base+idx.
+        _, ptr = e
+        addr = self.new_label("dload_arg")
+        self.gen_expr(ptr)
+        self.emit(f"        store {addr}       # patch LOAD address to *p")
+        self.emit(f"        20               # LOAD opcode (raw)")
+        self.emit(f"{addr}: 0                # <- acc := *p")
+
+    def gen_deref_write(self, s):
+        # *p = expr : evaluate expr into a temp, evaluate p (address) and patch a
+        # raw STORE's address byte, then load the value and run the STORE.
+        _, ptr, expr = s
+        self.comment("*p = ...")
+        val = self.new_temp()
+        self.gen_expr(expr)
+        self.emit(f"        store {val}")
+        addr = self.new_label("dstore_arg")
+        self.gen_expr(ptr)
+        self.emit(f"        store {addr}       # patch STORE address to *p")
+        self.emit(f"        load  {val}")
+        self.emit(f"        21               # STORE opcode (raw)")
+        self.emit(f"{addr}: 0                # <- *p := acc")
 
     def gen_unop(self, e):
         _, op, operand = e
@@ -955,6 +1106,9 @@ class CodeGen:
         if kind == 'idxassign':
             self.gen_index_write(s)
             return
+        if kind == 'deref_assign':
+            self.gen_deref_write(s)
+            return
         if kind == 'return':
             _, expr = s
             self.comment("return")
@@ -1004,7 +1158,7 @@ class CodeGen:
         # and patch a raw STORE's address byte, then load the value and run the
         # STORE (self-modifying code, mirroring gen_index_read).
         _, name, idx, expr = s
-        _data, base, _size = self.array_info(name)
+        base = self._index_base_label(name)
         self.comment(f"{name}[idx] = ...")
         val = self.new_temp()
         self.gen_expr(expr)
@@ -1182,6 +1336,9 @@ class CodeGen:
             lines.append(f"{data_label}: {vals[0]}")
             for v in vals[1:]:
                 lines.append(f"        {v}")
+        # &x address-constant bytes: each holds the address of variable x's slot.
+        for slot, alabel in self.addrof_slots.items():
+            lines.append(f"{alabel}: {slot}   # address of {slot}")
         return "\n".join(lines) + "\n"
 
 
@@ -1212,6 +1369,21 @@ def _declares_array(node):
                 return True
         elif isinstance(child, list):
             if any(_declares_array(c) for c in child):
+                return True
+    return False
+
+def _takes_address(node):
+    """True if the AST subtree takes the address of anything (&x or &a[i])."""
+    if not isinstance(node, tuple):
+        return False
+    if node[0] in ('addrof', 'addrof_index'):
+        return True
+    for child in node[1:]:
+        if isinstance(child, tuple):
+            if _takes_address(child):
+                return True
+        elif isinstance(child, list):
+            if any(_takes_address(c) for c in child):
                 return True
     return False
 
@@ -1392,6 +1564,15 @@ class CallLifter:
             _, nm, idx, expr = node
             return ('idxassign', rename.get(nm, nm),
                     self._rename(idx, rename), self._rename(expr, rename))
+        if tag == 'addrof':
+            return ('addrof', rename.get(node[1], node[1]))
+        if tag == 'addrof_index':
+            _, nm, idx = node
+            return ('addrof_index', rename.get(nm, nm), self._rename(idx, rename))
+        if tag == 'deref_assign':
+            _, ptr, expr = node
+            return ('deref_assign', self._rename(ptr, rename),
+                    self._rename(expr, rename))
         parts = [tag]
         for child in node[1:]:
             if isinstance(child, tuple):
@@ -1439,6 +1620,19 @@ class CallLifter:
             out.append(('idxassign', name, idx2, expr2))
             return
 
+        if kind == 'deref_assign':
+            _, ptr, expr = s
+            ptr2 = self.lift_calls(ptr, out)
+            expr2 = self.lift_calls(expr, out)
+            out.append(('deref_assign', ptr2, expr2))
+            return
+
+        if kind == 'exprstmt':
+            # A bare expression statement (e.g. a call whose result is unused):
+            # lift any calls it contains; the resulting value is discarded.
+            self.lift_calls(s[1], out)
+            return
+
         if kind == 'return':
             _, expr = s
             expr2 = self.lift_calls(expr, out)
@@ -1464,6 +1658,18 @@ class CallLifter:
             # into
             #   while (1) { <lift cond>; if (!cond) goto end; body }  end:
             _, cond, body = s
+            # If the condition has no call, keep a plain `while (cond) body`: the
+            # code generator's gen_cond_branch handles it with a single cheap
+            # branch (no boolean materialisation). Only conditions containing a
+            # call need the `while(1){ lift-cond; if(!cond) goto end; body }`
+            # rewrite (the call must be re-evaluated each iteration). Keeping the
+            # plain form is a big size win — it's what lets the array-parameter
+            # bubble sort fit the 256-byte machine.
+            if not any(True for _ in _calls_in(cond)):
+                body_out = []
+                self.lift_stmt(body, body_out, ret_slot)
+                out.append(('while', cond, ('block', body_out)))
+                return
             end = self.fresh('while_end')
             inner = []
             cond2 = self.lift_calls(cond, inner)
@@ -1523,8 +1729,17 @@ class CallLifter:
     def _caller_slots(self, caller, stmts):
         """The caller-owned bytes that may need saving: its params, locals, mark,
         and every compiler temp declared in its body. (Callee slots and shared
-        return slots are never in this set, so they are never saved.)"""
+        return slots are never in this set, so they are never saved.)
+
+        A variable whose address is taken (`&x`) is EXCLUDED: its home is its
+        memory slot, and a callee may write it indirectly through the pointer, so
+        saving/restoring its value would undo that write. (Taking a local's
+        address inside a RECURSIVE function is rejected earlier in compile_source,
+        because a pointer to the single global slot can't follow the save/restore
+        stack — so here the caller is always non-recursive w.r.t. address-taken
+        locals.)"""
         slots = {f"{caller}__mark"}
+        addr_taken = set()
         _, _n, params, _body = self.funcs[caller]
         for p in params:
             slots.add(f"{caller}__p_{p}")
@@ -1533,6 +1748,8 @@ class CallLifter:
                 return
             if node[0] == 'decl':
                 slots.add(node[1])
+            if node[0] in ('addrof', 'addrof_index'):
+                addr_taken.add(node[1])
             if node[0] == 'call_site':
                 # The capture temp is declared later (during expansion) but is a
                 # caller-owned byte holding a call result; a sibling call may need
@@ -1546,7 +1763,7 @@ class CallLifter:
                         walk(x)
         for s in stmts:
             walk(s)
-        return slots
+        return slots - addr_taken
 
     def _as_stmt(self, x):
         """Normalise a liveness-pass result (a stmt, a list of stmts, or None)
@@ -1564,9 +1781,19 @@ class CallLifter:
             acc.add(e[1])
             return
         if e[0] == 'index':
-            # a[idx]: the array itself is not a saveable scalar slot, but the
-            # index expression's variables are used.
+            # a[idx]: the index expression's variables are used. So is `a` itself
+            # when it is a pointer/param (its value is the base address); a real
+            # array name is not a tracked scalar slot, so marking it is harmless.
             self._expr_uses(e[2], acc)
+            acc.add(e[1])
+            return
+        if e[0] == 'addrof':
+            # &x: conservatively treat x as used so its slot is kept live.
+            acc.add(e[1])
+            return
+        if e[0] == 'addrof_index':
+            self._expr_uses(e[2], acc)
+            acc.add(e[1])
             return
         for c in e[1:]:
             if isinstance(c, tuple):
@@ -1621,9 +1848,19 @@ class CallLifter:
 
         if kind == 'idxassign':
             # a[idx] = expr : both idx and expr are USES (the array byte written
-            # is not a tracked scalar slot, so nothing is killed here).
-            _, _name, idx, expr = s
+            # is not a tracked scalar slot, so nothing is killed here). `a` itself
+            # is used too when it is a pointer/param base.
+            _, name, idx, expr = s
             self._expr_uses(idx, live)
+            self._expr_uses(expr, live)
+            live.add(name)
+            return s, live
+
+        if kind == 'deref_assign':
+            # *p = expr : the target byte is reached indirectly (not a tracked
+            # scalar slot), so nothing is killed; both p and expr are uses.
+            _, ptr, expr = s
+            self._expr_uses(ptr, live)
             self._expr_uses(expr, live)
             return s, live
 
@@ -1652,14 +1889,18 @@ class CallLifter:
             return s, live
 
         if kind == 'while':
-            # while(1){body}: body's live-out is body's own live-in (loop back).
-            # Fixpoint the body until its live-in stops growing.
+            # while(cond){body}: body's live-out is body's own live-in plus the
+            # condition's uses (both are re-evaluated each iteration). Fixpoint
+            # the body until its live-in stops growing. `cond` is ('num',1) for a
+            # lifted call-condition loop and a real expression for a plain loop.
             _, _cond, body = s
             body_live_out = set(live)
+            self._expr_uses(_cond, body_live_out)
             for _ in range(100):
                 _, live_in = self._live_block(body[1], body_live_out, live_at_label,
                                               caller_slots, changed, False,
                                               caller, skip)
+                self._expr_uses(_cond, live_in)
                 if live_in <= body_live_out:
                     break
                 body_live_out |= live_in
@@ -1749,6 +1990,13 @@ class CallLifter:
         if kind == 'index':
             _, name, idx = e
             return ('index', name, self.lift_calls(idx, out))
+        if kind == 'addrof':
+            return e
+        if kind == 'addrof_index':
+            _, name, idx = e
+            return ('addrof_index', name, self.lift_calls(idx, out))
+        if kind == 'deref':
+            return ('deref', self.lift_calls(e[1], out))
         if kind == 'call':
             return self.lift_call(e, out)
         raise CompileError(f"cannot compile expression {e!r}")
@@ -1824,6 +2072,19 @@ def compile_source(src, source_name, optimize=False):
                 f"function {name!r} is recursive and declares a local array; "
                 f"arrays are not saved across recursive calls (hoist the array "
                 f"out of the recursion, or make the function non-recursive)")
+
+    # Taking a local's address (&x, &a[i]) inside a recursive function can't work:
+    # &x is the address of the single GLOBAL slot for x, but the save/restore
+    # recursion stack keeps each activation's value on a separate stack byte, so a
+    # pointer can't follow it. Reject instead of silently miscompiling (the same
+    # spirit as the recursive-array rejection above).
+    for _, name, _params, body in funcs:
+        if name in recursive and _takes_address(body):
+            raise CompileError(
+                f"function {name!r} is recursive and takes the address of a "
+                f"local (&x or &a[i]); a pointer to the single global slot can't "
+                f"follow the recursion save/restore stack (take the address in a "
+                f"non-recursive function, or pass the value instead)")
 
     main_block, bodies = lift_functions(funcs, recursive, optimize)
 

@@ -9,52 +9,44 @@
         load  c_60
         store v_y
         # int a = ...
-        load  v_y
-        store t1
         load  v_x
-        and   t1
+        and   v_y
         store v_a
         # int c = ...
-        load  v_y
-        store t2
         load  v_x
-        xor   t2
+        xor   v_y
         store v_c
         # a = ...
         load  c_2
-        store t3
+        store t1
         load  v_a
         right
         right
         store v_a
         # a = ...
         load  c_1
-        store t4
+        store t2
         load  v_a
         left
         store v_a
         # return
-        load  c_15
-        store t5
         load  v_c
-        and   t5
-        store t6
+        and   c_15
+        store t3
         load  v_a
-        add   t6
+        add   t3
         stop
         stop            # fallthrough halt
 
-# ── data ──
+# data
 v_x: 0
 v_y: 0
 v_a: 0
 v_c: 0
+sp: 255
 t1: 0
 t2: 0
 t3: 0
-t4: 0
-t5: 0
-t6: 0
 c_1: 1
 c_2: 2
 c_15: 15
