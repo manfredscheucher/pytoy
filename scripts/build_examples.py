@@ -39,7 +39,8 @@ def main():
     fails = 0
     for path in sorted(glob.glob(os.path.join(EXAMPLES, "*.toyc"))):
         name = os.path.basename(path)
-        src = open(path).read()
+        with open(path) as f:
+            src = f.read()
         m = _EXPECT.search(src)
         want = int(m.group(1)) if m else None
         try:
