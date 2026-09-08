@@ -1,0 +1,23 @@
+// expect: 4
+/*
+ * max3.c - the largest of three values a, b, c.
+ *
+ * A helper function max3(a, b, c) using only the `>` comparison. The three
+ * values are the first three digits of pi (3, 1, 4). For the maximum of a whole
+ * array, see array-max.toyc.
+ *
+ * max(3, 1, 4) = 4.
+ *
+ * Expected result: ACC = 4
+ */
+
+int max3(int a, int b, int c) {
+    int m = a;
+    if (b > m) { m = b; }
+    if (c > m) { m = c; }
+    return m;
+}
+
+int main(void) {
+    return max3(3, 1, 4);
+}

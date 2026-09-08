@@ -1,0 +1,20 @@
+// expect: 8
+/*
+ * sum3.c - add three values a + b + c.
+ *
+ * The simplest possible use of a helper function: sum3(a, b, c) returns their
+ * sum. The three values are the first three digits of pi (3, 1, 4). For summing
+ * a whole array, see array-sum.toyc.
+ *
+ * 3 + 1 + 4 = 8.
+ *
+ * Expected result: ACC = 8
+ */
+
+int sum3(int a, int b, int c) {
+    return a + b + c;
+}
+
+int main(void) {
+    return sum3(3, 1, 4);
+}
