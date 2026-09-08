@@ -1,0 +1,25 @@
+// expect: 12
+/*
+ * gcd_rec.c - greatest common divisor, RECURSIVE (subtraction algorithm).
+ *
+ * The iterative version is in gcd_iter.toyc; both compute the same result.
+ * toycc compiles recursion with a self-modifying-code stack (see the manual).
+ *
+ * gcd(48, 36) = gcd(12, 36) = gcd(12, 24) = gcd(12, 12) = 12.
+ *
+ * Expected result: ACC = 12
+ */
+
+int gcd_rec(int a, int b) {
+    if (a == b) {
+        return a;
+    }
+    if (a > b) {
+        return gcd_rec(a - b, b);
+    }
+    return gcd_rec(a, b - a);
+}
+
+int main(void) {
+    return gcd_rec(48, 36);
+}

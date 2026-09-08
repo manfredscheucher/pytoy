@@ -211,13 +211,13 @@ writing the `.toys`); keep programs small.
 
 ```bash
 # compile program.toyc -> program.toys
-python3 compiler/toycc.py compiler/examples/fibonacci.toyc
+python3 compiler/toycc.py compiler/examples/fibonacci_iter.toyc
 
 # choose the output path
 python3 compiler/toycc.py program.toyc -o build/program.toys
 
 # compile and immediately run through toyasm (CLI, no pausing)
-python3 compiler/toycc.py compiler/examples/fibonacci.toyc --run
+python3 compiler/toycc.py compiler/examples/fibonacci_iter.toyc --run
 ```
 
 Run a produced `.toys` directly through toyasm in the terminal (the graphical
@@ -225,7 +225,7 @@ debugger is toyasm's default, so pass `--cli`):
 
 ```bash
 # from the repo root
-python3 toyasm.py compiler/examples/fibonacci.toys --cli --run --quiet
+python3 toyasm.py compiler/examples/fibonacci_iter.toys --cli --run --quiet
 # ...
 # Result:  ACC = 55  (00110111  0x37  dec 55)
 ```
@@ -239,19 +239,28 @@ Drop `--run` to single-step, or drop `--cli` to open the graphical debugger.
 All examples live in [`examples/`](examples/) and are verified to produce the
 expected accumulator result.
 
-| File            | Computes                                   | Expected ACC |
-|-----------------|--------------------------------------------|-------------:|
-| `fibonacci.toyc` | fib(10) with an 8-bit overflow limit       | 55  |
-| `multiply.toyc`  | 7 * 6 via repeated addition (`*`)          | 42  |
-| `sevenfold.toyc` | 7 * 4                                       | 28  |
-| `sum.toyc`       | 3+1+4+1+5+9+2 (separate vars, no arrays)    | 25  |
-| `max.toyc`       | max(3,1,4,1,5,9,2) using `>`               | 9   |
-| `countdown.toyc` | 5+4+3+2+1 via a countdown `while` loop      | 15  |
-| `bitops.toyc`    | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F` | 36  |
-| `factorial.toyc` | 5! via a `for` loop and `*`                | 120 |
-| `gcd.toyc`       | gcd(48, 36) by subtraction, `if/else`, `>` | 12  |
-| `ifelse.toyc`    | if/else picking `b - a` for `a < b`         | 5   |
-| `bubblesort.toyc`| iterative bubble sort of 10 pi digits; returns `a[0]` | 1 |
+| File               | Computes                                        | Expected ACC |
+|--------------------|-------------------------------------------------|-------------:|
+| `sum3.toyc`        | a+b+c for the first 3 pi digits (3,1,4)         | 8   |
+| `max3.toyc`        | max(3,1,4) via `>`                              | 4   |
+| `sort3.toyc`       | sort 3,1,4 and return the smallest              | 1   |
+| `multiply.toyc`    | 7 * 6 via repeated addition (`*`)               | 42  |
+| `sevenfold.toyc`   | 7 * 4                                           | 28  |
+| `countdown.toyc`   | 5+4+3+2+1 via a countdown `while` loop          | 15  |
+| `bitops.toyc`      | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F`     | 36  |
+| `popcount.toyc`    | count set bits of 37 (`x & 1`, `>>`)            | 3   |
+| `ifelse.toyc`      | if/else picking `b - a` for `a < b`             | 5   |
+| `functions.toyc`   | helper functions calling each other             | 25  |
+| `fibonacci_iter.toyc` | fib(10), iterative                           | 55  |
+| `fibonacci_rec.toyc`  | fib(10), recursive                           | 55  |
+| `fibonacci_array.toyc`| first 10 Fibonacci numbers in an array; a[9] | 34  |
+| `factorial_iter.toyc` | 5!, iterative (`for` loop)                   | 120 |
+| `factorial_rec.toyc`  | 5!, recursive                                | 120 |
+| `gcd_iter.toyc`    | gcd(48,36) by subtraction, iterative            | 12  |
+| `gcd_rec.toyc`     | gcd(48,36) by subtraction, recursive            | 12  |
+| `sum.toyc`         | sum of an array (self-modifying indexed access) | 25  |
+| `max.toyc`         | max of an array using `>`                       | 9   |
+| `bubblesort.toyc`  | iterative bubble sort of 10 pi digits; a[0]     | 1   |
 
 Regenerate and re-verify them all:
 

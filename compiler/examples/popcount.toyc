@@ -1,0 +1,25 @@
+// expect: 3
+/*
+ * popcount.c - count the set bits (1-bits) of a number.
+ *
+ * Look at the lowest bit, add it to the count, then shift right; repeat until
+ * the number is zero. The lowest bit is x & 1 (the Toy CPU has no `%`, but
+ * `x & 1` is exactly `x % 2` for the low bit).
+ *
+ * x = 37 = 32 + 4 + 1 = 100101 in binary -> 3 bits set.
+ *
+ * Expected result: ACC = 3
+ */
+
+int popcount(int x) {
+    int count = 0;
+    while (x != 0) {
+        count = count + (x & 1);   /* add the lowest bit */
+        x = x >> 1;                /* drop it */
+    }
+    return count;
+}
+
+int main(void) {
+    return popcount(37);
+}

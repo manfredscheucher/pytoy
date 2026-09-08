@@ -1,0 +1,24 @@
+// expect: 34
+/*
+ * fibonacci_array.c - fill an array with the first 10 Fibonacci numbers.
+ *
+ * a[0]=0, a[1]=1, then a[i] = a[i-1] + a[i-2]. The array ends up holding
+ * 0 1 1 2 3 5 8 13 21 34, and main returns the last one, a[9] = 34.
+ *
+ * Shows arrays with a computed index (a[i], a[i-1], a[i-2]) built from a loop.
+ *
+ * Expected result: ACC = 34
+ */
+
+int main(void) {
+    int a[10];
+    int i;
+    a[0] = 0;
+    a[1] = 1;
+    i = 2;
+    while (i < 10) {
+        a[i] = a[i - 1] + a[i - 2];
+        i = i + 1;
+    }
+    return a[9];
+}

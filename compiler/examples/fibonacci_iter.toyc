@@ -1,0 +1,24 @@
+// expect: 55
+/*
+ * fibonacci_iter.c - the n-th Fibonacci number, ITERATIVE.
+ *
+ * The recursive version is in fibonacci_rec.toyc; both compute fib(10) = 55.
+ * (8-bit values wrap mod 256, so fib(14) = 377 would overflow.)
+ *
+ * Expected result: ACC = 55
+ */
+
+int fibonacci_iter(int n) {
+    int a = 0;
+    int b = 1;
+    while (n != 0) {
+        b = a + b;   /* new b = a + old b */
+        a = b - a;   /* a = old b */
+        n = n - 1;
+    }
+    return a;
+}
+
+int main(void) {
+    return fibonacci_iter(10);
+}
