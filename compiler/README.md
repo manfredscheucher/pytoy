@@ -167,11 +167,18 @@ uniform; `-O` makes it lean.
 
 The stack grows down from 255 into whatever space is left above the program.
 There is **no hardware bounds check**: if recursion goes deeper than the free
-space, the stack overwrites data and the program gives wrong answers. On a
-256-byte machine this space is small, so deep recursion is genuinely limited.
-When little stack room remains, the compiler prints a warning; `-O` (smaller
-code) and smaller inputs both buy depth. This is a real limit of the machine,
-not a bug — the same "code and data share 256 bytes" reality as everywhere else.
+space, the stack overwrites data and the program silently gives wrong answers.
+On a 256-byte machine this space is small, so deep recursion is genuinely
+limited.
+
+The compiler prints a warning when the *compiled program itself* leaves little
+stack room (a **static** check on code+data size). Note this is **not** a depth
+guard: because the code size doesn't grow with the recursion argument, a program
+that fits with headroom shows no warning yet can still overflow at run time if it
+recurses deep enough. So the warning catches "this program barely fits," not
+"this run will recurse too deep." Keep recursion shallow, use `-O` (smaller
+code) and small inputs. This is a real limit of the machine, not a bug — the same
+"code and data share 256 bytes" reality as everywhere else.
 
 ## Memory model
 
