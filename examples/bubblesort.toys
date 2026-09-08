@@ -1,0 +1,125 @@
+# bubblesort.toys
+# ---------------------------------------------------------------------------
+# Bubble sort of 10 bytes, in place, ascending.
+#
+# Array = the 10 digits of pi:  3 1 4 1 5 9 2 6 5 3
+# After sorting:                1 1 2 3 3 4 5 5 6 9
+#
+# The Toy CPU has no index register, no compare, no multiply. We reach the
+# array elements with SELF-MODIFYING CODE: a bare opcode byte followed by a
+# patchable address byte (exactly the sum.toys / max.toys trick). Four such
+# "indirect" instructions are used, all patched from one running pointer `j`:
+#
+#   iload_j:  LOAD arr[j]        (opcode 20 + addr byte)
+#   iload_j1: LOAD arr[j+1]      (opcode 20 + addr byte)
+#   istore_j: STORE arr[j]       (opcode 21 + addr byte)
+#   istr_j1:  STORE arr[j+1]     (opcode 21 + addr byte)
+#
+# Loop structure (fixed passes, always correct):
+#   for pass in 0..8:                 # outer, 9 passes
+#       j = addr(arr)
+#       for k in 0..8:                # inner, 9 compares over adjacent pairs
+#           a = arr[j]; b = arr[j+1]
+#           if a > b: swap            # bit 7 of (b - a) set  =>  b < a  => swap
+#           j = j + 1
+#
+# Compare trick (from max.toys): compute (b - a) mod 256. If a > b then b - a
+# underflows and bit 7 is set. We test bit 7 with `and mask(128)`:
+#     acc==0  -> bit clear -> b >= a -> already ordered, no swap
+#     acc!=0  -> bit set   -> b <  a -> swap
+# (All values are small digits 0..9, so the sign-bit test is unambiguous.)
+# ---------------------------------------------------------------------------
+
+# ── outer loop init ──────────────────────────────────────────────────────
+        load  npass_init
+        store npass          # npass = 9 outer passes
+
+outer:  load  npass
+        ifzero done          # all passes done -> finish
+
+        # reset inner pointer j to the start of the array
+        load  arrptr
+        store jptr           # jptr = addr(arr[0])
+
+        load  ninner_init
+        store ninner         # ninner = 9 comparisons this pass
+
+# ── inner loop ────────────────────────────────────────────────────────────
+inner:  load  ninner
+        ifzero next_pass     # inner loop finished -> next outer pass
+
+        # patch the four indirect instructions from jptr (a[j]) and jptr+1 (a[j+1])
+        load  jptr
+        store ldj_arg        # LOAD arr[j]  address
+        store stj_arg        # STORE arr[j] address
+        add   one
+        store ldj1_arg       # LOAD arr[j+1]  address
+        store stj1_arg       # STORE arr[j+1] address
+
+        # a = arr[j]
+        20                   # LOAD opcode (raw byte)
+ldj_arg:  0                  # ← patched: addr of arr[j]
+        store a              # a = arr[j]
+
+        # b = arr[j+1]
+        20                   # LOAD opcode
+ldj1_arg: 0                  # ← patched: addr of arr[j+1]
+        store b              # b = arr[j+1]
+
+        # compare: (b - a); bit 7 set  =>  b < a  =>  must swap
+        sub   a              # acc = b - a
+        and   mask           # isolate bit 7
+        ifzero no_swap       # bit clear -> b >= a -> ordered, skip swap
+
+        # swap: arr[j] = b ; arr[j+1] = a
+        load  b
+        21                   # STORE opcode
+stj_arg:  0                  # ← patched: addr of arr[j]
+        load  a
+        21                   # STORE opcode
+stj1_arg: 0                  # ← patched: addr of arr[j+1]
+
+no_swap:
+        # j = j + 1
+        load  jptr
+        add   one
+        store jptr
+
+        load  ninner
+        sub   one
+        store ninner         # ninner--
+        goto  inner
+
+next_pass:
+        load  npass
+        sub   one
+        store npass          # npass--
+        goto  outer
+
+# ── done: leave arr[0] (smallest element = 1) in ACC ───────────────────────
+done:   load  arr           # arr[0], should be 1 after sorting
+        stop
+
+# data
+npass_init:  9
+ninner_init: 9
+npass:       0
+ninner:      0
+one:         1
+mask:        128
+a:           0
+b:           0
+jptr:        0
+arrptr:      arr            # address constant: start of the array
+
+# array (contiguous) — the 10 digits of pi
+arr:    3
+        1
+        4
+        1
+        5
+        9
+        2
+        6
+        5
+        3

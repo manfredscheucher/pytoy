@@ -4,7 +4,7 @@ import io
 import sys
 import contextlib
 from toyasm import (assemble, simulate, parse_val, OPCODES, has_operand,
-                    _is_data_marker, DATA_MARKER)
+                    _is_data_marker, DATA_MARKER, execute_one)
 
 
 # ── Value parser ──────────────────────────────────────────────────────────
@@ -297,6 +297,23 @@ def test_sim_max():
     """max.toys with [3,1,4,1,5,9,2] should produce 9."""
     src = open('examples/max.toys').read()
     assert _run(src) == 9
+
+def test_sim_bubblesort():
+    """bubblesort.toys sorts the 10 digits of pi in place. Check the whole
+    array from memory, not just ACC."""
+    src = open('examples/bubblesort.toys').read()
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
+    assert errors == []
+    m, pc, acc, steps = list(mem), 0, 0, 0
+    while steps < 20000:
+        if m[pc] == 0:            # STOP
+            break
+        pc, acc, _arg, stopped = execute_one(m, pc, acc)
+        if stopped:
+            break
+        steps += 1
+    a = syms['arr']
+    assert m[a:a + 10] == [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 
 def test_sim_fibonacci_rec():
     """fibonacci_rec.toys computes fib recursively via a self-modifying-code
