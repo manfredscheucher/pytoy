@@ -3,3 +3,4 @@ __pycache__/
 *.toyo
 .claude/
 .DS_Store
+compiler/examples/*.toys

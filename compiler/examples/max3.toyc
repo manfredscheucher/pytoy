@@ -4,7 +4,7 @@
  *
  * A helper function max3(a, b, c) using only the `>` comparison. The three
  * values are the first three digits of pi (3, 1, 4). For the maximum of a whole
- * array, see array-max.toyc.
+ * array, see array_max.toyc.
  *
  * max(3, 1, 4) = 4.
  *

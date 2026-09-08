@@ -307,9 +307,9 @@ expected accumulator result.
 | `factorial_rec.toyc`  | 5!, recursive                                | 120 |
 | `gcd_iter.toyc`    | gcd(48,36) by subtraction, iterative            | 12  |
 | `gcd_rec.toyc`     | gcd(48,36) by subtraction, recursive            | 12  |
-| `sum.toyc`         | sum of an array (self-modifying indexed access) | 25  |
-| `max.toyc`         | max of an array using `>`                       | 9   |
-| `bubblesort.toyc`  | iterative bubble sort of 10 pi digits; a[0]     | 1   |
+| `array_sum.toyc`   | sum of an array of the 10 pi digits             | 39  |
+| `array_max.toyc`   | max of an array of the 10 pi digits             | 9   |
+| `bubblesort.toyc`  | bubble sort of the 10 pi digits (array in main); a[0] | 1 |
 | `bubblesort_fn.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
 
 Regenerate and re-verify them all:
