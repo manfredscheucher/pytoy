@@ -194,8 +194,9 @@ def sps_to_interval(sps):
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
-def gui_main(mem, listing, syms, data_addrs, code_guard=None):
-    """Launch PySide6 graphical debugger."""
+def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
+    """Launch PySide6 graphical debugger. has_source=False (a .toyo) hides the
+    source panel and shows only memory, matching the Load button's .toyo path."""
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
@@ -204,14 +205,16 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
     from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
 
     class ToyDebugger(QMainWindow):
-        def __init__(self, mem_original, listing, syms, data_addrs, code_guard):
+        def __init__(self, mem_original, listing, syms, data_addrs, code_guard,
+                     has_source=True):
             super().__init__()
             self.setWindowTitle("toyasm")
             self.resize(1000, 700)
 
             self._build_ui()
             self._setup_shortcuts()
-            self.load_program(mem_original, listing, syms, data_addrs, code_guard)
+            self.load_program(mem_original, listing, syms, data_addrs, code_guard,
+                              has_source=has_source)
 
         def load_program(self, mem_original, listing, syms, data_addrs,
                          code_guard=None, has_source=True):
@@ -550,7 +553,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication.instance() or QApplication(sys.argv)
-    win = ToyDebugger(mem, listing, syms, data_addrs, code_guard)
+    win = ToyDebugger(mem, listing, syms, data_addrs, code_guard, has_source)
     win.show()
     app.exec()
 
@@ -571,10 +574,32 @@ def main():
     try:    src = open(args.file).read()
     except: sys.exit(f"File not found: {args.file}")
 
-    mem, listing, syms, data_addrs, errors, data_start = assemble(src)
-    if errors:
-        for e in errors: print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
+    is_toyo = args.file.lower().endswith('.toyo')
+
+    if is_toyo:
+        # A .toyo is a compiled byte listing with no re-runnable source: load the
+        # memory image directly and skip assembly. Mirror the GUI's .toyo Load
+        # branch (see _load_clicked) so CLI and GUI behave the same.
+        try:
+            mem = parse_toyo(src)
+        except Exception as e:
+            sys.exit(f"cannot parse {args.file}: {e}")
+        listing = [(a, [mem[a]], "", True) for a in range(256)]
+        syms = {}
+        data_addrs = set(range(256))
+        data_start = None
+        # verbose/step output and --export need source we don't have here.
+        if args.export:
+            print("NOTE: nothing to export from a .toyo (no source); "
+                  "skipping --export.", file=sys.stderr)
+            args.export = False
+        # force compact output: there is no per-line source to explain.
+        args.quiet = True
+    else:
+        mem, listing, syms, data_addrs, errors, data_start = assemble(src)
+        if errors:
+            for e in errors: print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
 
     guard = data_start if args.detect_code_overwrite else None
     if args.detect_code_overwrite and data_start is None:
@@ -584,7 +609,11 @@ def main():
 
     # graphical interface is the default; --cli opts into terminal mode
     if not args.cli:
-        gui_main(mem, listing, syms, data_addrs, guard)
+        if is_toyo:
+            # open GUI with only the memory panel, as the Load button does
+            gui_main(mem, listing, syms, data_addrs, guard, has_source=False)
+        else:
+            gui_main(mem, listing, syms, data_addrs, guard)
         return
 
     if args.export:

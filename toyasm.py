@@ -8,7 +8,7 @@ assembly listing and .toyo export. The ISA core (opcodes, decode/execute)
 lives in toycpu; the runnable simulator/GUI/CLI lives in toysim.
 """
 
-import re
+import re, sys, os, argparse
 
 from toycpu import OPCODES, has_operand, parse_val, _describe
 
@@ -178,3 +178,32 @@ def export(listing, syms, mem, path):
     with open(path, 'w') as f:
         f.write("\n".join(out) + "\n")
     print(f"exported → {path}\n")
+
+# ── CLI (assembler) ──────────────────────────────────────────────────────────
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="toyasm - assemble Toy CPU assembly (.toys) into a .toyo "
+                    "object file (compiled byte listing)")
+    ap.add_argument('file', help='input assembly file (.toys)')
+    ap.add_argument('-o', '--output', help='output .toyo path')
+    args = ap.parse_args()
+
+    try:
+        with open(args.file) as f:
+            src = f.read()
+    except OSError as e:
+        sys.exit(f"cannot read {args.file}: {e}")
+
+    mem, listing, syms, _data_addrs, errors, _data_start = assemble(src)
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    out_path = args.output or (os.path.splitext(args.file)[0] + '.toyo')
+    export(listing, syms, mem, out_path)
+
+
+if __name__ == '__main__':
+    main()
