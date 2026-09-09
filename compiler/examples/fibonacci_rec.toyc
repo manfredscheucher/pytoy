@@ -10,7 +10,7 @@
  * The Toy CPU has no call/return and no stack, yet toycc compiles this real
  * recursion by giving each function fixed global slots and bracketing every
  * call with save/restore of the caller's live-across slots on a stack that
- * grows down from the top of memory (see doc-typst/design/recursion-codegen.md).
+ * grows down from the top of memory (see the manual).
  *
  * Expected result: ACC = 55
  */
