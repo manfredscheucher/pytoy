@@ -1,9 +1,10 @@
-<img src="doc-typst/images/screenshot.png" alt="toyasm" width="100%"/>
+<img src="doc-typst/images/screenshot.png" alt="pytoy" width="100%"/>
 
 
-# toyasm
+# pytoy
 
-Assembler and simulator for the [Toy CPU](https://github.com/freedosproject/toycpu) in Python.
+A Python toolbox for the [Toy CPU](https://github.com/freedosproject/toycpu): an
+assembler, a simulator with a GUI, and a small C compiler.
 
 The Toy CPU is a minimal 8-bit processor with 256 bytes of memory, one
 accumulator, and a program counter. It was built as a FreeDOS learning tool
