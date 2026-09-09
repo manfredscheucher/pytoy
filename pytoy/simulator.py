@@ -518,6 +518,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             # status info on top
             instr, cur_arg, _ = decode(self.mem, self.pc)
             desc, bs = _describe(instr, cur_arg, self._sym, self.mem)
+            # the bytes of the current instruction: the opcode at pc, plus the
+            # operand byte at pc+1 for two-byte instructions (load/add/goto/…).
+            pc_bytes = {self.pc}
+            if cur_arg is not None:
+                pc_bytes.add((self.pc + 1) % 256)
             n = len(bs.split())
             if self.stopped:
                 lines.append(f'<b>Stopped after {self.step_count} steps.</b>')
@@ -542,7 +547,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 escaped = _esc(text)
                 if a == self.selected_addr:
                     lines.append(f'<span style="background-color:#ffcc66;">{escaped}</span>')
-                elif a == self.pc:
+                elif a in pc_bytes:      # opcode + operand byte of the current instr
                     lines.append(f'<span style="background-color:#ffffaa;">{escaped}</span>')
                 elif a == cur_arg:
                     lines.append(f'<span style="background-color:#aaffaa;">{escaped}</span>')
