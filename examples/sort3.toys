@@ -1,0 +1,60 @@
+# sort3.toy
+# Sorts three named values a, b, c ascending, then returns the smallest.
+#
+# The three values are the first three digits of pi (a=3, b=1, c=4).
+# Sorted they are 1, 3, 4, so the smallest -- left in a -- is 1.
+#
+# Three compare-and-swap steps (same idea as bubble sort, but on three
+# named variables instead of an array):
+#   if a > b: swap(a, b)   # a <= b
+#   if b > c: swap(b, c)   # b <= c  (largest now in c)
+#   if a > b: swap(a, b)   # a <= b  (smallest now in a)
+#
+# Compare trick: to test "x > y", compute y - x. If that underflows
+# (bit 7 set) then y < x, i.e. x > y, so we swap.
+
+        # step 1: if a > b, swap
+        load  b
+        sub   a           # acc = b - a
+        and   mask        # bit 7 set -> b < a -> a > b -> swap
+        ifzero s2         # bit 7 clear -> a <= b -> no swap
+        load  a
+        store t
+        load  b
+        store a
+        load  t
+        store b           # a <-> b
+
+        # step 2: if b > c, swap
+s2:     load  c
+        sub   b           # acc = c - b
+        and   mask        # bit 7 set -> c < b -> b > c -> swap
+        ifzero s3
+        load  b
+        store t
+        load  c
+        store b
+        load  t
+        store c           # b <-> c
+
+        # step 3: if a > b, swap
+s3:     load  b
+        sub   a           # acc = b - a
+        and   mask        # bit 7 set -> b < a -> a > b -> swap
+        ifzero done
+        load  a
+        store t
+        load  b
+        store a
+        load  t
+        store b           # a <-> b
+
+done:   load  a           # smallest, 1 in accumulator
+        stop
+
+# data
+mask:   128
+t:      0
+a:      3
+b:      1
+c:      4

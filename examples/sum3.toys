@@ -1,0 +1,18 @@
+# sum3.toy
+# Adds three named values: a + b + c.
+#
+# The three values are the first three digits of pi (a=3, b=1, c=4),
+# so the expected result is 3 + 1 + 4 = 8.
+#
+# No loop needed -- just load the first, add the other two.
+# (For summing a whole array, see sum.toys.)
+
+        load  a         # acc = a
+        add   b         # acc = a + b
+        add   c         # acc = a + b + c
+        stop            # result 8 in accumulator
+
+# data
+a:      3
+b:      1
+c:      4

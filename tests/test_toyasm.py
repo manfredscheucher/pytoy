@@ -298,6 +298,21 @@ def test_sim_max():
     src = open('examples/max.toys').read()
     assert _run(src) == 9
 
+def test_sim_sum3():
+    """sum3.toys with a,b,c = 3,1,4 should produce 8."""
+    src = open('examples/sum3.toys').read()
+    assert _run(src) == 8
+
+def test_sim_max3():
+    """max3.toys with a,b,c = 3,1,4 should produce max = 4."""
+    src = open('examples/max3.toys').read()
+    assert _run(src) == 4
+
+def test_sim_sort3():
+    """sort3.toys with a,b,c = 3,1,4 sorts ascending and returns smallest = 1."""
+    src = open('examples/sort3.toys').read()
+    assert _run(src) == 1
+
 def test_sim_bubblesort():
     """bubblesort.toys sorts the 10 digits of pi in place. Check the whole
     array from memory, not just ACC."""

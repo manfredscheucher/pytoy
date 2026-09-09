@@ -1,0 +1,44 @@
+# max3.toy
+# Largest of three named values a, b, c.
+#
+# The three values are the first three digits of pi (a=3, b=1, c=4),
+# so the expected result is max(3, 1, 4) = 4.
+#
+# Compare trick (same idea as max.toys, but on named values, not an
+# array): to test "x > best", compute x - best. If that subtraction
+# underflows (bit 7 set), then x < best; otherwise x >= best.
+#
+#   best = a
+#   if b > best: best = b
+#   if c > best: best = c
+
+        load  a
+        store best        # best = a
+
+        # compare b vs best
+        load  b
+        sub   best        # acc = b - best
+        and   mask        # bit 7 set -> b < best (underflow)
+        ifzero setb       # bit 7 clear -> b >= best -> take b
+        goto  chkc
+setb:   load  b
+        store best        # best = b
+
+        # compare c vs best
+chkc:   load  c
+        sub   best        # acc = c - best
+        and   mask        # bit 7 set -> c < best
+        ifzero setc       # bit 7 clear -> c >= best -> take c
+        goto  done
+setc:   load  c
+        store best        # best = c
+
+done:   load  best        # result 4 in accumulator
+        stop
+
+# data
+mask:   128
+best:   0
+a:      3
+b:      1
+c:      4
