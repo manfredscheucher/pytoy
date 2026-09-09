@@ -2154,9 +2154,9 @@ def main():
     print(f"wrote {out_path}")
 
     if args.run:
-        toyasm = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), 'toyasm.py')
-        cmd = [sys.executable, toyasm, out_path, '--cli', '--run', '--quiet']
+        toysim = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), 'toysim.py')
+        cmd = [sys.executable, toysim, out_path, '--cli', '--run', '--quiet']
         print(f"running: {' '.join(cmd)}")
         subprocess.run(cmd)
 

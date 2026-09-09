@@ -19,7 +19,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 
-from toyasm import assemble, simulate          # noqa: E402
+from toyasm import assemble                    # noqa: E402
+from toysim import simulate                     # noqa: E402
 from toycc import compile_source               # noqa: E402
 
 
@@ -71,7 +72,8 @@ def main():
     used = max(syms.values()) if syms else 0
     # count actual emitted bytes: assemble pass tracks via data_addrs + code
     # Simpler: recompute total size the way the assembler does.
-    from toyasm import parse_source, OPCODES, has_operand
+    from toyasm import parse_source
+    from toycpu import OPCODES, has_operand
     addr = 0
     for label, mn, _op, _orig in parse_source(asm):
         if mn is None:

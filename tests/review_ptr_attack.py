@@ -8,7 +8,8 @@ import os, sys
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
 sys.path.insert(0, os.path.join(_root, 'compiler'))
-from toyasm import assemble, execute_one
+from toyasm import assemble
+from toycpu import execute_one
 from toycc import compile_source, CompileError
 
 

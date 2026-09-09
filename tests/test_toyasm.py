@@ -5,9 +5,9 @@ import sys
 import contextlib
 import os
 import tempfile
-from toyasm import (assemble, simulate, parse_val, OPCODES, has_operand,
-                    _is_data_marker, DATA_MARKER, execute_one,
-                    sps_to_interval, parse_toyo, export, SPS_MIN, SPS_MAX)
+from toyasm import assemble, _is_data_marker, DATA_MARKER, export
+from toycpu import parse_val, OPCODES, has_operand, execute_one
+from toysim import simulate, sps_to_interval, parse_toyo, SPS_MIN, SPS_MAX
 
 
 # ── Value parser ──────────────────────────────────────────────────────────

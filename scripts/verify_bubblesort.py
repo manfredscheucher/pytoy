@@ -17,6 +17,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
 import toyasm
+import toycpu
 
 TOYS = os.path.join(ROOT, "examples", "bubblesort.toys")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
@@ -32,7 +33,7 @@ def run(mem_in):
         instr = mem[pc]
         if instr == 0:  # STOP
             break
-        pc, acc, _arg, _stopped = toyasm.execute_one(mem, pc, acc)
+        pc, acc, _arg, _stopped = toycpu.execute_one(mem, pc, acc)
         steps += 1
     else:
         raise RuntimeError(f"did not halt within {MAX_STEPS} steps")

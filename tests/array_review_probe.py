@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'compiler'))
 
 import toyasm
+import toycpu
 from toycc import compile_source, CompileError
 
 
@@ -24,7 +25,7 @@ def run(src, optimize=False, max_steps=200000):
     assert not errors, f"assemble errors: {errors}\n{toys}"
     acc, pc, steps = 0, 0, 0
     while steps < max_steps:
-        next_pc, acc, arg_addr, stopped = toyasm.execute_one(mem, pc, acc)
+        next_pc, acc, arg_addr, stopped = toycpu.execute_one(mem, pc, acc)
         if stopped:
             return acc, mem, syms, toys
         pc = next_pc

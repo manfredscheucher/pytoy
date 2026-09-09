@@ -21,7 +21,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "compiler"))
 
 from toycc import compile_source, CompileError
-from toyasm import assemble, simulate
+from toyasm import assemble
+from toysim import simulate
 
 EXAMPLES = os.path.join(ROOT, "compiler", "examples")
 _EXPECT = re.compile(r"//\s*expect:\s*(\d+)", re.IGNORECASE)

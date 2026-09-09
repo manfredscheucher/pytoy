@@ -16,6 +16,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'compiler'))
 
 import toyasm
+import toycpu
 from toycc import compile_source, CompileError
 
 
@@ -29,10 +30,10 @@ def _run_capped(mem, syms, data_addrs, cap):
     mem = list(mem)
     acc, pc, steps = 0, 0, 0
     while True:
-        instr, arg_addr, _ = toyasm.decode(mem, pc)
+        instr, arg_addr, _ = toycpu.decode(mem, pc)
         if instr == 0:  # STOP
             return acc, steps
-        pc, acc, arg_addr, _ = toyasm.execute_one(mem, pc, acc)
+        pc, acc, arg_addr, _ = toycpu.execute_one(mem, pc, acc)
         steps += 1
         if steps > cap:
             raise StepCap(f"exceeded {cap} steps (likely infinite loop)")

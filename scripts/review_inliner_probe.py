@@ -15,7 +15,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "compiler"))
 
-from toyasm import assemble, simulate
+from toyasm import assemble
+from toysim import simulate
 from toycc import compile_source, CompileError
 
 

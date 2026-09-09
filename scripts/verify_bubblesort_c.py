@@ -19,6 +19,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "compiler"))
 
 import toyasm
+import toycpu
 from toycc import compile_source
 
 TOYC = os.path.join(ROOT, "compiler", "examples", "bubblesort.toyc")
@@ -34,7 +35,7 @@ def run(mem_in):
     while steps < MAX_STEPS:
         if mem[pc] == 0:  # STOP
             break
-        pc, acc, _arg, _stopped = toyasm.execute_one(mem, pc, acc)
+        pc, acc, _arg, _stopped = toycpu.execute_one(mem, pc, acc)
         steps += 1
     else:
         raise RuntimeError(f"did not halt within {MAX_STEPS} steps")

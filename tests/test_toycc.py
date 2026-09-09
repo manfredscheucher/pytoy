@@ -20,7 +20,9 @@ import contextlib
 
 import pytest
 
-from toyasm import assemble, simulate, execute_one
+from toyasm import assemble
+from toysim import simulate
+from toycpu import execute_one
 from toycc import (compile_source, CompileError, lex, Parser,
                    build_call_graph, find_recursive)
 
