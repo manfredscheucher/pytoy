@@ -58,7 +58,7 @@ sum/max, …).
 
 ## Write it in C instead
 
-toyasm also ships **toycc**, a compiler for a small subset of C that targets the
+pytoy also ships **toycc**, a compiler for a small subset of C that targets the
 Toy CPU — often nicer than writing assembly by hand:
 
 ```c
@@ -83,20 +83,20 @@ background. It covers: how a CPU works (memory, accumulator, program counter,
 the fetch–execute cycle), the full instruction set, assembly syntax, worked
 example programs, using the GUI and CLI, and the C → assembly pipeline.
 
-Grab the prebuilt [`doc-typst/toyasm.pdf`](doc-typst/toyasm.pdf), or rebuild it
+Grab the prebuilt [`doc-typst/pytoy.pdf`](doc-typst/pytoy.pdf), or rebuild it
 with [Typst](https://typst.app):
 
 ```bash
-cd doc-typst && ./build.sh   # -> doc-typst/toyasm.pdf
+cd doc-typst && ./build.sh   # -> doc-typst/pytoy.pdf
 ```
 
 ## Credits & license
 
 The Toy CPU instruction set is by Jim Hall (FreeDOS Project) — see its
 [official page](https://jimhall.itch.io/toy-cpu) and
-[source](https://github.com/freedosproject/toycpu). toyasm's own code
+[source](https://github.com/freedosproject/toycpu). pytoy's own code
 (assembler, GUI, CLI, compiler) is independent.
 
-toyasm is MIT-licensed (see [`LICENSE`](LICENSE)). toycpu is MIT too; its
+pytoy is MIT-licensed (see [`LICENSE`](LICENSE)). toycpu is MIT too; its
 original notice is reproduced in [`NOTICE`](NOTICE). The manual's "About the Toy
 CPU" chapter spells out exactly what was reused vs. written from scratch.

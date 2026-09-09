@@ -12,10 +12,10 @@ This is the source for the pytoy PDF manual — the primary documentation.
 ```bash
 ./build.sh
 # or directly:
-typst compile main.typ toyasm.pdf
+typst compile main.typ pytoy.pdf
 ```
 
 Requires [Typst](https://typst.app) (`brew install typst` on macOS). The output
-`toyasm.pdf` is written next to `main.typ`.
+`pytoy.pdf` is written next to `main.typ`.
 
-While editing, `typst watch main.typ toyasm.pdf` rebuilds on save.
+While editing, `typst watch main.typ pytoy.pdf` rebuilds on save.

@@ -2,7 +2,7 @@
 //
 // This is the Typst source for the PDF manual — the project's primary
 // documentation. Build with ./build.sh (or `typst compile main.typ
-// toyasm.pdf`).
+// pytoy.pdf`).
 
 #set document(title: "pytoy — A Python toolbox for the Toy CPU", author: "Manfred Scheucher")
 #set page(paper: "a4", numbering: "1", margin: (x: 2.5cm, y: 2.5cm))

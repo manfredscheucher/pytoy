@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build the toyasm PDF manual from the Typst sources in this folder.
+# Build the pytoy PDF manual from the Typst sources in this folder.
 #
 # Requires Typst (https://typst.app). On macOS: `brew install typst`.
-# Output: toyasm.pdf next to this script.
+# Output: pytoy.pdf next to this script.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -12,5 +12,5 @@ if ! command -v typst >/dev/null 2>&1; then
   exit 1
 fi
 
-typst compile main.typ toyasm.pdf
-echo "built: doc-typst/toyasm.pdf"
+typst compile main.typ pytoy.pdf
+echo "built: doc-typst/pytoy.pdf"
