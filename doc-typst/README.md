@@ -1,6 +1,6 @@
-# toyasm documentation (Typst source)
+# pytoy documentation (Typst source)
 
-This is the source for the toyasm PDF manual — the primary documentation.
+This is the source for the pytoy PDF manual — the primary documentation.
 
 - `main.typ` — the document: title page, outline, and `#include`s of each chapter.
 - `chapters/` — one file per chapter (concepts, instruction set, assembly,

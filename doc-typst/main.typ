@@ -1,10 +1,10 @@
-// toyasm — documentation (PDF edition)
+// pytoy — documentation (PDF edition)
 //
 // This is the Typst source for the PDF manual — the project's primary
 // documentation. Build with ./build.sh (or `typst compile main.typ
 // toyasm.pdf`).
 
-#set document(title: "toyasm — Assembler and Simulator for the Toy CPU", author: "Manfred Scheucher")
+#set document(title: "pytoy — A Python toolbox for the Toy CPU", author: "Manfred Scheucher")
 #set page(paper: "a4", numbering: "1", margin: (x: 2.5cm, y: 2.5cm))
 #set text(font: "New Computer Modern", size: 10.5pt, lang: "en")
 #set par(justify: true, leading: 0.65em)
@@ -17,9 +17,9 @@
 
 // Title page
 #align(center + horizon)[
-  #text(size: 26pt, weight: "bold")[toyasm]
+  #text(size: 26pt, weight: "bold")[pytoy]
   #v(0.4em)
-  #text(size: 14pt)[Assembler and Simulator for the Toy CPU]
+  #text(size: 14pt)[A Python toolbox for the Toy CPU]
   #v(2em)
   #text(size: 11pt)[A Python assembler, simulator, and GUI debugger \
   for Jim Hall's minimal 8-bit educational processor]

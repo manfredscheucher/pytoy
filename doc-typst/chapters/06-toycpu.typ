@@ -1,8 +1,9 @@
 = About the Toy CPU
 
-toyasm is a Python assembler and simulator for the *Toy CPU*, a minimal
-educational processor created by Jim Hall for the FreeDOS Project. This chapter
-records where the machine comes from and how toyasm relates to it.
+pytoy is a Python toolbox (assembler, simulator, and C compiler) for the *Toy
+CPU*, a minimal educational processor created by Jim Hall for the FreeDOS
+Project. This chapter records where the machine comes from and how pytoy relates
+to it.
 
 - Official page: #link("https://jimhall.itch.io/toy-cpu") (free, MIT-licensed)
 - Source: #link("https://github.com/freedosproject/toycpu")
@@ -26,11 +27,11 @@ real Altair opcodes.
   caption: [Jim Hall's original Toy CPU (v2, ncurses). The `count`, `instr`, and
     `accum` boxes are 8-bit LED patterns; the legend on the right lists every
     opcode. You program it by flipping bits: _left/right = prev/next, space =
-    flip, enter = done_. toyasm exists to spare you exactly this bit-by-bit
+    flip, enter = done_. pytoy exists to spare you exactly this bit-by-bit
     entry, without hiding what it produces.],
 )
 
-== Why toyasm exists
+== Why pytoy exists
 
 The Toy CPU itself is wonderful because it is _small_ --- the whole machine fits
 in your head. But driving it through LEDs and switches gets tiring fast: entering
@@ -42,12 +43,12 @@ workflow has its own charm --- it's honest about how bare a computer really is
 The sharpest difference is what you can _see at once_. On the original front
 panel you look at one value at a time --- one register, one address --- and step
 or click through the rest; the machine only ever shows you a single 8-bit box.
-toyasm shows everything simultaneously: the whole program, every byte of memory,
+pytoy shows everything simultaneously: the whole program, every byte of memory,
 the accumulator, and the program counter, all on screen together, updating as you
 step. Watching the PC move and the bytes change in one view is what makes a bug
 obvious instead of invisible.
 
-So toyasm keeps the tiny, comprehensible machine and widens the doorway. With a
+So pytoy keeps the tiny, comprehensible machine and widens the doorway. With a
 graphical view of all of memory and the accumulator, an assembly layer, and a C
 layer on top, you spot your mistakes almost immediately (instead of staring at
 LEDs that tell you nothing) and you can keep experimenting far longer. The limits
@@ -69,7 +70,7 @@ Linux/ncurses prototype, and finally a FreeDOS graphics-mode program.
 == Building the original (and why v2 on macOS)
 
 The three versions build very differently, which matters if you want to run Jim
-Hall's original alongside toyasm:
+Hall's original alongside pytoy:
 
 - *v3* (current `main`, the FreeDOS graphics-mode program) builds with a `.bat`
   script that calls *OpenWatcom C* (`wcl -q -2 -os toy.c …`). That toolchain
@@ -96,7 +97,7 @@ FreeDOS/OpenWatcom-only.
 This is unavoidable: matching the instruction set _means_ matching these numbers
 and their behaviour. It is the specification, not copied code.
 
-*Written from scratch for toyasm (not present in toycpu):*
+*Written from scratch for pytoy (not present in toycpu):*
 
 - The two-pass *assembler* --- labels, symbols, comments, data bytes. toycpu has
   no assembler; it reads pre-built binary via the switch-panel input shown
@@ -106,22 +107,21 @@ and their behaviour. It is the specification, not copied code.
 - The *CLI* verbose/step mode, the `EXPLAIN` output, the listing/export, and the
   `.toys`/`.toyo` file formats.
 
-Both toyasm's Python is deliberately *simple, single-file, standard-library +
-PySide6 code* --- readability is a feature, since the point is to _see_ how the
-machine works.
+pytoy's Python is deliberately *simple, standard-library + PySide6 code* ---
+readability is a feature, since the point is to _see_ how the machine works.
 
 == Licensing
 
 Both projects are MIT-licensed, so the provenance is clean.
 
 - toycpu is MIT, Copyright (c) 2022 Jim Hall (FreeDOS Project).
-- toyasm is MIT, Copyright (c) 2026 Manfred Scheucher, for its own code
+- pytoy is MIT, Copyright (c) 2026 Manfred Scheucher, for its own code
   (assembler, GUI, CLI).
 
 Strictly, an instruction set on its own (a list of opcodes and what they do) is
 likely not copyrightable --- interfaces generally are not. So reusing only the
 opcode numbers and semantics, with everything else rewritten, probably carries
-no attribution obligation at all. But since toycpu is MIT anyway, toyasm
+no attribution obligation at all. But since toycpu is MIT anyway, pytoy
 reproduces Jim Hall's original MIT notice in the repository's `NOTICE` file,
 which makes the question moot: MIT-on-MIT, both copyright holders credited side
 by side.

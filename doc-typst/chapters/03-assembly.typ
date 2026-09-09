@@ -1,7 +1,7 @@
 = Assembly syntax
 
 Programming the original Toy CPU meant flipping switches to enter raw binary
-(see the Toy CPU chapter). toyasm lets you write the same programs as readable
+(see the Toy CPU chapter). pytoy lets you write the same programs as readable
 text in a `.toys` file, and it does the tedious part --- turning mnemonics and
 labels into the right bytes at the right addresses.
 
@@ -36,7 +36,7 @@ loop:   sub   one       # "loop" names this instruction's address
         goto  loop
 ```
 
-A label is just a human-friendly name for a number. toyasm figures out the
+A label is just a human-friendly name for a number. pytoy figures out the
 actual address and substitutes it, so you never count bytes by hand.
 
 *Data* is a label followed by a value; it reserves one byte holding that value.
@@ -58,7 +58,7 @@ a `goto`) so the CPU never tries to execute it as an instruction.
 
 All values must fit in one byte (`0`--`255`).
 
-== How toyasm lays it out in memory
+== How pytoy lays it out in memory
 
 Lines are placed into memory top to bottom, starting at address 0: a one-byte
 instruction takes one address; a two-byte instruction takes two (opcode, then

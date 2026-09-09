@@ -1,4 +1,4 @@
-= Using toyasm
+= Using pytoy
 
 Two tools do the work. `toyasm.py` is the *assembler*: it turns a `.toys` file
 into a `.toyo` byte listing and nothing else. `toysim.py` is the *simulator*:
@@ -8,7 +8,7 @@ point it at a `.toyo` and it loads and runs it directly.
 
 #figure(
   image("../images/screenshot.png", width: 100%),
-  caption: [The toyasm GUI: source panel on the left (current instruction
+  caption: [The pytoy GUI: source panel on the left (current instruction
     highlighted), memory panel on the right showing every byte in binary.],
 )
 
@@ -87,7 +87,7 @@ decimal.
 == Memory limits and code-overwrite detection
 
 The Toy CPU has exactly 256 bytes, shared by code and data. Two things can go
-wrong at that boundary, and toyasm handles both:
+wrong at that boundary, and pytoy handles both:
 
 *Too big to fit.* If a program assembles to more than 256 bytes, the assembler
 stops with a clear message rather than crashing:
@@ -111,7 +111,7 @@ python3 toysim.py myprog.toys --cli -d
 
 The guard uses the `# data` marker in your source --- a line whose only content
 is `# data` --- to know where the code region ends and data begins. If a `store`
-writes below that line (into code), toyasm warns and asks whether to continue; in
+writes below that line (into code), toysim warns and asks whether to continue; in
 the GUI it pops up a dialog. If the program has no `# data` marker, the guard
 can't know the boundary and prints a note that detection is off. The flag is off
 by default, keeping the bare machine's "anything goes" behaviour unless you opt

@@ -1,6 +1,6 @@
 = The C #sym.arrow assembly #sym.arrow CPU pipeline
 
-toyasm ships with *toycc*, a small compiler that turns a simplified subset of C
+pytoy ships with *toycc*, a small compiler that turns a simplified subset of C
 into Toy CPU assembly (`.toys`). Writing C is more pleasant than hand-writing
 assembly, and it lets you see, stage by stage, how a high-level program becomes
 raw machine bytes.
@@ -21,7 +21,7 @@ subset.
      v
  256-byte memory image + symbol table      (opcodes & data bytes)
      |
-     |  toyasm simulator (fetch -> decode -> execute)
+     |  toysim simulator (fetch -> decode -> execute)
      v
  final accumulator (ACC)                   (the program's result)
 ```
@@ -32,7 +32,7 @@ subset.
   table.header([*Stage*], [*Tool*], [*Input*], [*Output*]),
   [1. Compile],  [`toycc`],  [`.toyc` source text], [`.toys` assembly text],
   [2. Assemble], [toyasm],   [`.toys` text],        [memory image + symbols, or errors],
-  [3. Simulate], [toyasm],   [memory image],        [final ACC value],
+  [3. Simulate], [toysim],   [memory image],        [final ACC value],
 )
 
 === Stage 1 --- toycc (C #sym.arrow assembly)

@@ -91,7 +91,7 @@ tools, *you are the assembler*, translating in your head. It teaches you what
 the machine really does, but it is slow and error-prone for anything longer than
 a few instructions.
 
-toyasm adds layers on top that make programs easier to write, without ever
+pytoy adds layers on top that make programs easier to write, without ever
 hiding what the machine executes:
 
 ```
