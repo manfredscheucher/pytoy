@@ -74,7 +74,7 @@ Run `python3 toyasm.py -h` for the full list.
 python3 toyasm.py examples/multiply.toys --cli --run --quiet
 
 # Assemble and export the byte layout to examples/max.toyo:
-python3 toyasm.py examples/max.toys --cli --export --run
+python3 toyasm.py examples/max_array.toys --cli --export --run
 ```
 
 The final line reports the result in the accumulator in binary, hex, and

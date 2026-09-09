@@ -103,7 +103,7 @@ def test_examples_present():
     names = {name for name, _, _ in EXAMPLE_CASES}
     assert names, "no .toyc examples found"
     # the ports of the assembler examples must exist
-    for expected in {'fibonacci_iter.toyc', 'multiply.toyc', 'sevenfold.toyc', 'array_sum.toyc', 'array_max.toyc'}:
+    for expected in {'fibonacci_iter.toyc', 'multiply.toyc', 'sevenfold.toyc', 'sum_array.toyc', 'max_array.toyc'}:
         assert expected in names, f"missing example {expected}"
 
 

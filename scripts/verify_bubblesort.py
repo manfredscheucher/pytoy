@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Durable verification harness for examples/bubblesort.toys.
+Durable verification harness for examples/sort_array.toys.
 
 Assembles the program, runs the real fetch/execute loop (toyasm.execute_one)
 to STOP, then reads the sorted array straight out of the simulator's memory
@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 import toyasm
 import toycpu
 
-TOYS = os.path.join(ROOT, "examples", "bubblesort.toys")
+TOYS = os.path.join(ROOT, "examples", "sort_array.toys")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 N = len(EXPECTED)
 MAX_STEPS = 1_000_000  # safety cap; the program halts well before this

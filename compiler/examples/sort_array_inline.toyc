@@ -1,15 +1,18 @@
 // expect: 1
 /*
- * bubblesort.c - iterative bubble sort of a fixed 10-element array.
+ * sort_array_inline.c - iterative bubble sort of a fixed 10-element array,
+ * done inline in main (see sort_array_function.toyc for the version that
+ * passes the array to a function).
  *
- * Port of examples/bubblesort.toys to C. The array holds the 10 digits of pi
+ * Port of examples/sort_array.toys to C. The array holds the 10 digits of pi
  * (3 1 4 1 5 9 2 6 5 3); after sorting it is 1 1 2 3 3 4 5 5 6 9, so main
  * returns a[0] = 1.
  *
  * toycc compiles the array as a contiguous block of data bytes plus a
  * base-pointer byte, and reaches a[i] with self-modifying code: it computes
  * the element address (base + i), patches it into a raw LOAD/STORE address
- * byte, and executes that instruction (the sum.toys / bubblesort.toys trick).
+ * byte, and executes that instruction (the sum_array.toys / sort_array.toys
+ * trick).
  *
  * The // expect annotation only checks ACC (= a[0] = 1); the full sorted array
  * is verified from memory by scripts/verify_bubblesort_c.py and by

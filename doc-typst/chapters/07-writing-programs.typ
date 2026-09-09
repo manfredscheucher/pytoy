@@ -91,7 +91,7 @@ The Toy CPU has no index register, so to walk through an array you modify the
 program itself while it runs --- because code and data are the same memory, you
 can `store` a new address into an instruction's operand byte.
 
-`sum.toys` and `max.toys` do this. The key trick is writing a `load` as two raw
+`sum_array.toys` and `max_array.toys` do this. The key trick is writing a `load` as two raw
 bytes so the address byte is a normal, patchable memory box:
 
 ```

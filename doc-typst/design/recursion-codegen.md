@@ -37,7 +37,7 @@ call, even where unnecessary). On a 256-byte machine that matters, which is why
 One byte `sp` = current top of stack. push decreases `sp`, pop increases it.
 Indirect access via self-modifying code (patch a raw load/store's address byte
 from `sp` before each access — re-patched every time because `sp` moves), the
-same technique as `sum.toys`. push/pop are short inline sequences, no subroutine.
+same technique as `sum_array.toys`. push/pop are short inline sequences, no subroutine.
 
 ## A call, compiled (default: always save/restore)
 

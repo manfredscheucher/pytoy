@@ -92,8 +92,8 @@ Keep recursion shallow, or use `-O` and small inputs.
 Fixed-size local arrays (`int a[10] = {...};`, `a[i]` read/write with any index
 expression) are supported. With no index register, `a[i]` compiles with
 self-modifying code: compute `base + i`, patch it into a raw load/store's
-address byte, and execute it --- the same trick the `sum.toys` and
-`bubblesort.toys` assembly examples use. `array_sum.toyc`, `array_max.toyc` and `bubblesort.toyc`
+address byte, and execute it --- the same trick the `sum_array.toys` and
+`sort_array.toys` assembly examples use. `sum_array.toyc`, `max_array.toyc` and `sort_array_inline.toyc`
 operate on the ten digits of pi. (Arrays are not saved across recursive calls,
 so a recursive function may not declare one --- the compiler rejects that.)
 
@@ -109,7 +109,7 @@ address from `p` into a raw load/store, then execute it).
 Crucially, an array passed to a function *decays to a pointer*: `int f(int a[],
 int n)` receives the array's address, and `a[i]` inside `f` means `*(a + i)`
 through that address --- so a function can sort or fill the caller's array in
-place. `bubblesort_fn.toyc` is the bubble sort written as such a function.
+place. `sort_array_function.toyc` is the bubble sort written as such a function.
 (Taking the address of a local inside a *recursive* function is rejected, since
 `&x` names a single shared slot the recursion stack can't follow.)
 

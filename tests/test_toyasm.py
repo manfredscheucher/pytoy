@@ -292,13 +292,13 @@ val:    42
     assert _run(src) == 42
 
 def test_sim_sum():
-    """sum.toys with [3,1,4,1,5,9,2] should produce 25."""
-    src = open('examples/sum.toys').read()
+    """sum_array.toys with [3,1,4,1,5,9,2] should produce 25."""
+    src = open('examples/sum_array.toys').read()
     assert _run(src) == 25
 
 def test_sim_max():
-    """max.toys with [3,1,4,1,5,9,2] should produce 9."""
-    src = open('examples/max.toys').read()
+    """max_array.toys with [3,1,4,1,5,9,2] should produce 9."""
+    src = open('examples/max_array.toys').read()
     assert _run(src) == 9
 
 def test_sim_sum3():
@@ -317,9 +317,9 @@ def test_sim_sort3():
     assert _run(src) == 1
 
 def test_sim_bubblesort():
-    """bubblesort.toys sorts the 10 digits of pi in place. Check the whole
+    """sort_array.toys sorts the 10 digits of pi in place. Check the whole
     array from memory, not just ACC."""
-    src = open('examples/bubblesort.toys').read()
+    src = open('examples/sort_array.toys').read()
     mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     m, pc, acc, steps = list(mem), 0, 0, 0

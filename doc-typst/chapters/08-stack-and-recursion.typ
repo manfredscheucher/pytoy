@@ -32,7 +32,7 @@ address of the next free slot.
 
 The one subtlety: `sp` changes on every push and pop, so the indirect
 instruction's address byte must be *re-patched from the current `sp` before
-each access*. (This is different from `sum.toys`, which patches its pointer once
+each access*. (This is different from `sum_array.toys`, which patches its pointer once
 and then walks it.)
 
 The stack grows upward; there is no hardware bounds check, so a program must

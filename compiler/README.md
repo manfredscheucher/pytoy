@@ -82,7 +82,7 @@ Constants may be decimal (`42`) or hexadecimal (`0xF0`).
 
 **Comparisons — what actually works.** `==` and `!=` are exact (via
 subtraction + `ifzero`). The ordering comparisons `<`, `>`, `<=`, `>=` use the
-sign-bit trick from `max.toys`: bit 7 of the mod-256 difference `a - b` tells
+sign-bit trick from `max_array.toys`: bit 7 of the mod-256 difference `a - b` tells
 you whether `a < b`. This is correct as long as the two operands **differ by
 less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
@@ -91,7 +91,7 @@ more than 127 apart. Treat values as unsigned and keep them modest.
 ## Arrays (fixed-size, local)
 
 `toycc` supports fixed-size local arrays of `int` bytes — see
-`examples/bubblesort.toyc`:
+`examples/sort_array_inline.toyc`:
 
 ```c
 int a[10] = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};  // size + initializers are constant
@@ -101,12 +101,12 @@ a[i] = expr;                                  // indexed write
 ```
 
 The size and the initializer values must be compile-time constants. An array is
-laid out as a contiguous block of data bytes (like `arr:` in `examples/sum.toys`)
+laid out as a contiguous block of data bytes (like `arr:` in `examples/sum_array.toys`)
 plus a base-pointer byte holding its address.
 
 **How indexing works with no index register.** The Toy CPU has no index
 register and no indirect load/store, so `a[i]` is compiled with **self-modifying
-code** (the `sum.toys` / `bubblesort.toys` trick): compute the element address
+code** (the `sum_array.toys` / `sort_array.toys` trick): compute the element address
 `base + i`, write it into the address byte of a raw `LOAD` (or `STORE`)
 instruction, then execute that instruction. `base` is the array's address, held
 in a data byte the assembler fills in.
@@ -148,7 +148,7 @@ int main(void) { int v[3] = {4, 5, 6}; return suma(v, 3); }   // 15
 The caller passes the array's base address; inside the function `a` is a pointer
 and `a[i]` means `*(a + i)` — indirect access through the passed address. So a
 function can sort or fill the caller's array **in place** (see
-`examples/bubblesort_fn.toyc`). This unifies indexing: `a[i]` computes
+`examples/sort_array_function.toyc`). This unifies indexing: `a[i]` computes
 `(value of a) + i` whether `a` is a real local array (its name evaluates to its
 base address) or a pointer/parameter (its byte holds the address).
 
@@ -197,7 +197,7 @@ Because a function has only one set of slots, a recursive call would clobber its
 caller's values. So around **every** call, `toycc` saves the caller's live
 values (the ones needed after the call) onto a real stack and restores them
 afterward — giving each activation its own copies. The stack is one `sp` byte
-plus self-modifying indirect load/store (the same trick as `sum.toys`), growing
+plus self-modifying indirect load/store (the same trick as `sum_array.toys`), growing
 *down* from address 255. This is the same mechanism the hand-written
 `examples/fibonacci_rec.toys` uses, generated automatically.
 
@@ -307,10 +307,10 @@ expected accumulator result.
 | `factorial_rec.toyc`  | 5!, recursive                                | 120 |
 | `gcd_iter.toyc`    | gcd(48,36) by subtraction, iterative            | 12  |
 | `gcd_rec.toyc`     | gcd(48,36) by subtraction, recursive            | 12  |
-| `array_sum.toyc`   | sum of an array of the 10 pi digits             | 39  |
-| `array_max.toyc`   | max of an array of the 10 pi digits             | 9   |
-| `bubblesort.toyc`  | bubble sort of the 10 pi digits (array in main); a[0] | 1 |
-| `bubblesort_fn.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
+| `sum_array.toyc`   | sum of an array of the 10 pi digits             | 39  |
+| `max_array.toyc`   | max of an array of the 10 pi digits             | 9   |
+| `sort_array_inline.toyc`  | bubble sort of the 10 pi digits (array in main); a[0] | 1 |
+| `sort_array_function.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
 
 The generated `.toys` files are build artifacts (not tracked in git). Build and
 re-verify all of them from the C sources with one command:

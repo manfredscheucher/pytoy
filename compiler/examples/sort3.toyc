@@ -5,7 +5,7 @@
  * sort3(a, b, c) orders a <= b <= c with a few compare-and-swap steps (the same
  * idea as bubble sort, but on three named variables instead of an array), then
  * returns the smallest, a. The three values are the first three digits of pi
- * (3, 1, 4). For sorting a whole array, see bubblesort.toyc.
+ * (3, 1, 4). For sorting a whole array, see sort_array_inline.toyc.
  *
  * sorted(3, 1, 4) = 1, 3, 4  ->  smallest = 1.
  *

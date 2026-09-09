@@ -10,7 +10,7 @@ but it is genuinely possible — not a fake.
 
 The one primitive we need is **indirect memory access** (load/store through an
 address held in a variable). The machine has no index register, but it has
-self-modifying code, and the existing `sum.toys` / `max.toys` examples already
+self-modifying code, and the existing `sum_array.toys` / `max_array.toys` examples already
 use exactly this:
 
 ```
@@ -34,7 +34,7 @@ convention.
   indirect load through `sp`.
 
 **Critical (fix 1): the operand byte must be re-patched from the current `sp`
-on every push and every pop.** Unlike `sum.toys`, which patches its pointer once
+on every push and every pop.** Unlike `sum_array.toys`, which patches its pointer once
 and then walks it, `sp` changes on every stack operation, so each access must do
 `load sp; store <indirect_op_arg>` immediately before executing the indirect
 load/store pair. Patching once at init would read/write a fixed slot and corrupt

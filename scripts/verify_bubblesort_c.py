@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Durable verification harness for compiler/examples/bubblesort.toyc.
+Durable verification harness for compiler/examples/sort_array_inline.toyc.
 
 Compiles the C bubble sort with toycc, assembles it, runs the real
 fetch/execute loop (toyasm.execute_one) to STOP, then reads the sorted array
@@ -22,7 +22,7 @@ import toyasm
 import toycpu
 from toycc import compile_source
 
-TOYC = os.path.join(ROOT, "compiler", "examples", "bubblesort.toyc")
+TOYC = os.path.join(ROOT, "compiler", "examples", "sort_array_inline.toyc")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 N = len(EXPECTED)
 MAX_STEPS = 1_000_000  # safety cap; the program halts well before this
@@ -44,7 +44,7 @@ def run(mem_in):
 
 def main():
     src = open(TOYC).read()
-    asm = compile_source(src, "bubblesort.toyc")
+    asm = compile_source(src, "sort_array_inline.toyc")
     mem, listing, syms, data_addrs, errors, _ds = toyasm.assemble(asm)
     if errors:
         print("ASSEMBLE ERRORS:")
