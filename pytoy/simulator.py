@@ -286,7 +286,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             bottom.addWidget(self.btn_load)
             self.btn_load.clicked.connect(self._load_clicked)
 
-            # speed control (steps per second, float)
+            bottom.addStretch(1)
+
+            self.btn_step = QPushButton("Step")
+            self.btn_run = QPushButton("Run")
+            bottom.addWidget(self.btn_step)
+            bottom.addWidget(self.btn_run)
+
+            # speed control (steps per second, float) — next to Run
             spd_label = QLabel("steps/sec:")
             spd_label.setFont(mono)
             bottom.addWidget(spd_label)
@@ -294,18 +301,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.spin_speed.setFont(mono)
             self.spin_speed.setRange(SPS_MIN, SPS_MAX)
             self.spin_speed.setDecimals(2)
-            self.spin_speed.setValue(10.0)   # 10 steps/sec = 100 ms (old default)
+            self.spin_speed.setValue(1.0)   # 1 step/sec by default
             bottom.addWidget(self.spin_speed)
             self.spin_speed.valueChanged.connect(self._speed_changed)
 
-            bottom.addStretch(1)
-
-            self.btn_step = QPushButton("Step")
-            self.btn_run = QPushButton("Run")
             self.btn_reset = QPushButton("Reset")
+            bottom.addWidget(self.btn_reset)
+
             for btn in (self.btn_step, self.btn_run, self.btn_reset):
                 btn.setFont(mono)
-                bottom.addWidget(btn)
 
             self.btn_step.clicked.connect(self.step)
             self.btn_run.clicked.connect(self._toggle_run)
@@ -344,6 +348,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             """Start/restart the auto-run timer at the current steps/sec."""
             self.timer.start(int(round(sps_to_interval(self.spin_speed.value()))))
             self.btn_run.setText("Stop")
+            self.btn_step.setEnabled(False)   # no single-stepping while running
 
         def _speed_changed(self, _value):
             """Apply a new speed immediately if we're currently auto-running."""
@@ -403,6 +408,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             if self.timer.isActive():
                 self.timer.stop()
                 self.btn_run.setText("Run")
+                self.btn_step.setEnabled(True)   # re-enable stepping when paused
             else:
                 self._start_timer()
 
