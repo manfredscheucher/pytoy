@@ -3,8 +3,11 @@
 import io
 import sys
 import contextlib
+import os
+import tempfile
 from toyasm import (assemble, simulate, parse_val, OPCODES, has_operand,
-                    _is_data_marker, DATA_MARKER, execute_one)
+                    _is_data_marker, DATA_MARKER, execute_one,
+                    sps_to_interval, parse_toyo, export, SPS_MIN, SPS_MAX)
 
 
 # ── Value parser ──────────────────────────────────────────────────────────
@@ -467,3 +470,71 @@ def test_store_into_data_region_not_flagged():
         # store target (w) is in the data region, so it must not prompt.
         acc = simulate(mem, syms, data_addrs, code_guard=data_start)
     assert acc == 42
+
+
+# ── GUI speed control (sps_to_interval) ────────────────────────────────────
+
+def test_sps_to_interval_half():
+    assert sps_to_interval(0.5) == 2000
+
+def test_sps_to_interval_ten():
+    assert sps_to_interval(10) == 100
+
+def test_sps_to_interval_one():
+    assert sps_to_interval(1) == 1000
+
+def test_sps_to_interval_clamps_low():
+    # 0 and negatives clamp up to SPS_MIN
+    assert sps_to_interval(0) == 1000.0 / SPS_MIN
+    assert sps_to_interval(-5) == 1000.0 / SPS_MIN
+
+def test_sps_to_interval_clamps_high():
+    # absurdly large clamps down to SPS_MAX (never 0)
+    assert sps_to_interval(1e9) == 1000.0 / SPS_MAX
+    assert sps_to_interval(1e9) > 0
+
+def test_sps_to_interval_bad_input_defaults():
+    assert sps_to_interval("nonsense") == 100  # falls back to 10 sps
+
+
+# ── .toyo round-trip (parse_toyo) ──────────────────────────────────────────
+
+def test_parse_toyo_roundtrip():
+    """assemble -> export to a temp .toyo -> parse_toyo yields the same mem."""
+    src = """
+        load x
+        add y
+        store z
+        stop
+# data
+x:      10
+y:      32
+z:      0
+"""
+    mem, listing, syms, data_addrs, errors, _ds = assemble(src)
+    assert errors == []
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "prog.toyo")
+        with contextlib.redirect_stdout(io.StringIO()):
+            export(listing, syms, mem, path)
+        parsed = parse_toyo(open(path).read())
+    assert parsed == mem
+
+def test_parse_toyo_skips_symbols_and_comments():
+    """The '# SYMBOLS' section and comment lines must not be parsed as bytes."""
+    text = (
+        "# Toy CPU – compiled listing\n"
+        "#\n"
+        "     0   00010100  00001010    load x\n"
+        "     2   00000000              stop\n"
+        "\n"
+        "# SYMBOLS\n"
+        "#   x               =   3  (00000011)\n"
+    )
+    mem = parse_toyo(text)
+    assert mem[0] == 0b00010100
+    assert mem[1] == 0b00001010
+    assert mem[2] == 0
+    # address 3 came only from the SYMBOLS comment and must stay 0
+    assert mem[3] == 0
+    assert len(mem) == 256

@@ -407,13 +407,59 @@ def export(listing, syms, mem, path):
         f.write("\n".join(out) + "\n")
     print(f"exported → {path}\n")
 
+def parse_toyo(text):
+    """Parse an exported .toyo byte listing back into a 256-byte memory image.
+
+    Reads the '  ADDR   BYTES  SOURCE' data lines (see export()): a line whose
+    first token is a decimal address, followed by one or two 8-bit binary
+    byte-strings. Comment lines (starting with '#') and blanks are ignored, so
+    the '# SYMBOLS' section is skipped. Returns mem[256]."""
+    mem = [0] * 256
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith('#'):
+            continue
+        tok = s.split()
+        if not tok[0].isdigit():
+            continue
+        addr = int(tok[0])
+        # following tokens that are 8-char binary strings are the bytes
+        offset = 0
+        for t in tok[1:]:
+            if len(t) == 8 and all(c in '01' for c in t):
+                if 0 <= addr + offset < 256:
+                    mem[addr + offset] = int(t, 2)
+                offset += 1
+            else:
+                break   # first non-byte token starts the source text
+    return mem
+
+# ── Speed control ──────────────────────────────────────────────────────────
+
+# Auto-run speed is expressed as steps per second. The timer interval in
+# milliseconds is 1000/sps. Clamp sps to a safe range so the interval never
+# becomes 0 (would busy-loop) or absurdly large.
+SPS_MIN = 0.1
+SPS_MAX = 1000.0
+
+def sps_to_interval(sps):
+    """Convert steps-per-second (float) to a QTimer interval in milliseconds.
+    Clamps sps to [SPS_MIN, SPS_MAX]. e.g. 0.5 -> 2000, 10 -> 100."""
+    try:
+        sps = float(sps)
+    except (TypeError, ValueError):
+        sps = 10.0
+    sps = max(SPS_MIN, min(SPS_MAX, sps))
+    return 1000.0 / sps
+
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
 def gui_main(mem, listing, syms, data_addrs, code_guard=None):
     """Launch PySide6 graphical debugger."""
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
-                                   QPushButton, QSplitter, QMessageBox)
+                                   QPushButton, QSplitter, QMessageBox,
+                                   QLabel, QDoubleSpinBox, QFileDialog)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
 
@@ -423,12 +469,22 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             self.setWindowTitle("toyasm")
             self.resize(1000, 700)
 
+            self._build_ui()
+            self._setup_shortcuts()
+            self.load_program(mem_original, listing, syms, data_addrs, code_guard)
+
+        def load_program(self, mem_original, listing, syms, data_addrs,
+                         code_guard=None, has_source=True):
+            """Point the debugger at a new program: rebuild the address maps and
+            reset the machine. has_source=False (e.g. a .toyo load) hides the
+            left source panel and shows only memory."""
             self.mem_original = list(mem_original)
             self.listing = listing
             self.syms = syms
             self.data_addrs = set(data_addrs)
             self.code_guard = code_guard   # data-region start, or None
             self.rsym = {v: k for k, v in syms.items()}
+            self.has_source = has_source
 
             # build addr→line map and addr→orig map
             self.addr_to_line = {}
@@ -446,8 +502,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             # collect all visible addresses
             self.visible = set(self.addr_orig.keys())
 
-            self._build_ui()
-            self._setup_shortcuts()
+            self.source_view.setVisible(has_source)
             self.reset()
 
         def _build_ui(self):
@@ -486,6 +541,23 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             bottom = QHBoxLayout()
             main_layout.addLayout(bottom)
 
+            self.btn_load = QPushButton("Load…")
+            self.btn_load.setFont(mono)
+            bottom.addWidget(self.btn_load)
+            self.btn_load.clicked.connect(self._load_clicked)
+
+            # speed control (steps per second, float)
+            spd_label = QLabel("steps/sec:")
+            spd_label.setFont(mono)
+            bottom.addWidget(spd_label)
+            self.spin_speed = QDoubleSpinBox()
+            self.spin_speed.setFont(mono)
+            self.spin_speed.setRange(SPS_MIN, SPS_MAX)
+            self.spin_speed.setDecimals(2)
+            self.spin_speed.setValue(10.0)   # 10 steps/sec = 100 ms (old default)
+            bottom.addWidget(self.spin_speed)
+            self.spin_speed.valueChanged.connect(self._speed_changed)
+
             bottom.addStretch(1)
 
             self.btn_step = QPushButton("Step")
@@ -496,7 +568,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
                 bottom.addWidget(btn)
 
             self.btn_step.clicked.connect(self.step)
-            self.btn_run.clicked.connect(self.run)
+            self.btn_run.clicked.connect(self._toggle_run)
             self.btn_reset.clicked.connect(self.reset)
 
             self.timer = QTimer()
@@ -505,7 +577,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
         def _setup_shortcuts(self):
             QShortcut(QKeySequence(Qt.Key_Space), self, self.step)
             QShortcut(QKeySequence(Qt.Key_Return), self, self.step)
-            QShortcut(QKeySequence(Qt.Key_R), self, self.run)
+            QShortcut(QKeySequence(Qt.Key_R), self, self._toggle_run)
             QShortcut(QKeySequence(Qt.Key_Escape), self, self.reset)
 
         def reset(self):
@@ -522,10 +594,21 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             self.timer.stop()
             self.btn_step.setEnabled(True)
             self.btn_run.setEnabled(True)
+            self.btn_run.setText("Run")
             self.refresh()
 
         def _sym(self, a):
             return self.rsym.get(a, str(a))
+
+        def _start_timer(self):
+            """Start/restart the auto-run timer at the current steps/sec."""
+            self.timer.start(int(round(sps_to_interval(self.spin_speed.value()))))
+            self.btn_run.setText("Stop")
+
+        def _speed_changed(self, _value):
+            """Apply a new speed immediately if we're currently auto-running."""
+            if self.timer.isActive():
+                self._start_timer()
 
         def _halt(self):
             """Stop execution: freeze the machine and disable Step/Run."""
@@ -533,6 +616,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             self.timer.stop()
             self.btn_step.setEnabled(False)
             self.btn_run.setEnabled(False)
+            self.btn_run.setText("Run")
             self.refresh()
 
         def step(self):
@@ -561,7 +645,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
                     return
                 self.overwrite_ok = True          # don't ask again this run
                 if was_running:
-                    self.timer.start(100)         # resume auto-run
+                    self._start_timer()           # resume auto-run
 
             self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
             if instr == 21:  # STORE wrote memory
@@ -572,10 +656,51 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None):
             self.visible.update(self.touched)
             self.refresh()
 
-        def run(self):
+        def _toggle_run(self):
+            """Run/Stop toggle: start auto-run, or pause it if already running."""
             if self.stopped:
                 return
-            self.timer.start(100)
+            if self.timer.isActive():
+                self.timer.stop()
+                self.btn_run.setText("Run")
+            else:
+                self._start_timer()
+
+        def _load_clicked(self):
+            """Open a .toys (assembly source) or .toyo (byte listing) file and
+            reload the debugger with it."""
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Load program", "",
+                "Toy programs (*.toys *.toyo);;All files (*)")
+            if not path:
+                return
+            try:
+                text = open(path).read()
+            except Exception as e:
+                QMessageBox.critical(self, "Load failed",
+                                     f"Could not read file:\n{e}")
+                return
+
+            if path.lower().endswith(".toyo"):
+                try:
+                    mem = parse_toyo(text)
+                except Exception as e:
+                    QMessageBox.critical(self, "Load failed",
+                                         f"Could not parse .toyo file:\n{e}")
+                    return
+                # a .toyo has no re-runnable source: show only the memory panel.
+                # Build a minimal listing so every byte is visible in memory.
+                listing = [(a, [mem[a]], "", True) for a in range(256)]
+                self.load_program(mem, listing, {}, set(range(256)),
+                                  code_guard=None, has_source=False)
+            else:
+                mem, listing, syms, data_addrs, errors, data_start = assemble(text)
+                if errors:
+                    QMessageBox.critical(self, "Assembly failed",
+                                         "\n".join(errors))
+                    return
+                self.load_program(mem, listing, syms, data_addrs,
+                                  code_guard=None, has_source=True)
 
         def _run_tick(self):
             if self.stopped:
