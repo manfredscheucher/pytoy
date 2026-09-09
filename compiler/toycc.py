@@ -3,7 +3,7 @@
 toycc - a tiny C-to-assembly compiler for the toyasm "Toy CPU".
 
 It compiles a small, standard-looking subset of C into a .toys assembly file
-that the toyasm assembler/simulator (../toyasm.py) can run.
+that the toysim simulator (../toysim.py) can run.
 
 Target machine (see ../doc-typst/):
   - 256 bytes of memory total; code and data share the address space.
@@ -17,7 +17,7 @@ Because the machine is 8-bit, every C `int` here is an unsigned 8-bit value
 Usage:
     python3 toycc.py program.toyc              # writes program.toys
     python3 toycc.py program.toyc -o out.toys  # custom output path
-    python3 toycc.py program.toyc --run        # compile, then run via toyasm CLI
+    python3 toycc.py program.toyc --run        # compile, then run via toysim CLI
 
 Design: hand-written lexer + recursive-descent parser + a straightforward
 code generator that emits Toy assembly text. Standard library only.
@@ -2100,7 +2100,7 @@ def main():
     ap.add_argument('file', help='input C file (.toyc)')
     ap.add_argument('-o', '--output', help='output .toys path')
     ap.add_argument('-r', '--run', action='store_true',
-                    help='after compiling, run the .toys through toyasm (CLI)')
+                    help='after compiling, run the .toys through toysim (CLI)')
     ap.add_argument('-O', '--optimize-save-restore', action='store_true',
                     dest='optimize',
                     help='skip save/restore at call sites whose caller is not '

@@ -7,23 +7,40 @@ Assembler and simulator for the [Toy CPU](https://github.com/freedosproject/toyc
 
 The Toy CPU is a minimal 8-bit processor with 256 bytes of memory, one
 accumulator, and a program counter. It was built as a FreeDOS learning tool
-with a switch-based interface (like an Altair 8800); toyasm keeps the same CPU
-but replaces the binary switch input with readable assembly, a GUI, and a CLI.
+with a switch-based interface (like an Altair 8800); this project keeps the same
+CPU but replaces the binary switch input with readable assembly, a GUI, and a
+CLI, plus a small C compiler on top.
 
-It's deliberately simple, readable Python — standard library plus PySide6, the
-whole machine in one file — because the point is to *see* how a CPU works.
+It's deliberately simple, readable Python (standard library plus PySide6),
+because the point is to *see* how a CPU works.
+
+## The three files
+
+- `toysim.py` — the simulator: runs programs, opens the GUI, has the CLI. **This
+  is the one you run.**
+- `toyasm.py` — the assembler: turns `.toys` assembly into a `.toyo` byte
+  listing. Doesn't run anything.
+- `toycpu.py` — the CPU core (opcodes, decode/execute). A library the other two
+  import; not run directly.
 
 ## Quick start
 
 ```bash
-pip install PySide6                          # required for the default GUI
-python3 toyasm.py examples/fibonacci.toys    # opens the GUI
-python3 toyasm.py examples/fibonacci.toys -c # or run in the terminal (--cli)
+pip install PySide6                                 # required for the default GUI
+
+python3 toysim.py examples/fibonacci.toys           # open the GUI on an example
+python3 toysim.py examples/fibonacci.toys --cli --run   # or run in the terminal
+
+python3 toyasm.py examples/fibonacci.toys           # assemble -> examples/fibonacci.toyo
+python3 toysim.py examples/fibonacci.toyo --run     # run a compiled .toyo directly
+
+python3 compiler/toycc.py compiler/examples/multiply.toyc --run   # compile C and run
 ```
 
-By default toyasm opens a graphical interface (source + memory panels, with
-Step / Run / Reset). Use `-c` / `--cli` to run in the terminal instead — that
-mode needs no PySide6. Run `python3 toyasm.py -h` for all options.
+`toysim.py` opens a graphical interface by default (source + memory panels, with
+Step / Run / Reset). Pass a `.toys` and it assembles first; pass a `.toyo` and
+it loads and runs it. Use `-c` / `--cli` to run in the terminal instead — that
+mode needs no PySide6. Run `python3 toysim.py -h` for all options.
 
 ## A taste of the syntax
 

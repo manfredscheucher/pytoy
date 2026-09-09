@@ -1,7 +1,10 @@
 = Using toyasm
 
-toyasm assembles a `.toys` file and then either opens a graphical interface
-(the default) or runs it in the terminal.
+Two tools do the work. `toyasm.py` is the *assembler*: it turns a `.toys` file
+into a `.toyo` byte listing and nothing else. `toysim.py` is the *simulator*:
+it runs a program and either opens a graphical interface (the default) or runs
+it in the terminal. Point `toysim.py` at a `.toys` and it assembles first;
+point it at a `.toyo` and it loads and runs it directly.
 
 #figure(
   image("../images/screenshot.png", width: 100%),
@@ -20,10 +23,10 @@ pip install PySide6
 
 == GUI (default)
 
-Just point toyasm at a program:
+Just point toysim at a program:
 
 ```bash
-python3 toyasm.py examples/fibonacci.toys
+python3 toysim.py examples/fibonacci.toys
 ```
 
 The window has:
@@ -51,7 +54,7 @@ which memory box a label refers to.
 Use `-c` / `--cli` to run in the terminal instead of opening the window:
 
 ```bash
-python3 toyasm.py examples/fibonacci.toys --cli
+python3 toysim.py examples/fibonacci.toys --cli
 ```
 
 By default the CLI runs step-by-step with full verbose output; press Enter to
@@ -67,14 +70,15 @@ advance each instruction.
   [`-x`, `--export`], [Also write the compiled listing to a `.toyo` file],
 )
 
-Run `python3 toyasm.py -h` for the full list.
+Run `python3 toysim.py -h` for the full list.
 
 ```bash
 # Run to the end, compact output:
-python3 toyasm.py examples/multiply.toys --cli --run --quiet
+python3 toysim.py examples/multiply.toys --cli --run --quiet
 
-# Assemble and export the byte layout to examples/max.toyo:
-python3 toyasm.py examples/max_array.toys --cli --export --run
+# Assemble to a standalone .toyo, then run it:
+python3 toyasm.py examples/max_array.toys           # -> examples/max_array.toyo
+python3 toysim.py examples/max_array.toyo --cli --run
 ```
 
 The final line reports the result in the accumulator in binary, hex, and
@@ -102,7 +106,7 @@ But when you _don't_ mean to do it, it is a nasty bug. The optional
 `-d` / `--detect-code-overwrite` flag turns on a guard:
 
 ```bash
-python3 toyasm.py myprog.toys --cli -d
+python3 toysim.py myprog.toys --cli -d
 ```
 
 The guard uses the `# data` marker in your source --- a line whose only content

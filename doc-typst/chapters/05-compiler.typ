@@ -138,8 +138,8 @@ program's `return` value in the accumulator, printed as the final
 # Stage 1: compile C to assembly
 python3 compiler/toycc.py compiler/examples/multiply.toyc
 
-# Stages 2+3: assemble and simulate
-python3 toyasm.py compiler/examples/multiply.toys --cli --run --quiet
+# Stages 2+3: assemble and simulate (toysim assembles the .toys, then runs it)
+python3 toysim.py compiler/examples/multiply.toys --cli --run --quiet
 #   -> Result: ACC = 42
 
 # Or all three at once with toycc's --run flag:
