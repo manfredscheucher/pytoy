@@ -2,7 +2,7 @@
 """
 Durable verification harness for examples/sort_array.toys.
 
-Assembles the program, runs the real fetch/execute loop (toyasm.execute_one)
+Assembles the program, runs the real fetch/execute loop (core.execute_one)
 to STOP, then reads the sorted array straight out of the simulator's memory
 image and asserts it equals [1, 1, 2, 3, 3, 4, 5, 5, 6, 9].
 
@@ -16,10 +16,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-import toyasm
-import toycpu
+from pytoy import assembler as toyasm
+from pytoy import core as toycpu
 
-TOYS = os.path.join(ROOT, "examples", "sort_array.toys")
+TOYS = os.path.join(ROOT, "examples", "asm", "sort_array.toys")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 N = len(EXPECTED)
 MAX_STEPS = 1_000_000  # safety cap; the program halts well before this

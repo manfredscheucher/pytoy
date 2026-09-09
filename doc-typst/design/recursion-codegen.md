@@ -37,7 +37,7 @@ call, even where unnecessary). On a 256-byte machine that matters, which is why
 One byte `sp` = current top of stack. push decreases `sp`, pop increases it.
 Indirect access via self-modifying code (patch a raw load/store's address byte
 from `sp` before each access — re-patched every time because `sp` moves), the
-same technique as `sum_array.toys`. push/pop are short inline sequences, no subroutine.
+same technique as `examples/asm/sum_array.toys`. push/pop are short inline sequences, no subroutine.
 
 ## A call, compiled (default: always save/restore)
 
@@ -58,7 +58,7 @@ At a call site inside function `C` (the caller) calling `f`:
 
 Between save and restore the callee may clobber any shared slots (including by
 recursing); the caller's values are safe on the stack. This generalises exactly
-what `fibonacci_rec.toys` does by hand.
+what `examples/asm/fibonacci_rec.toys` does by hand.
 
 Why save the *caller's* slots and not the callee's: the danger is that the
 callee (or something it calls, transitively) re-enters `C` and overwrites `C`'s
@@ -127,7 +127,7 @@ there is no shortcut that ships a correct `fib`.
 The step order (save → set-up/setmark → goto → capture ret → restore, with
 dispatch later in the body) satisfies both. The outermost marker is main's
 call-site marker, so the final dispatch returns into main (top-level
-termination), like the `top:`/marker-0 convention in `fibonacci_rec.toys`.
+termination), like the `top:`/marker-0 convention in `examples/asm/fibonacci_rec.toys`.
 
 ## sp convention (fixed)
 
@@ -137,7 +137,7 @@ termination), like the `top:`/marker-0 convention in `fibonacci_rec.toys`.
 - pop -> v: `v := mem[sp]; sp := sp + 1`
 
 Exact inverses. `sp` starts one past the top usable byte. (Note: the hand-written
-`fibonacci_rec.toys` uses the opposite — sp=next-free growing UP — so its push/pop
+`examples/asm/fibonacci_rec.toys` uses the opposite — sp=next-free growing UP — so its push/pop
 must be inverted here, not copied.) Overflow (sp reaching the data region) is
 unchecked; document a depth cap.
 

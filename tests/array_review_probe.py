@@ -11,11 +11,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, 'compiler'))
 
-import toyasm
-import toycpu
-from toycc import compile_source, CompileError
+from pytoy import assembler as toyasm
+from pytoy import core as toycpu
+from pytoy.compiler import compile_source, CompileError
 
 
 def run(src, optimize=False, max_steps=200000):

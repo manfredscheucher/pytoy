@@ -1,10 +1,10 @@
 # toycc — a tiny C-to-assembly compiler for the Toy CPU
 
 `toycc` compiles a small, standard-looking subset of C into `.toys` assembly
-that the [toysim](../toysim.py) simulator can run (and that the
-[toyasm](../toyasm.py) assembler turns into a `.toyo` byte listing).
+that the [simulator](../pytoy/simulator.py) can run (and that the
+[assembler](../pytoy/assembler.py) turns into a `.toyo` byte listing).
 
-It is a single self-contained Python program (`toycc.py`): a hand-written
+It is a single self-contained Python module (`pytoy/compiler.py`): a hand-written
 lexer, a recursive-descent parser, and a straightforward code generator that
 emits readable Toy assembly. No external libraries — Python standard library
 only.
@@ -83,7 +83,7 @@ Constants may be decimal (`42`) or hexadecimal (`0xF0`).
 
 **Comparisons — what actually works.** `==` and `!=` are exact (via
 subtraction + `ifzero`). The ordering comparisons `<`, `>`, `<=`, `>=` use the
-sign-bit trick from `max_array.toys`: bit 7 of the mod-256 difference `a - b` tells
+sign-bit trick from `examples/asm/max_array.toys`: bit 7 of the mod-256 difference `a - b` tells
 you whether `a < b`. This is correct as long as the two operands **differ by
 less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
@@ -92,7 +92,7 @@ more than 127 apart. Treat values as unsigned and keep them modest.
 ## Arrays (fixed-size, local)
 
 `toycc` supports fixed-size local arrays of `int` bytes — see
-`examples/sort_array_inline.toyc`:
+`examples/c/sort_array_inline.toyc`:
 
 ```c
 int a[10] = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};  // size + initializers are constant
@@ -102,12 +102,12 @@ a[i] = expr;                                  // indexed write
 ```
 
 The size and the initializer values must be compile-time constants. An array is
-laid out as a contiguous block of data bytes (like `arr:` in `examples/sum_array.toys`)
+laid out as a contiguous block of data bytes (like `arr:` in `examples/asm/sum_array.toys`)
 plus a base-pointer byte holding its address.
 
 **How indexing works with no index register.** The Toy CPU has no index
 register and no indirect load/store, so `a[i]` is compiled with **self-modifying
-code** (the `sum_array.toys` / `sort_array.toys` trick): compute the element address
+code** (the `examples/asm/sum_array.toys` / `examples/asm/sort_array.toys` trick): compute the element address
 `base + i`, write it into the address byte of a raw `LOAD` (or `STORE`)
 instruction, then execute that instruction. `base` is the array's address, held
 in a data byte the assembler fills in.
@@ -149,7 +149,7 @@ int main(void) { int v[3] = {4, 5, 6}; return suma(v, 3); }   // 15
 The caller passes the array's base address; inside the function `a` is a pointer
 and `a[i]` means `*(a + i)` — indirect access through the passed address. So a
 function can sort or fill the caller's array **in place** (see
-`examples/sort_array_function.toyc`). This unifies indexing: `a[i]` computes
+`examples/c/sort_array_function.toyc`). This unifies indexing: `a[i]` computes
 `(value of a) + i` whether `a` is a real local array (its name evaluates to its
 base address) or a pointer/parameter (its byte holds the address).
 
@@ -164,7 +164,7 @@ address-taken local is not save/restored (its value lives in its memory slot).
 ## Functions (non-recursive)
 
 `toycc` supports multiple functions with parameters, calling each other — see
-`examples/functions.toyc`:
+`examples/c/functions.toyc`:
 
 ```c
 int square(int x) { return x * x; }
@@ -173,7 +173,7 @@ int main(void) { return sum_of_squares(3, 4); }   // 9 + 16 = 25
 ```
 
 There is exactly one `main` (the entry point). **Recursion — self and mutual —
-is supported** (see `examples/fibonacci_rec.toyc`).
+is supported** (see `examples/c/fibonacci_rec.toyc`).
 
 ### How calls work with no call/return instruction
 
@@ -198,9 +198,9 @@ Because a function has only one set of slots, a recursive call would clobber its
 caller's values. So around **every** call, `toycc` saves the caller's live
 values (the ones needed after the call) onto a real stack and restores them
 afterward — giving each activation its own copies. The stack is one `sp` byte
-plus self-modifying indirect load/store (the same trick as `sum_array.toys`), growing
+plus self-modifying indirect load/store (the same trick as `examples/asm/sum_array.toys`), growing
 *down* from address 255. This is the same mechanism the hand-written
-`examples/fibonacci_rec.toys` uses, generated automatically.
+`examples/asm/fibonacci_rec.toys` uses, generated automatically.
 
 ### The `-O` flag
 
@@ -261,33 +261,33 @@ writing the `.toys`); keep programs small.
 
 ```bash
 # compile program.toyc -> program.toys
-python3 compiler/toycc.py compiler/examples/fibonacci_iter.toyc
+python3 run.py cc examples/c/fibonacci_iter.toyc
 
 # choose the output path
-python3 compiler/toycc.py program.toyc -o build/program.toys
+python3 run.py cc program.toyc -o build/program.toys
 
-# compile and immediately run through toysim (CLI, no pausing)
-python3 compiler/toycc.py compiler/examples/fibonacci_iter.toyc --run
+# compile and immediately run through the simulator (CLI, no pausing)
+python3 run.py cc examples/c/fibonacci_iter.toyc --run
 ```
 
-Run a produced `.toys` directly through toysim in the terminal (the graphical
-debugger is toysim's default, so pass `--cli`):
+Run a produced `.toys` directly through the simulator in the terminal (the
+graphical debugger is the default, so pass `--cli`):
 
 ```bash
 # from the repo root
-python3 toysim.py compiler/examples/fibonacci_iter.toys --cli --run --quiet
+python3 run.py sim examples/c/fibonacci_iter.toys --cli --run --quiet
 # ...
 # Result:  ACC = 55  (00110111  0x37  dec 55)
 ```
 
-toysim CLI flags used above: `--cli`/`-c` run in the terminal instead of the
+Simulator CLI flags used above: `--cli`/`-c` run in the terminal instead of the
 GUI, `--run`/`-r` run all steps without pausing, `--quiet`/`-q` compact output.
 Drop `--run` to single-step, or drop `--cli` to open the graphical debugger.
 
 ## Example programs
 
-All examples live in [`examples/`](examples/) and are verified to produce the
-expected accumulator result.
+All examples live in [`examples/c/`](../examples/c/) and are verified to produce
+the expected accumulator result.
 
 | File               | Computes                                        | Expected ACC |
 |--------------------|-------------------------------------------------|-------------:|
@@ -320,7 +320,7 @@ re-verify all of them from the C sources with one command:
 python3 scripts/build_examples.py
 ```
 
-It compiles every `compiler/examples/*.toyc`, writes the `.toys` next to it, and
+It compiles every `examples/c/*.toyc`, writes the `.toys` next to it, and
 checks each result against its `// expect:` header.
 
 ## How the compiler works (brief)

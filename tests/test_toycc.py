@@ -8,7 +8,7 @@ Pipeline under test (one stage feeds the next):
                                          ▲ assert ACC == expected
 
 For the example programs the expected result lives WITH the data: each
-`compiler/examples/*.toyc` file carries a machine-readable `// expect: N`
+`examples/c/*.toyc` file carries a machine-readable `// expect: N`
 annotation, so adding a new example needs no change to this test file.
 """
 
@@ -20,11 +20,11 @@ import contextlib
 
 import pytest
 
-from toyasm import assemble
-from toysim import simulate
-from toycpu import execute_one
-from toycc import (compile_source, CompileError, lex, Parser,
-                   build_call_graph, find_recursive)
+from pytoy.assembler import assemble
+from pytoy.simulator import simulate
+from pytoy.core import execute_one
+from pytoy.compiler import (compile_source, CompileError, lex, Parser,
+                            build_call_graph, find_recursive)
 
 
 def _parse(src):
@@ -32,7 +32,7 @@ def _parse(src):
 
 
 EXAMPLES_DIR = os.path.join(
-    os.path.dirname(__file__), '..', 'compiler', 'examples')
+    os.path.dirname(__file__), '..', 'examples', 'c')
 
 
 # ── Pipeline helpers ────────────────────────────────────────────────────────

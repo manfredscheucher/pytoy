@@ -15,33 +15,40 @@ CLI, plus a small C compiler on top.
 It's deliberately simple, readable Python (standard library plus PySide6),
 because the point is to *see* how a CPU works.
 
-## The three files
+## The package and entry point
 
-- `toysim.py` — the simulator: runs programs, opens the GUI, has the CLI. **This
-  is the one you run.**
-- `toyasm.py` — the assembler: turns `.toys` assembly into a `.toyo` byte
-  listing. Doesn't run anything.
-- `toycpu.py` — the CPU core (opcodes, decode/execute). A library the other two
-  import; not run directly.
+`run.py` at the repo root is the single entry point, with subcommands (`sim`,
+`asm`, `cc`). The code lives in the `pytoy` package:
+
+- `pytoy/simulator.py` — the simulator: runs programs, opens the GUI, has the
+  CLI (`run.py sim`).
+- `pytoy/assembler.py` — the assembler: turns `.toys` assembly into a `.toyo`
+  byte listing (`run.py asm`).
+- `pytoy/core.py` — the CPU core (opcodes, decode/execute). A library the others
+  import.
+- `pytoy/compiler.py` — the C compiler (`run.py cc`).
 
 ## Quick start
 
 ```bash
 pip install PySide6                                 # required for the default GUI
 
-python3 toysim.py examples/fibonacci.toys           # open the GUI on an example
-python3 toysim.py examples/fibonacci.toys --cli --run   # or run in the terminal
+python3 run.py                                       # open the GUI empty (Load an example)
+python3 run.py sim examples/asm/fibonacci.toys       # open the GUI on an example
+python3 run.py sim examples/asm/fibonacci.toys --cli --run   # or run in the terminal
 
-python3 toyasm.py examples/fibonacci.toys           # assemble -> examples/fibonacci.toyo
-python3 toysim.py examples/fibonacci.toyo --run     # run a compiled .toyo directly
+python3 run.py asm examples/asm/fibonacci.toys       # assemble -> examples/asm/fibonacci.toyo
+python3 run.py sim examples/asm/fibonacci.toyo --run # run a compiled .toyo directly
 
-python3 compiler/toycc.py compiler/examples/multiply.toyc --run   # compile C and run
+python3 run.py cc examples/c/multiply.toyc --run     # compile C and run
 ```
 
-`toysim.py` opens a graphical interface by default (source + memory panels, with
-Step / Run / Reset). Pass a `.toys` and it assembles first; pass a `.toyo` and
-it loads and runs it. Use `-c` / `--cli` to run in the terminal instead — that
-mode needs no PySide6. Run `python3 toysim.py -h` for all options.
+`run.py sim` opens a graphical interface by default (source + memory panels, with
+Step / Run / Reset). With no arguments, `run.py` opens the GUI empty — load an
+example via the Load button. Pass a `.toys` and it assembles first; pass a
+`.toyo` and it loads and runs it. Use `-c` / `--cli` to run in the terminal
+instead — that mode needs no PySide6. Run `python3 run.py sim -h` for all
+options.
 
 ## A taste of the syntax
 
@@ -53,8 +60,8 @@ a:      10              # data goes after stop
 b:      20
 ```
 
-See [`examples/`](examples/) for complete programs (Fibonacci, multiply, array
-sum/max, …).
+See [`examples/asm/`](examples/asm/) for complete programs (Fibonacci, multiply,
+array sum/max, …).
 
 ## Write it in C instead
 
@@ -70,7 +77,7 @@ int main(void) {
 ```
 
 ```bash
-python3 compiler/toycc.py compiler/examples/multiply.toyc --run  # -> ACC = 42
+python3 run.py cc examples/c/multiply.toyc --run  # -> ACC = 42
 ```
 
 See [`compiler/`](compiler/) for the C compiler.

@@ -5,9 +5,9 @@ import sys
 import contextlib
 import os
 import tempfile
-from toyasm import assemble, _is_data_marker, DATA_MARKER, export
-from toycpu import parse_val, OPCODES, has_operand, execute_one
-from toysim import simulate, sps_to_interval, parse_toyo, SPS_MIN, SPS_MAX
+from pytoy.assembler import assemble, _is_data_marker, DATA_MARKER, export
+from pytoy.core import parse_val, OPCODES, has_operand, execute_one
+from pytoy.simulator import simulate, sps_to_interval, parse_toyo, SPS_MIN, SPS_MAX
 
 
 # ── Value parser ──────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ b:      20
 
 def test_sim_fibonacci():
     """fibonacci.toys with n=7 should produce fib(7) = 13."""
-    src = open('examples/fibonacci.toys').read()
+    src = open('examples/asm/fibonacci.toys').read()
     assert _run(src) == 13
 
 def test_sim_left_shift_overflow():
@@ -293,33 +293,33 @@ val:    42
 
 def test_sim_sum():
     """sum_array.toys with [3,1,4,1,5,9,2] should produce 25."""
-    src = open('examples/sum_array.toys').read()
+    src = open('examples/asm/sum_array.toys').read()
     assert _run(src) == 25
 
 def test_sim_max():
     """max_array.toys with [3,1,4,1,5,9,2] should produce 9."""
-    src = open('examples/max_array.toys').read()
+    src = open('examples/asm/max_array.toys').read()
     assert _run(src) == 9
 
 def test_sim_sum3():
     """sum3.toys with a,b,c = 3,1,4 should produce 8."""
-    src = open('examples/sum3.toys').read()
+    src = open('examples/asm/sum3.toys').read()
     assert _run(src) == 8
 
 def test_sim_max3():
     """max3.toys with a,b,c = 3,1,4 should produce max = 4."""
-    src = open('examples/max3.toys').read()
+    src = open('examples/asm/max3.toys').read()
     assert _run(src) == 4
 
 def test_sim_sort3():
     """sort3.toys with a,b,c = 3,1,4 sorts ascending and returns smallest = 1."""
-    src = open('examples/sort3.toys').read()
+    src = open('examples/asm/sort3.toys').read()
     assert _run(src) == 1
 
 def test_sim_bubblesort():
     """sort_array.toys sorts the 10 digits of pi in place. Check the whole
     array from memory, not just ACC."""
-    src = open('examples/sort_array.toys').read()
+    src = open('examples/asm/sort_array.toys').read()
     mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     m, pc, acc, steps = list(mem), 0, 0, 0
@@ -337,7 +337,7 @@ def test_sim_fibonacci_rec():
     """fibonacci_rec.toys computes fib recursively via a self-modifying-code
     stack. Verify several n by patching only `input`."""
     import re
-    base = open('examples/fibonacci_rec.toys').read()
+    base = open('examples/asm/fibonacci_rec.toys').read()
     expected = {0: 0, 1: 1, 2: 1, 5: 5, 7: 13, 10: 55, 13: 233}
     for n, want in expected.items():
         src = re.sub(r'(input:\s+)\d+', r'\g<1>' + str(n), base)
@@ -345,7 +345,7 @@ def test_sim_fibonacci_rec():
 
 def test_sim_multiply():
     """multiply.toys with a=7, b=6 should produce 42."""
-    src = open('examples/multiply.toys').read()
+    src = open('examples/asm/multiply.toys').read()
     assert _run(src) == 42
 
 def test_sim_loop_countdown():
@@ -414,9 +414,7 @@ def test_compiled_program_gets_data_start():
     """toycc's generated assembly must carry a recognizable data marker so the
     code-overwrite guard works on compiled programs (regression: it used to
     emit '# ── data ──' which the parser didn't match)."""
-    import os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'compiler'))
-    from toycc import compile_source
+    from pytoy.compiler import compile_source
     src = "int main(void){ int a = 7; int b = 6; return a + b; }"
     asm = compile_source(src, "t.toyc")
     _, _, _, _, errors, data_start = assemble(asm)

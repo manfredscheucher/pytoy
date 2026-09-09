@@ -1,10 +1,10 @@
 = Using pytoy
 
-Two tools do the work. `toyasm.py` is the *assembler*: it turns a `.toys` file
-into a `.toyo` byte listing and nothing else. `toysim.py` is the *simulator*:
-it runs a program and either opens a graphical interface (the default) or runs
-it in the terminal. Point `toysim.py` at a `.toys` and it assembles first;
-point it at a `.toyo` and it loads and runs it directly.
+One entry point, `run.py`, with subcommands. `run.py asm` is the *assembler*: it
+turns a `.toys` file into a `.toyo` byte listing and nothing else. `run.py sim`
+is the *simulator*: it runs a program and either opens a graphical interface (the
+default) or runs it in the terminal. Point `run.py sim` at a `.toys` and it
+assembles first; point it at a `.toyo` and it loads and runs it directly.
 
 #figure(
   image("../images/screenshot.png", width: 100%),
@@ -23,10 +23,11 @@ pip install PySide6
 
 == GUI (default)
 
-Just point toysim at a program:
+Just point the simulator at a program (or run `python3 run.py` with no arguments
+to open the GUI empty and load an example via the Load button):
 
 ```bash
-python3 toysim.py examples/fibonacci.toys
+python3 run.py sim examples/asm/fibonacci.toys
 ```
 
 The window has:
@@ -54,7 +55,7 @@ which memory box a label refers to.
 Use `-c` / `--cli` to run in the terminal instead of opening the window:
 
 ```bash
-python3 toysim.py examples/fibonacci.toys --cli
+python3 run.py sim examples/asm/fibonacci.toys --cli
 ```
 
 By default the CLI runs step-by-step with full verbose output; press Enter to
@@ -70,15 +71,15 @@ advance each instruction.
   [`-x`, `--export`], [Also write the compiled listing to a `.toyo` file],
 )
 
-Run `python3 toysim.py -h` for the full list.
+Run `python3 run.py sim -h` for the full list.
 
 ```bash
 # Run to the end, compact output:
-python3 toysim.py examples/multiply.toys --cli --run --quiet
+python3 run.py sim examples/asm/multiply.toys --cli --run --quiet
 
 # Assemble to a standalone .toyo, then run it:
-python3 toyasm.py examples/max_array.toys           # -> examples/max_array.toyo
-python3 toysim.py examples/max_array.toyo --cli --run
+python3 run.py asm examples/asm/max_array.toys      # -> examples/asm/max_array.toyo
+python3 run.py sim examples/asm/max_array.toyo --cli --run
 ```
 
 The final line reports the result in the accumulator in binary, hex, and
@@ -106,12 +107,12 @@ But when you _don't_ mean to do it, it is a nasty bug. The optional
 `-d` / `--detect-code-overwrite` flag turns on a guard:
 
 ```bash
-python3 toysim.py myprog.toys --cli -d
+python3 run.py sim myprog.toys --cli -d
 ```
 
 The guard uses the `# data` marker in your source --- a line whose only content
 is `# data` --- to know where the code region ends and data begins. If a `store`
-writes below that line (into code), toysim warns and asks whether to continue; in
+writes below that line (into code), the simulator warns and asks whether to continue; in
 the GUI it pops up a dialog. If the program has no `# data` marker, the guard
 can't know the boundary and prints a note that detection is off. The flag is off
 by default, keeping the bare machine's "anything goes" behaviour unless you opt

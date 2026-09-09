@@ -12,11 +12,10 @@ import contextlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, 'compiler'))
 
-from toyasm import assemble
-from toysim import simulate
-import toycc
+from pytoy.assembler import assemble
+from pytoy.simulator import simulate
+from pytoy import compiler as toycc
 
 
 def run(src):

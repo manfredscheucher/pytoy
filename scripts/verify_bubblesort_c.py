@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Durable verification harness for compiler/examples/sort_array_inline.toyc.
+Durable verification harness for examples/c/sort_array_inline.toyc.
 
-Compiles the C bubble sort with toycc, assembles it, runs the real
-fetch/execute loop (toyasm.execute_one) to STOP, then reads the sorted array
+Compiles the C bubble sort with the compiler, assembles it, runs the real
+fetch/execute loop (core.execute_one) to STOP, then reads the sorted array
 straight out of the simulator's memory image and asserts it equals
 [1, 1, 2, 3, 3, 4, 5, 5, 6, 9].
 
@@ -16,13 +16,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "compiler"))
 
-import toyasm
-import toycpu
-from toycc import compile_source
+from pytoy import assembler as toyasm
+from pytoy import core as toycpu
+from pytoy.compiler import compile_source
 
-TOYC = os.path.join(ROOT, "compiler", "examples", "sort_array_inline.toyc")
+TOYC = os.path.join(ROOT, "examples", "c", "sort_array_inline.toyc")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 N = len(EXPECTED)
 MAX_STEPS = 1_000_000  # safety cap; the program halts well before this

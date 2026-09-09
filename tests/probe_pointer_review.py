@@ -8,10 +8,9 @@ import io, os, sys, contextlib
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
-sys.path.insert(0, os.path.join(_root, 'compiler'))
-from toyasm import assemble
-from toycpu import execute_one
-from toycc import compile_source, CompileError
+from pytoy.assembler import assemble
+from pytoy.core import execute_one
+from pytoy.compiler import compile_source, CompileError
 
 
 def run_c_read_mem(src):

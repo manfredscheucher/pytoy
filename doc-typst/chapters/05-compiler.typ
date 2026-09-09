@@ -5,8 +5,8 @@ into Toy CPU assembly (`.toys`). Writing C is more pleasant than hand-writing
 assembly, and it lets you see, stage by stage, how a high-level program becomes
 raw machine bytes.
 
-The compiler lives in `compiler/`; its README documents the exact supported C
-subset.
+The compiler lives in `pytoy/compiler.py`; the README in `compiler/` documents
+the exact supported C subset.
 
 == The stages
 
@@ -54,7 +54,7 @@ the output:
 === Functions
 
 toycc supports multiple functions that call each other (see
-`examples/functions.toyc`). The Toy CPU has no call/return instruction, no stack
+`examples/c/functions.toyc`). The Toy CPU has no call/return instruction, no stack
 pointer, and no indirect jump, so each function is compiled with *global slots +
 marker dispatch*:
 
@@ -72,8 +72,8 @@ clobber its caller's values. So around *every* call, toycc saves the caller's
 live values onto a real stack (one `sp` byte plus self-modifying indirect
 push/pop, growing down from address 255) and restores them afterward --- giving
 each activation its own copies. This makes recursion, including mutual
-recursion, work automatically; `examples/fibonacci_rec.toyc` is a recursive
-Fibonacci. It is the same _idea_ as the hand-written `fibonacci_rec.toys` (next
+recursion, work automatically; `examples/c/fibonacci_rec.toyc` is a recursive
+Fibonacci. It is the same _idea_ as the hand-written `examples/asm/fibonacci_rec.toys` (next
 chapter) --- a self-modifying-code stack --- though the compiler's stack grows
 *down* from 255 while the hand-written one grows up; the direction is a free
 choice, the principle is identical.
@@ -92,8 +92,8 @@ Keep recursion shallow, or use `-O` and small inputs.
 Fixed-size local arrays (`int a[10] = {...};`, `a[i]` read/write with any index
 expression) are supported. With no index register, `a[i]` compiles with
 self-modifying code: compute `base + i`, patch it into a raw load/store's
-address byte, and execute it --- the same trick the `sum_array.toys` and
-`sort_array.toys` assembly examples use. `sum_array.toyc`, `max_array.toyc` and `sort_array_inline.toyc`
+address byte, and execute it --- the same trick the `examples/asm/sum_array.toys` and
+`examples/asm/sort_array.toys` assembly examples use. `examples/c/sum_array.toyc`, `examples/c/max_array.toyc` and `examples/c/sort_array_inline.toyc`
 operate on the ten digits of pi. (Arrays are not saved across recursive calls,
 so a recursive function may not declare one --- the compiler rejects that.)
 
@@ -109,7 +109,7 @@ address from `p` into a raw load/store, then execute it).
 Crucially, an array passed to a function *decays to a pointer*: `int f(int a[],
 int n)` receives the array's address, and `a[i]` inside `f` means `*(a + i)`
 through that address --- so a function can sort or fill the caller's array in
-place. `sort_array_function.toyc` is the bubble sort written as such a function.
+place. `examples/c/sort_array_function.toyc` is the bubble sort written as such a function.
 (Taking the address of a local inside a *recursive* function is rejected, since
 `&x` names a single shared slot the recursion stack can't follow.)
 
@@ -136,20 +136,20 @@ program's `return` value in the accumulator, printed as the final
 
 ```bash
 # Stage 1: compile C to assembly
-python3 compiler/toycc.py compiler/examples/multiply.toyc
+python3 run.py cc examples/c/multiply.toyc
 
-# Stages 2+3: assemble and simulate (toysim assembles the .toys, then runs it)
-python3 toysim.py compiler/examples/multiply.toys --cli --run --quiet
+# Stages 2+3: assemble and simulate (the simulator assembles the .toys, then runs it)
+python3 run.py sim examples/c/multiply.toys --cli --run --quiet
 #   -> Result: ACC = 42
 
 # Or all three at once with toycc's --run flag:
-python3 compiler/toycc.py compiler/examples/multiply.toyc --run
+python3 run.py cc examples/c/multiply.toyc --run
 ```
 
 == How the pipeline is tested
 
 The whole pipeline is exercised by automated tests in `tests/test_toycc.py`,
-run with `pytest`. The tests are *data-driven*: every `compiler/examples/*.toyc`
+run with `pytest`. The tests are *data-driven*: every `examples/c/*.toyc`
 file carries a machine-readable `// expect: N` annotation stating its correct
 result. For each example the harness runs all three stages
 (`compile_source #sym.arrow assemble #sym.arrow simulate`) and asserts the

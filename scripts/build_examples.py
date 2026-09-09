@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-build_examples.py - compile every compiler/examples/*.toyc to its .toys.
+build_examples.py - compile every examples/c/*.toyc to its .toys.
 
 The generated .toys files are build artifacts (not tracked in git); run this to
 (re)create them all from the C sources. Each example carries a `// expect: N`
@@ -18,13 +18,12 @@ import contextlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "compiler"))
 
-from toycc import compile_source, CompileError
-from toyasm import assemble
-from toysim import simulate
+from pytoy.compiler import compile_source, CompileError
+from pytoy.assembler import assemble
+from pytoy.simulator import simulate
 
-EXAMPLES = os.path.join(ROOT, "compiler", "examples")
+EXAMPLES = os.path.join(ROOT, "examples", "c")
 _EXPECT = re.compile(r"//\s*expect:\s*(\d+)", re.IGNORECASE)
 
 

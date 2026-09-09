@@ -10,11 +10,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, 'compiler'))
 
-from toyasm import assemble
-from toycpu import execute_one
-from toycc import compile_source
+from pytoy.assembler import assemble
+from pytoy.core import execute_one
+from pytoy.compiler import compile_source
 
 
 def run(src, name="chk"):

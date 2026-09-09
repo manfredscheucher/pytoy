@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Toy CPU Simulator + GUI + CLI
-Based on https://github.com/freedosproject/toycpu
+Toy CPU Simulator + GUI
 
-Usage:  python toysim.py prog.toys [options]
-
-The CPU semantics live in toycpu; the assembler lives in toyasm. This module is
-the runnable front end: the terminal simulator, the PySide6 debugger GUI, and
-the command-line entry point.
+The CPU semantics live in pytoy.core; the assembler lives in pytoy.assembler.
+This module is the runnable front end: the terminal simulator and the PySide6
+debugger GUI. The command-line entry point lives in run.py at the repo root.
 """
 
-import sys, argparse
+import sys
 
-from toycpu import (decode, execute_one, is_code_store, _overwrite_msg,
-                    _describe, _esc)
-from toyasm import assemble, show_assembly, export
+from .core import (decode, execute_one, is_code_store, _overwrite_msg,
+                   _describe, _esc)
+from .assembler import assemble, show_assembly, export
 
 # ── Simulator ──────────────────────────────────────────────────────────────
 
@@ -558,91 +555,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
     app.exec()
 
 
-# ── CLI ────────────────────────────────────────────────────────────────────
-
-def main():
-    ap = argparse.ArgumentParser(
-        description="Toy CPU simulator: run a .toys (assembly) or .toyo "
-                    "(object) program. Opens a GUI by default; --cli/--run "
-                    "runs in the terminal.")
-    ap.add_argument('file', help='a .toys assembly or .toyo object file')
-    ap.add_argument('-r', '--run',     action='store_true', help='run to the end in the terminal (implies --cli)')
-    ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output (implies --cli)')
-    ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .toyo')
-    ap.add_argument('-c', '--cli',     action='store_true', help='run in the terminal instead of the graphical interface')
-    ap.add_argument('-d', '--detect-code-overwrite', action='store_true',
-                    help='warn when a store writes into the code region (below the "# data" marker)')
-    args = ap.parse_args()
-
-    try:    src = open(args.file).read()
-    except: sys.exit(f"File not found: {args.file}")
-
-    is_toyo = args.file.lower().endswith('.toyo')
-
-    if is_toyo:
-        # A .toyo is a compiled byte listing with no re-runnable source: load the
-        # memory image directly and skip assembly. Mirror the GUI's .toyo Load
-        # branch (see _load_clicked) so CLI and GUI behave the same.
-        try:
-            mem = parse_toyo(src)
-        except Exception as e:
-            sys.exit(f"cannot parse {args.file}: {e}")
-        listing = [(a, [mem[a]], "", True) for a in range(256)]
-        syms = {}
-        data_addrs = set(range(256))
-        data_start = None
-        # verbose/step output and --export need source we don't have here.
-        if args.export:
-            print("NOTE: nothing to export from a .toyo (no source); "
-                  "skipping --export.", file=sys.stderr)
-            args.export = False
-        # force compact output: there is no per-line source to explain.
-        args.quiet = True
-    else:
-        mem, listing, syms, data_addrs, errors, data_start = assemble(src)
-        if errors:
-            for e in errors: print(f"ERROR: {e}", file=sys.stderr)
-            sys.exit(1)
-
-    guard = data_start if args.detect_code_overwrite else None
-    if args.detect_code_overwrite and data_start is None:
-        print("WARNING: --detect-code-overwrite is on but the program has no "
-              "'# data' marker; code-overwrite detection is disabled.",
-              file=sys.stderr)
-
-    # The GUI is the default. --cli forces the terminal; --run/--quiet also
-    # imply the terminal (you asked to run it, not to open a window).
-    use_gui = not (args.cli or args.run or args.quiet)
-    if use_gui:
-        if is_toyo:
-            # open GUI with only the memory panel, as the Load button does
-            gui_main(mem, listing, syms, data_addrs, guard, has_source=False)
-        else:
-            gui_main(mem, listing, syms, data_addrs, guard)
-        return
-
-    if args.export:
-        print("─"*62)
-        show_assembly(listing, syms, mem)
-        export(listing, syms, mem, args.file.rsplit('.', 1)[0] + '.toyo')
-
-    # build addr→original source map for verbose mode
-    addr_orig = {}
-    if not args.quiet:
-        for addr, blist, orig, is_data in listing:
-            if addr is None:
-                continue
-            addr_orig[addr] = orig.rstrip()
-            if len(blist) == 2:
-                addr_orig[addr + 1] = ''
-
-    print("─"*62)
-    if args.export:
-        print("execution:\n")
-    acc = simulate(mem, syms, data_addrs, step=not args.run, show_mem=not args.quiet,
-                   verbose=not args.quiet, addr_orig=addr_orig, code_guard=guard)
-    print("─"*62)
-    print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")
-
-if __name__ == '__main__':
-    main()
+def empty_gui():
+    """Open the debugger with an empty, zeroed 256-byte memory and no source,
+    so `run.py` with no arguments opens a usable window. The user can then load
+    an example via the Load button."""
+    mem = [0] * 256
+    # show every byte in the memory panel; no source, no symbols
+    listing = [(a, [mem[a]], "", True) for a in range(256)]
+    gui_main(mem, listing, {}, set(range(256)), code_guard=None,
+             has_source=False)

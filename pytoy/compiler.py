@@ -3,9 +3,9 @@
 toycc - a tiny C-to-assembly compiler for the pytoy "Toy CPU".
 
 It compiles a small, standard-looking subset of C into a .toys assembly file
-that the toysim simulator (../toysim.py) can run.
+that the simulator (pytoy.simulator) can run.
 
-Target machine (see ../doc-typst/):
+Target machine (see doc-typst/):
   - 256 bytes of memory total; code and data share the address space.
   - One 8-bit accumulator (ACC). All arithmetic wraps modulo 256.
   - The only conditional instruction is `ifzero`; the only jump is `goto`.
@@ -14,25 +14,17 @@ Target machine (see ../doc-typst/):
 Because the machine is 8-bit, every C `int` here is an unsigned 8-bit value
 (0..255) that wraps modulo 256. This is documented in the README.
 
-Usage:
-    python3 toycc.py program.toyc              # writes program.toys
-    python3 toycc.py program.toyc -o out.toys  # custom output path
-    python3 toycc.py program.toyc --run        # compile, then run via toysim CLI
+The CLI entry point lives in run.py at the repo root (`run.py cc ...`).
 
 Design: hand-written lexer + recursive-descent parser + a straightforward
 code generator that emits Toy assembly text. Standard library only.
 """
 
 import sys
-import os
-import argparse
-import subprocess
 
 # toycc reuses the assembler for the shared 256-byte limit and the canonical
-# data-region marker, so the two tools can't drift apart. toyasm.py sits in the
-# repo root, one level above this compiler/ directory.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from toyasm import assemble, DATA_MARKER
+# data-region marker, so the two tools can't drift apart.
+from .assembler import assemble, DATA_MARKER
 
 
 # ── Lexer ──────────────────────────────────────────────────────────────────
@@ -2094,27 +2086,23 @@ def compile_source(src, source_name, optimize=False):
 
 # ── CLI ────────────────────────────────────────────────────────────────────
 
-def main():
-    ap = argparse.ArgumentParser(
-        description="toycc - compile a C subset to Toy CPU assembly (.toys)")
-    ap.add_argument('file', help='input C file (.toyc)')
-    ap.add_argument('-o', '--output', help='output .toys path')
-    ap.add_argument('-r', '--run', action='store_true',
-                    help='after compiling, run the .toys through toysim (CLI)')
-    ap.add_argument('-O', '--optimize-save-restore', action='store_true',
-                    dest='optimize',
-                    help='skip save/restore at call sites whose caller is not '
-                         'recursive (smaller code, same results; default off)')
-    args = ap.parse_args()
+def compile_file(in_path, out_path=None, optimize=False, run=False):
+    """Compile a .toyc file to a .toys file (the old `toycc` CLI behaviour).
+
+    Writes the assembly to out_path (default: input with .toys extension). If
+    run is True, assembles and simulates the result in-process and prints the
+    ACC, matching the old `--run` output. Calls sys.exit on user-facing errors.
+    """
+    import os
 
     try:
-        with open(args.file) as f:
+        with open(in_path) as f:
             src = f.read()
     except OSError as e:
-        sys.exit(f"cannot read {args.file}: {e}")
+        sys.exit(f"cannot read {in_path}: {e}")
 
     try:
-        asm = compile_source(src, os.path.basename(args.file), args.optimize)
+        asm = compile_source(src, os.path.basename(in_path), optimize)
     except CompileError as e:
         sys.exit(f"compile error: {e}")
 
@@ -2122,7 +2110,7 @@ def main():
     # the assembler as the single source of truth for sizing. Report the same
     # kind of clean error the assembler would, instead of writing a .toys that
     # only fails later.
-    _, listing, _, _, errors, _ = assemble(asm)
+    mem, listing, syms, data_addrs, errors, _ = assemble(asm)
     size_errors = [e for e in errors if "too big" in e]
     if size_errors:
         sys.exit(f"compile error: {size_errors[0]}")
@@ -2142,9 +2130,8 @@ def main():
                   f"overflow into data and give wrong results — reduce the "
                   f"input, or pass -O to shrink the code.", file=sys.stderr)
 
-    out_path = args.output
     if out_path is None:
-        base = args.file
+        base = in_path
         if base.endswith('.toyc'):
             base = base[:-5]
         out_path = base + '.toys'
@@ -2153,13 +2140,10 @@ def main():
         f.write(asm)
     print(f"wrote {out_path}")
 
-    if args.run:
-        toysim = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), 'toysim.py')
-        cmd = [sys.executable, toysim, out_path, '--cli', '--run', '--quiet']
-        print(f"running: {' '.join(cmd)}")
-        subprocess.run(cmd)
-
-
-if __name__ == '__main__':
-    main()
+    if run:
+        # Run in-process via the simulator (no subprocess, no fragile path).
+        from .simulator import simulate
+        print(f"running {out_path}")
+        acc = simulate(mem, syms, data_addrs, step=False, show_mem=False,
+                       verbose=False)
+        print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")
