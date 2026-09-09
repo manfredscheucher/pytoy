@@ -208,7 +208,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
         def __init__(self, mem_original, listing, syms, data_addrs, code_guard,
                      has_source=True):
             super().__init__()
-            self.setWindowTitle("toyasm")
+            self.setWindowTitle("pytoy")
             self.resize(1000, 700)
 
             self._build_ui()
@@ -561,10 +561,13 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
 # ── CLI ────────────────────────────────────────────────────────────────────
 
 def main():
-    ap = argparse.ArgumentParser(description="Toy CPU Assembler + Simulator")
-    ap.add_argument('file')
-    ap.add_argument('-r', '--run',     action='store_true', help='run all steps without pausing')
-    ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output')
+    ap = argparse.ArgumentParser(
+        description="Toy CPU simulator: run a .toys (assembly) or .toyo "
+                    "(object) program. Opens a GUI by default; --cli/--run "
+                    "runs in the terminal.")
+    ap.add_argument('file', help='a .toys assembly or .toyo object file')
+    ap.add_argument('-r', '--run',     action='store_true', help='run to the end in the terminal (implies --cli)')
+    ap.add_argument('-q', '--quiet',   action='store_true', help='compact one-line-per-step output (implies --cli)')
     ap.add_argument('-x', '--export',  action='store_true', help='export compiled listing to .toyo')
     ap.add_argument('-c', '--cli',     action='store_true', help='run in the terminal instead of the graphical interface')
     ap.add_argument('-d', '--detect-code-overwrite', action='store_true',
@@ -607,8 +610,10 @@ def main():
               "'# data' marker; code-overwrite detection is disabled.",
               file=sys.stderr)
 
-    # graphical interface is the default; --cli opts into terminal mode
-    if not args.cli:
+    # The GUI is the default. --cli forces the terminal; --run/--quiet also
+    # imply the terminal (you asked to run it, not to open a window).
+    use_gui = not (args.cli or args.run or args.quiet)
+    if use_gui:
         if is_toyo:
             # open GUI with only the memory panel, as the Load button does
             gui_main(mem, listing, syms, data_addrs, guard, has_source=False)

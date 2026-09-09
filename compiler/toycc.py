@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-toycc - a tiny C-to-assembly compiler for the toyasm "Toy CPU".
+toycc - a tiny C-to-assembly compiler for the pytoy "Toy CPU".
 
 It compiles a small, standard-looking subset of C into a .toys assembly file
 that the toysim simulator (../toysim.py) can run.

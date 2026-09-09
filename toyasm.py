@@ -189,6 +189,11 @@ def main():
     ap.add_argument('-o', '--output', help='output .toyo path')
     args = ap.parse_args()
 
+    if args.file.lower().endswith('.toyo'):
+        sys.exit(f"{args.file} is already a compiled .toyo object; toyasm "
+                 f"assembles .toys source. To run it: toysim.py "
+                 f"{args.file} --run")
+
     try:
         with open(args.file) as f:
             src = f.read()
