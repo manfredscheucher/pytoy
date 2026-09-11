@@ -75,6 +75,27 @@ right       ->  one byte:   [ 1 ]           "shift the accumulator right"
 The CPU knows which is which from the opcode itself (a specific bit marks
 two-byte instructions --- see the instruction set chapter).
 
+#block(fill: luma(240), inset: 8pt, radius: 3pt, width: 100%)[
+  *Side note: variable instruction length is a footgun.* Because some
+  instructions are one byte and some are two, the program counter does not
+  advance by a fixed step --- it depends on the opcode. If the PC ever lands on
+  the wrong byte (say it jumps to an address that is actually the _operand_ of a
+  two-byte instruction, or into a run of data bytes), the CPU happily reads that
+  byte as an opcode and everything after it is misaligned: the same bytes decode
+  into completely different instructions. Nothing crashes; the machine just
+  silently runs the wrong program. This project's self-modifying array trick
+  (`iop: 20` / `iarg: 0`) leans on exactly this --- a raw opcode byte followed by
+  a patchable operand byte --- and it only works because the PC lands on the
+  right byte.
+
+  Fixed-length designs sidestep this entirely: RISC-V (and ARM's Thumb) make
+  every instruction the same width (e.g. 4 bytes), so every valid instruction
+  address is a multiple of that width and the PC can never drift out of phase.
+  The price is wasted space (a tiny instruction still costs a full word); the
+  Toy CPU, with only 256 bytes, spends its bytes instead --- a fair trade for a
+  teaching machine, but a real source of subtle bugs.
+]
+
 == What's missing (on purpose)
 
 Compared to a real CPU, the Toy CPU leaves out almost everything: no
