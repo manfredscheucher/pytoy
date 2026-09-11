@@ -483,8 +483,16 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             # find which source line the current instruction references
             instr, cur_arg, _ = decode(self.mem, self.pc)
             arg_line = self.addr_to_line.get(cur_arg) if cur_arg is not None else None
+            # the source line(s) of the current instruction's bytes: the opcode at
+            # pc, plus the operand byte at pc+1 for a two-byte instruction. For a
+            # normal `load a` both bytes map to the same line; for hand-written raw
+            # bytes (iop: 20 / iarg: 0) they are two separate lines — mark both.
+            pc_lines = {pc_line}
+            if cur_arg is not None:
+                pc_lines.add(self.addr_to_line.get((self.pc + 1) % 256))
+            pc_lines.discard(None)
             for i, (addr, blist, orig, is_data) in enumerate(self.listing):
-                if i == pc_line:
+                if i in pc_lines:
                     marker = ">>"
                 elif i == arg_line:
                     marker = "**"
@@ -494,7 +502,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 escaped = _esc(text)
                 if i == sel_line:
                     lines.append(f'<span style="background-color:#ffcc66;">{marker} {escaped}</span>')
-                elif i == pc_line:
+                elif i in pc_lines:
                     lines.append(f'<span style="background-color:#ffffaa;">{marker} {escaped}</span>')
                 elif i == arg_line:
                     lines.append(f'<span style="background-color:#aaffaa;">{marker} {escaped}</span>')
