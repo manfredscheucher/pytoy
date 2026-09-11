@@ -13,4 +13,4 @@ if ! command -v typst >/dev/null 2>&1; then
 fi
 
 typst compile main.typ pytoy.pdf
-echo "built: doc-typst/pytoy.pdf"
+echo "built: doc/pytoy.pdf"

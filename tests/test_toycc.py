@@ -526,7 +526,7 @@ def test_nested_same_function_both_args():
 def test_fib4_liveness():
     """The critical liveness case from the design note: fib(4) must be 3, NOT 2.
     A naive "save all slots" scheme drops the temp holding fib(n-1) while
-    fib(n-2) runs and miscompiles this to 2 (see doc-typst/design/
+    fib(n-2) runs and miscompiles this to 2 (see doc/design/
     recursion-codegen.md)."""
     src = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
            " int main(void){ return fib(4); }")

@@ -2,7 +2,7 @@
 #
 # Proof that a real call stack (and thus recursion) is possible on this
 # machine, despite no stack pointer register, no call/return, no index
-# register. See doc-typst/design/stack-and-recursion.md for the derivation.
+# register. See doc/design/stack-and-recursion.md for the derivation.
 #
 # fib(n) = n           if n < 2
 #        = fib(n-1) + fib(n-2)   otherwise   (all mod 256)

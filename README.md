@@ -1,4 +1,4 @@
-<img src="doc-typst/images/screenshot.png" alt="pytoy" width="100%"/>
+<img src="doc/images/screenshot.png" alt="pytoy" width="100%"/>
 
 
 # pytoy
@@ -85,16 +85,16 @@ See [`compiler/`](compiler/) for the C compiler.
 ## Documentation
 
 The full manual is a PDF built from Typst sources in
-**[`doc-typst/`](doc-typst/)** — written for newcomers with no assembly
+**[`doc/`](doc/)** — written for newcomers with no assembly
 background. It covers: how a CPU works (memory, accumulator, program counter,
 the fetch–execute cycle), the full instruction set, assembly syntax, worked
 example programs, using the GUI and CLI, and the C → assembly pipeline.
 
-Grab the prebuilt [`doc-typst/pytoy.pdf`](doc-typst/pytoy.pdf), or rebuild it
+Grab the prebuilt [`doc/pytoy.pdf`](doc/pytoy.pdf), or rebuild it
 with [Typst](https://typst.app):
 
 ```bash
-cd doc-typst && ./build.sh   # -> doc-typst/pytoy.pdf
+cd doc && ./build.sh   # -> doc/pytoy.pdf
 ```
 
 ## Credits & license

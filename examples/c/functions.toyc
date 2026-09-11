@@ -6,7 +6,7 @@
  * from main and from one another. The Toy CPU has no call/return instruction,
  * so toycc gives each non-recursive function fixed global slots for its
  * parameters and return value, emits one copy of its body, and jumps back to
- * the right call site with a marker (see the compiler README and doc-typst).
+ * the right call site with a marker (see the compiler README and doc).
  *
  * square(x) = x * x;  sum_of_squares(a, b) = square(a) + square(b).
  * With a = 3, b = 4:  square(3) + square(4) = 9 + 16 = 25.

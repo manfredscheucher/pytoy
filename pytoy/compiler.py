@@ -5,7 +5,7 @@ toycc - a tiny C-to-assembly compiler for the pytoy "Toy CPU".
 It compiles a small, standard-looking subset of C into a .toys assembly file
 that the simulator (pytoy.simulator) can run.
 
-Target machine (see doc-typst/):
+Target machine (see doc/):
   - 256 bytes of memory total; code and data share the address space.
   - One 8-bit accumulator (ACC). All arithmetic wraps modulo 256.
   - The only conditional instruction is `ifzero`; the only jump is `goto`.
@@ -1287,7 +1287,7 @@ class CodeGen:
         # points at the last-pushed byte and starts at 255 (byte 255 is left
         # unused; the first push writes to 254). Overflow into the data region
         # is unchecked — depth is bounded by the free bytes between end-of-data
-        # and the stack top (see doc-typst/design/recursion-codegen.md).
+        # and the stack top (see doc/design/recursion-codegen.md).
         self.add_global_slot("sp", 255)
 
         self.gen_stmt(main_body)
@@ -1428,7 +1428,7 @@ def find_recursive(graph):
 # RECURSION. Those global slots are shared across all activations of f, so a
 # recursive re-entry would clobber the caller's. We make it safe by SAVING the
 # caller's live-across slots on a real stack before the jump and RESTORING them
-# after (uniform save/restore — see doc-typst/design/recursion-codegen.md). The
+# after (uniform save/restore — see doc/design/recursion-codegen.md). The
 # stack grows down from the top of memory via self-modifying indirect push/pop
 # (CodeGen.gen_push/gen_pop). The save set is the caller's slots LIVE ACROSS the
 # call, computed by a live-variable analysis (CallLifter.insert_save_restore);
