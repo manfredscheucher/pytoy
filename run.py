@@ -70,6 +70,8 @@ def cmd_sim(args):
         # compact output. (Only affects CLI mode; the GUI is unaffected.)
         if not use_gui:
             args.quiet = True
+    else:
+        mem, listing, syms, data_addrs, errors, data_start = assemble(src)
 
     if not is_toyo and errors:
         # Assembly failed: in the GUI show a scrollable dialog; on the terminal

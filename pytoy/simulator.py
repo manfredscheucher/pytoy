@@ -426,13 +426,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             bottom.addStretch(1)
 
-            self.btn_back = QPushButton("Undo")
             self.btn_step = QPushButton("Step")
             self.btn_run = QPushButton("Run")
-            self.btn_back.setToolTip("Undo the last step or edit (Backspace)")
             self.btn_step.setToolTip("Execute one instruction (Space)")
             self.btn_run.setToolTip("Auto-run / pause (R)")
-            bottom.addWidget(self.btn_back)
             bottom.addWidget(self.btn_step)
             bottom.addWidget(self.btn_run)
 
@@ -448,9 +445,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             bottom.addWidget(self.spin_speed)
             self.spin_speed.valueChanged.connect(self._speed_changed)
 
+            # Undo and Reset sit together on the right: Undo (one step/edit back)
+            # left of Reset (restart from step 0).
+            self.btn_back = QPushButton("Undo")
             self.btn_reset = QPushButton("Reset")
+            self.btn_back.setToolTip("Undo the last step or edit (Backspace)")
             self.btn_reset.setToolTip("Restart this program from step 0, "
                                       "restoring the original file (Esc)")
+            bottom.addWidget(self.btn_back)
             bottom.addWidget(self.btn_reset)
 
             for btn in (self.btn_back, self.btn_step, self.btn_run, self.btn_reset):
@@ -489,9 +491,16 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.timer.stop()
             self.btn_step.setEnabled(True)
             self.btn_run.setEnabled(True)
-            self.btn_back.setEnabled(False)   # nothing to undo yet
+            # nothing has happened yet: nothing to undo, nothing to reset
+            self.btn_back.setEnabled(False)
+            self.btn_reset.setEnabled(False)
             self.btn_run.setText("Run")
             self.refresh()
+
+        def _mark_dirty(self):
+            """A step or edit just happened: enable Undo and Reset."""
+            self.btn_back.setEnabled(True)
+            self.btn_reset.setEnabled(True)
 
         def _sym(self, a):
             return self.rsym.get(a, str(a))
@@ -526,6 +535,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 self._halt()
                 return
 
+            # Snapshot the pre-execution state (incl. the current overwrite_ok)
+            # so this step can be fully undone. Taken before the overwrite prompt
+            # so undo also re-arms the prompt; popped again if the user aborts.
+            self._push_history()
+
             # guard: ask before a STORE overwrites code (once per run — after
             # the user says continue, don't nag on every loop iteration)
             if (is_code_store(self.mem, self.pc, self.code_guard)
@@ -538,16 +552,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                     self, "Code overwrite detected", msg,
                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
                 if reply != QMessageBox.Yes:
+                    self._history.pop()   # this step didn't run: drop its snapshot
                     self._halt()
                     return
                 self.overwrite_ok = True          # don't ask again this run
                 if was_running:
                     self._start_timer()           # resume auto-run
-
-            # snapshot the pre-execution state so this step can be undone. Done
-            # here, after the STOP/overwrite-abort early returns, so a snapshot
-            # is only pushed for a step that actually runs.
-            self._push_history()
 
             self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
             if instr == 21:  # STORE wrote memory
@@ -557,14 +567,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.selected_addr = None
             self.arg_addr = arg_addr
             self.visible.update(self.touched)
-            self.btn_back.setEnabled(True)
+            self._mark_dirty()
             self.refresh()
 
         # All machine state that step-back must capture and restore. mem/touched/
         # visible are mutable containers (History copies them); the rest scalars.
         _SNAPSHOT_FIELDS = ("mem", "touched", "visible", "acc", "pc", "stopped",
                             "step_count", "arg_addr", "selected_addr",
-                            "changed_cell", "acc_written", "overwrite_ok")
+                            "changed_cell", "acc_written", "overwrite_ok",
+                            "_has_live_edits")
 
         def _push_history(self):
             """Save the current machine state onto the undo stack."""
@@ -585,7 +596,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.btn_step.setEnabled(True)
             self.btn_run.setEnabled(True)
             self.btn_run.setText("Run")
-            self.btn_back.setEnabled(len(self._history) > 0)
+            # once the stack is empty we're back at the initial state: nothing
+            # left to undo or reset.
+            has_history = len(self._history) > 0
+            self.btn_back.setEnabled(has_history)
+            self.btn_reset.setEnabled(has_history)
             self.refresh()
 
         def _toggle_run(self):
@@ -701,22 +716,16 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 self.refresh()
 
         def _edit_cell(self, addr):
-            """Live-edit a memory cell: ask for an address (pre-filled with the
-            clicked one, editable) and a new value, then write it. The value
-            accepts the same forms as the assembler (decimal, 0x…, 0b…, 8-bit
-            binary). Values outside 0–255 wrap mod 256, and we say so. The edit
-            is undoable (snapshotted like a step) and Reset restores the file."""
-            # address prompt, pre-filled with the clicked cell
-            a, ok = QInputDialog.getInt(
-                self, "Edit memory", "Address (0–255):",
-                value=addr, minValue=0, maxValue=255)
-            if not ok:
-                return
-            # value prompt, current value shown as the default text
+            """Live-edit the value of the clicked memory cell. Asks only for the
+            value (the address comes from the right-clicked row). The value takes
+            the same forms as the assembler (decimal, 0x…, 0b…, 8-bit binary) and
+            wraps mod 256, which we point out. The edit is undoable (snapshotted
+            like a step) and Reset restores the file."""
+            a = addr
             text, ok = QInputDialog.getText(
-                self, "Edit memory",
-                f"New value for address {a}\n"
-                f"(decimal, 0x.., 0b.., or 8-bit binary; 0–255, wraps mod 256):",
+                self, f"Enter new value for address {a}",
+                f"Value (decimal, 0x.., 0b.., or 8-bit binary; "
+                f"0–255, wraps mod 256):",
                 text=str(self.mem[a]))
             if not ok:
                 return
@@ -743,7 +752,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.acc_written = False
             self.selected_addr = a
             self._has_live_edits = True  # a Load/Reload now warns before discard
-            self.btn_back.setEnabled(True)
+            self._mark_dirty()
             self.refresh()
 
         def refresh(self):
@@ -830,8 +839,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             else:
                 lines.append(f'<b>Step #{self.step_count}:</b>')
             acc_text = f"  ACC={self.acc}=b{self.acc:08b}"
-            acc_hl = (self.acc_written and not self.stopped and self.step_count > 0)
-            lines.append(highlight_row(acc_text, [HL_CHANGE] if acc_hl else []))
+            if self.stopped and self.step_count > 0:
+                # the program has finished: highlight the final result green
+                acc_colours = [HL_ARG]
+            elif self.acc_written and self.step_count > 0:
+                # a running step just wrote ACC: highlight it blue
+                acc_colours = [HL_CHANGE]
+            else:
+                acc_colours = []
+            lines.append(highlight_row(acc_text, acc_colours))
             lines.append(_esc(f"  PC={self.pc}"))
             lines.append(_esc(f"  OP{n}={bs}"))
             lines.append(_esc(f"  EXPLAIN: {desc}"))
