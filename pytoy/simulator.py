@@ -213,6 +213,8 @@ HL_SELECTED = "#ffcc66"   # orange: the address the user clicked
 HL_PC       = "#ffffaa"   # yellow: the byte(s) of the current instruction
 HL_ARG      = "#aaffaa"   # green:  the address this instruction reads/writes
 HL_CHANGE   = "#99ccff"   # blue:   the cell/ACC written in the last step
+HL_DATA     = "#ffcccc"   # light red: a data byte now differs from the original
+HL_CODE     = "#ff6666"   # strong red: a code byte was overwritten at runtime
 
 # Pad every rendered row to this width so a background colour fills the whole
 # line out to the panel's right edge, not just behind the text.
@@ -244,6 +246,16 @@ def highlight_row(text, colours, width=ROW_WIDTH):
         colour = colours[j % n]
         out.append(f'<span style="background-color:{colour};">{_esc(ch)}</span>')
     return "".join(out)
+
+def line_changed_bytes(mem, mem_original, addr, blist):
+    """True if any byte a source line owns now differs from the freshly-
+    assembled original. A line owns len(blist) bytes starting at `addr` (1 for
+    data / one-byte ops, 2 for two-byte instructions). False for comment/blank
+    lines (addr is None or blist empty). Pure — no Qt."""
+    if addr is None or not blist:
+        return False
+    return any(mem[addr + k] != mem_original[addr + k]
+               for k in range(len(blist)))
 
 # ── Step-back history (undo) ────────────────────────────────────────────────
 
@@ -309,6 +321,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.setWindowTitle("pytoy")
             self.resize(1000, 700)
 
+            self._current_path = None   # path of the last file loaded, for Reload
             self._build_ui()
             self._setup_shortcuts()
             self.load_program(mem_original, listing, syms, data_addrs, code_guard,
@@ -386,6 +399,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.btn_load.setFont(mono)
             bottom.addWidget(self.btn_load)
             self.btn_load.clicked.connect(self._load_clicked)
+
+            # Reload re-reads the current file from disk (edit it externally,
+            # then reload). Disabled until a file has actually been loaded.
+            self.btn_reload = QPushButton("Reload")
+            self.btn_reload.setFont(mono)
+            self.btn_reload.setEnabled(False)   # enabled once a file is loaded
+            bottom.addWidget(self.btn_reload)
+            self.btn_reload.clicked.connect(self._reload_clicked)
 
             bottom.addStretch(1)
 
@@ -557,13 +578,24 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 self._start_timer()
 
         def _load_clicked(self):
-            """Open a .toys (assembly source) or .toyo (byte listing) file and
-            reload the debugger with it."""
+            """Pick a .toys (assembly source) or .toyo (byte listing) file and
+            load it into the debugger."""
             path, _ = QFileDialog.getOpenFileName(
                 self, "Load program", "",
                 "Toy programs (*.toys *.toyo);;All files (*)")
-            if not path:
-                return
+            if path:
+                self._load_path(path)
+
+        def _reload_clicked(self):
+            """Re-read the current file from disk and reload it — so the file can
+            be edited externally and the change picked up without re-browsing."""
+            if self._current_path:
+                self._load_path(self._current_path)
+
+        def _load_path(self, path):
+            """Read `path` from disk, assemble/parse it, and point the debugger
+            at it (resetting to step 0). Remembers the path so Reload can re-read
+            it. Shared by both the Load and Reload buttons."""
             try:
                 text = open(path).read()
             except Exception as e:
@@ -591,6 +623,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                     return
                 self.load_program(mem, listing, syms, data_addrs,
                                   code_guard=None, has_source=True)
+
+            self._current_path = path
+            self.btn_reload.setEnabled(True)
 
         def _run_tick(self):
             if self.stopped:
@@ -620,6 +655,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self._refresh_source()
             self._refresh_memory()
 
+        def _line_changed_bytes(self, addr, blist):
+            """Widget wrapper around line_changed_bytes() using the live memory."""
+            return line_changed_bytes(self.mem, self.mem_original, addr, blist)
+
         def _refresh_source(self):
             lines = []
             pc_line = self.addr_to_line.get(self.pc)
@@ -642,13 +681,30 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                     marker = "**"
                 else:
                     marker = "  "
+
                 text = f"{marker} {orig.rstrip()}" if orig else marker
-                # Same multi-colour stripe scheme as the memory panel (no change
-                # highlight here — that tracks memory cells, not source lines).
                 colours = []
                 if i == sel_line:  colours.append(HL_SELECTED)
                 if i in pc_lines:  colours.append(HL_PC)
                 if i == arg_line:  colours.append(HL_ARG)
+
+                # Show how the running program has changed memory vs. the source.
+                # A line owns byte `addr` (and addr+1 for a two-byte instruction).
+                changed = self._line_changed_bytes(addr, blist)
+                if changed:
+                    if is_data:
+                        # data byte edited at runtime: light red + live value.
+                        text = f"{marker} {orig.rstrip()}  # current value: {self.mem[addr]}"
+                        colours.append(HL_DATA)
+                    else:
+                        # code overwritten: strong red, and show the raw byte(s)
+                        # now in memory instead of the stale assembly mnemonic
+                        # (no disassembly — just the bytes, 1 or 2 of them).
+                        raw = " ".join(str(self.mem[addr + k])
+                                       for k in range(len(blist)))
+                        text = f"{marker} {orig.rstrip()}  # now bytes: {raw}"
+                        colours.append(HL_CODE)
+
                 lines.append(highlight_row(text, colours))
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.source_view.setHtml(html)
@@ -686,10 +742,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             lines.append(_esc(f"  EXPLAIN: {desc}"))
             lines.append('')
 
-            # unified memory listing
+            # unified memory listing. Each row shows the address -> value mapping
+            # as "decimal (binary) -> decimal (binary)", columns aligned to the
+            # header. The arrow makes the addr→value lookup explicit.
             self._mem_line_addrs = {}
             lines.append(f'<b>memory:</b>')
-            lines.append(_esc(f"      {'address':>14}  {'value':>14}"))
+            # header, aligned to the same column widths as the rows below
+            hdr = f"     {'address (binary)':>19}  ->  {'value (binary)':>19}"
+            lines.append(_esc(hdr))
             # Blue (change) only lingers while running, never once stopped.
             changed = self.changed_cell if not self.stopped else None
             for a in sorted(self.visible):
@@ -697,7 +757,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 self._mem_line_addrs[line_idx] = a
                 marker = ">>" if a == self.pc else "  "
                 v = self.mem[a]
-                text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}"
+                addr_cell = f"{a:3d} ({a:08b})"
+                val_cell = f"{v:3d} ({v:08b})"
+                text = f"  {marker} {addr_cell:>19}  ->  {val_cell:>19}"
                 # A cell can hold several roles at once; collect all active
                 # colours (fixed stripe order) instead of letting one win.
                 colours = []
