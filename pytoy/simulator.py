@@ -593,10 +593,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 lines.append(f'<b>Stopped after {self.step_count} steps.</b>')
             else:
                 lines.append(f'<b>Step #{self.step_count}:</b>')
-            acc_line = _esc(f"  ACC={self.acc}=b{self.acc:08b}")
-            if self.acc_written and not self.stopped and self.step_count > 0:
-                acc_line = f'<span style="background-color:#99ccff;">{acc_line}</span>'
-            lines.append(acc_line)
+            acc_text = f"  ACC={self.acc}=b{self.acc:08b}"
+            acc_hl = (self.acc_written and not self.stopped and self.step_count > 0)
+            lines.append(highlight_row(acc_text, [HL_CHANGE] if acc_hl else []))
             lines.append(_esc(f"  PC={self.pc}"))
             lines.append(_esc(f"  OP{n}={bs}"))
             lines.append(_esc(f"  EXPLAIN: {desc}"))
