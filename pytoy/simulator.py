@@ -191,13 +191,19 @@ def sps_to_interval(sps):
 
 # ── Change highlight ───────────────────────────────────────────────────────
 
-def step_change(opcode, arg_addr, acc_before, acc_after):
-    """Decide what a single executed step changed, for the GUI's change
-    highlight. Returns (changed_cell, acc_changed): changed_cell is the memory
-    address written by a STORE (opcode 21), else None; acc_changed is True iff
-    the accumulator differs before vs after. Pure — no Qt, no mem access."""
+# Opcodes that write the accumulator (LOAD/ADD/SUB/AND/OR/XOR/NOT/LEFT/RIGHT).
+# STORE/GOTO/IFZERO/STOP/NOP leave ACC alone. We highlight on *write*, not on
+# value change, so a `load` of the value already in ACC still lights up.
+_ACC_WRITERS = frozenset({1, 2, 15, 17, 18, 19, 20, 22, 23})
+
+def step_change(opcode, arg_addr):
+    """Decide what a single executed step wrote, for the GUI's change highlight.
+    Returns (changed_cell, acc_written): changed_cell is the memory address
+    written by a STORE (opcode 21), else None; acc_written is True iff the
+    instruction writes the accumulator — regardless of whether the value
+    actually changed. Pure — no Qt, no mem access."""
     changed_cell = arg_addr if opcode == 21 else None
-    return changed_cell, acc_before != acc_after
+    return changed_cell, opcode in _ACC_WRITERS
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
@@ -344,7 +350,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.arg_addr = None
             self.selected_addr = None
             self.changed_cell = None    # cell written in the last step (blue)
-            self.acc_changed = False    # did ACC change in the last step?
+            self.acc_written = False     # did the last step write ACC?
             self.overwrite_ok = False   # re-arm the code-overwrite prompt
             self._mem_line_addrs = {}
             self.timer.stop()
@@ -404,12 +410,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 if was_running:
                     self._start_timer()           # resume auto-run
 
-            acc_before = self.acc
             self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
             if instr == 21:  # STORE wrote memory
                 self.touched.add(arg_addr)
-            self.changed_cell, self.acc_changed = step_change(
-                instr, arg_addr, acc_before, self.acc)
+            self.changed_cell, self.acc_written = step_change(instr, arg_addr)
             self.step_count += 1
             self.selected_addr = None
             self.arg_addr = arg_addr
@@ -552,7 +556,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             else:
                 lines.append(f'<b>Step #{self.step_count}:</b>')
             acc_line = _esc(f"  ACC={self.acc}=b{self.acc:08b}")
-            if self.acc_changed and not self.stopped and self.step_count > 0:
+            if self.acc_written and not self.stopped and self.step_count > 0:
                 acc_line = f'<span style="background-color:#99ccff;">{acc_line}</span>'
             lines.append(acc_line)
             lines.append(_esc(f"  PC={self.pc}"))
