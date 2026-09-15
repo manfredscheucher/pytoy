@@ -304,9 +304,12 @@ class History:
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
-def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
+def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
+             source_path=None):
     """Launch PySide6 graphical debugger. has_source=False (a .toyo) hides the
-    source panel and shows only memory, matching the Load button's .toyo path."""
+    source panel and shows only memory, matching the Load button's .toyo path.
+    source_path is the file this program was loaded from (e.g. the CLI argument)
+    so Reload can re-read it even before the Load button is ever used."""
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
@@ -317,16 +320,19 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
 
     class ToyDebugger(QMainWindow):
         def __init__(self, mem_original, listing, syms, data_addrs, code_guard,
-                     has_source=True):
+                     has_source=True, source_path=None):
             super().__init__()
             self.setWindowTitle("pytoy")
             self.resize(1000, 700)
 
-            self._current_path = None   # path of the last file loaded, for Reload
+            # path of the last file loaded (CLI arg or Load button), for Reload
+            self._current_path = source_path
             self._build_ui()
             self._setup_shortcuts()
             self.load_program(mem_original, listing, syms, data_addrs, code_guard,
                               has_source=has_source)
+            # a CLI-loaded file means Reload has something to re-read right away
+            self.btn_reload.setEnabled(self._current_path is not None)
 
         def load_program(self, mem_original, listing, syms, data_addrs,
                          code_guard=None, has_source=True):
@@ -582,9 +588,25 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             else:
                 self._start_timer()
 
+        def _confirm_discard(self):
+            """If there are pending changes (anything on the undo stack — steps
+            or live edits), ask before discarding them. Returns True to proceed,
+            False to cancel. With an empty stack there is nothing to lose, so it
+            proceeds without asking."""
+            if len(self._history) == 0:
+                return True
+            reply = QMessageBox.question(
+                self, "Discard changes?",
+                "You have unsaved changes (stepping / edits). Loading a file "
+                "discards them.\n\nContinue?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            return reply == QMessageBox.Yes
+
         def _load_clicked(self):
             """Pick a .toys (assembly source) or .toyo (byte listing) file and
             load it into the debugger."""
+            if not self._confirm_discard():
+                return
             path, _ = QFileDialog.getOpenFileName(
                 self, "Load program", "",
                 "Toy programs (*.toys *.toyo);;All files (*)")
@@ -592,10 +614,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 self._load_path(path)
 
         def _reload_clicked(self):
-            """Re-read the current file from disk and reload it — so the file can
-            be edited externally and the change picked up without re-browsing."""
-            if self._current_path:
-                self._load_path(self._current_path)
+            """Re-read the current file (CLI arg or last Load) from disk and
+            reload it — so the file can be edited externally and picked up
+            without re-browsing. Disabled until a file has been loaded, so
+            _current_path is always set when this runs."""
+            if not self._current_path:
+                return
+            if not self._confirm_discard():
+                return
+            self._load_path(self._current_path)
 
         def _load_path(self, path):
             """Read `path` from disk, assemble/parse it, and point the debugger
@@ -823,9 +850,25 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication.instance() or QApplication(sys.argv)
-    win = ToyDebugger(mem, listing, syms, data_addrs, code_guard, has_source)
+    win = ToyDebugger(mem, listing, syms, data_addrs, code_guard, has_source,
+                      source_path=source_path)
     win.show()
     app.exec()
+
+
+def show_error_dialog(title, message):
+    """Pop up a scrollable error dialog (for assembly failures on GUI startup),
+    then return. Used by run.py so a bad file shows a window instead of only
+    printing to the terminal. The detail box scrolls when the message is long."""
+    from PySide6.QtWidgets import QApplication, QMessageBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Critical)
+    box.setWindowTitle(title)
+    box.setText("The program could not be assembled:")
+    box.setDetailedText(message)   # shown in a scrollable, expandable box
+    box.setStandardButtons(QMessageBox.Ok)
+    box.exec()
 
 
 def empty_gui():

@@ -65,10 +65,21 @@ def cmd_sim(args):
         args.quiet = True
     else:
         mem, listing, syms, data_addrs, errors, data_start = assemble(src)
-        if errors:
+
+    # The GUI is the default. --cli forces the terminal; --run/--quiet also
+    # imply the terminal (you asked to run it, not to open a window).
+    use_gui = not (args.cli or args.run or args.quiet)
+
+    if not is_toyo and errors:
+        # Assembly failed: in the GUI show a scrollable dialog; on the terminal
+        # print each error. Either way, don't try to run a broken program.
+        if use_gui:
+            from pytoy.simulator import show_error_dialog
+            show_error_dialog(f"Assembly failed: {args.file}", "\n".join(errors))
+        else:
             for e in errors:
                 print(f"ERROR: {e}", file=sys.stderr)
-            sys.exit(1)
+        sys.exit(1)
 
     guard = data_start if args.detect_code_overwrite else None
     if args.detect_code_overwrite and data_start is None:
@@ -76,14 +87,13 @@ def cmd_sim(args):
               "'# data' marker; code-overwrite detection is disabled.",
               file=sys.stderr)
 
-    # The GUI is the default. --cli forces the terminal; --run/--quiet also
-    # imply the terminal (you asked to run it, not to open a window).
-    use_gui = not (args.cli or args.run or args.quiet)
     if use_gui:
         if is_toyo:
-            gui_main(mem, listing, syms, data_addrs, guard, has_source=False)
+            gui_main(mem, listing, syms, data_addrs, guard, has_source=False,
+                     source_path=args.file)
         else:
-            gui_main(mem, listing, syms, data_addrs, guard)
+            gui_main(mem, listing, syms, data_addrs, guard,
+                     source_path=args.file)
         return
 
     if args.export:

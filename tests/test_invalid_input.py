@@ -19,7 +19,9 @@ from pytoy.simulator import parse_toyo
 
 def test_missing_operand():
     _, _, _, _, errors, _ = assemble("load")
-    assert errors == ["'load' needs an operand"]
+    assert len(errors) == 1
+    assert errors[0].startswith("line 1:")
+    assert "needs an operand" in errors[0]
 
 
 # ── unknown label ───────────────────────────────────────────────────────────
@@ -27,6 +29,7 @@ def test_missing_operand():
 def test_unknown_label():
     _, _, _, _, errors, _ = assemble("load nowhere")
     assert len(errors) == 1
+    assert errors[0].startswith("line 1:")
     assert "nowhere" in errors[0]
 
 
@@ -34,24 +37,28 @@ def test_unknown_label():
 
 def test_bad_data_value():
     _, _, _, _, errors, _ = assemble("stop\n# data\nx: notanumber")
-    assert errors == ["Bad value/mnemonic: 'notanumber'"]
+    assert len(errors) == 1
+    assert errors[0].startswith("line 3:")   # the data line
+    assert "notanumber" in errors[0]
 
 
 # ── unknown instruction ─────────────────────────────────────────────────────
 
-def test_unknown_mnemonic_is_treated_as_a_bad_data_token():
-    # A token that is neither an opcode nor a valid value fails as a "bad
-    # value/mnemonic". Documents that there is no separate "unknown instruction"
-    # error — a bare unknown word is parsed as a data byte.
+def test_unknown_mnemonic_reports_bad_value_or_unknown_instruction():
+    # A token that is neither an opcode nor a valid value is reported as a bad
+    # value / unknown instruction, prefixed with its line number.
     _, _, _, _, errors, _ = assemble("foobar")
-    assert errors == ["Bad value/mnemonic: 'foobar'"]
+    assert len(errors) == 1
+    assert errors[0].startswith("line 1:")
+    assert "foobar" in errors[0]
 
 
 def test_unknown_instruction_with_operand_ignores_the_operand():
     # `foobar 5` is not an opcode, so `foobar` is treated as a data token (and
     # fails); the trailing `5` is silently dropped. Pins this quirky behaviour.
     _, _, _, _, errors, _ = assemble("foobar 5")
-    assert errors == ["Bad value/mnemonic: 'foobar'"]
+    assert len(errors) == 1
+    assert "foobar" in errors[0]
 
 
 # ── multiple errors collected ───────────────────────────────────────────────

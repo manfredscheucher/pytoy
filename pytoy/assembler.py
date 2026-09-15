@@ -16,7 +16,7 @@ from .core import OPCODES, has_operand, parse_val, _describe
 
 def parse_source(src):
     rows = []
-    for line in src.splitlines():
+    for lineno, line in enumerate(src.splitlines(), start=1):
         orig = line
         if '#' in line:
             line = line[:line.index('#')]
@@ -27,9 +27,10 @@ def parse_source(src):
             label = line[:i].strip().lower()
             line  = line[i+1:].strip()
         if not line:
-            rows.append((label, None, None, orig)); continue
+            rows.append((label, None, None, orig, lineno)); continue
         tok = line.split()
-        rows.append((label, tok[0].lower(), tok[1] if len(tok)>1 else None, orig))
+        rows.append((label, tok[0].lower(), tok[1] if len(tok)>1 else None,
+                     orig, lineno))
     return rows
 
 # ── Assembler (two-pass) ───────────────────────────────────────────────────
@@ -60,7 +61,7 @@ def assemble(src):
 
     # pass 1 – addresses + symbols, and total size check
     syms, addr = {}, 0
-    for label, mn, _, _ in parsed:
+    for label, mn, _, _, _ in parsed:
         if label is not None:
             syms[label] = addr
         if mn is None: continue
@@ -77,7 +78,7 @@ def assemble(src):
     mem, listing, errors, data_addrs = [0]*256, [], [], set()
     data_start = None
     addr = 0
-    for label, mn, op, orig in parsed:
+    for label, mn, op, orig, lineno in parsed:
         if data_start is None and _is_data_marker(orig):
             data_start = addr
         if mn is None:
@@ -86,7 +87,7 @@ def assemble(src):
         if mn in OPCODES:
             opc = OPCODES[mn]
             if has_operand(opc):
-                v = _resolve(op, syms, mn, errors)
+                v = _resolve(op, syms, mn, errors, lineno)
                 mem[addr] = opc; mem[addr+1] = v & 0xFF
                 listing.append((addr, [opc, v & 0xFF], orig, False))
                 addr += 2
@@ -100,7 +101,9 @@ def assemble(src):
                 v = syms[mn] & 0xFF
             else:
                 try:    v = parse_val(mn) & 0xFF
-                except: errors.append(f"Bad value/mnemonic: '{mn}'"); v = 0
+                except:
+                    errors.append(f"line {lineno}: bad value or unknown "
+                                  f"instruction '{mn}'"); v = 0
             mem[addr] = v
             data_addrs.add(addr)
             listing.append((addr, [v], orig, True))
@@ -108,13 +111,15 @@ def assemble(src):
 
     return mem, listing, syms, data_addrs, errors, data_start
 
-def _resolve(op, syms, ctx, errors):
+def _resolve(op, syms, ctx, errors, lineno):
     if op is None:
-        errors.append(f"'{ctx}' needs an operand"); return 0
+        errors.append(f"line {lineno}: '{ctx}' needs an operand"); return 0
     k = op.lower()
     if k in syms: return syms[k]
     try:    return parse_val(op)
-    except: errors.append(f"Unknown label '{op}' for '{ctx}'"); return 0
+    except:
+        errors.append(f"line {lineno}: unknown label '{op}' for '{ctx}'")
+        return 0
 
 # ── Assembly listing (interactive) ────────────────────────────────────────
 
