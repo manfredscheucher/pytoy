@@ -203,12 +203,12 @@ def step_change(opcode, arg_addr):
     return changed_cell, opcode in WRITES_ACC
 
 
-# ── Row highlighting (full-width, multi-colour stripes) ─────────────────────
+# ── Row highlighting (full-width, multi-colour) ─────────────────────────────
 
-# The highlight colours, in a fixed left-to-right stripe order. A line can carry
-# several roles at once (e.g. a byte that is both the PC and the just-written
-# cell); instead of one colour winning, the row is split into equal vertical
-# stripes, one per active colour, in this order.
+# The highlight colours, in a fixed cycle order. A line can carry several roles
+# at once (e.g. a byte that is both the PC and the just-written cell); instead
+# of one colour winning, the row's characters alternate through all the active
+# colours, in this order.
 HL_SELECTED = "#ffcc66"   # orange: the address the user clicked
 HL_PC       = "#ffffaa"   # yellow: the byte(s) of the current instruction
 HL_ARG      = "#aaffaa"   # green:  the address this instruction reads/writes
@@ -244,6 +244,51 @@ def highlight_row(text, colours, width=ROW_WIDTH):
         colour = colours[j % n]
         out.append(f'<span style="background-color:{colour};">{_esc(ch)}</span>')
     return "".join(out)
+
+# ── Step-back history (undo) ────────────────────────────────────────────────
+
+class History:
+    """A stack of machine-state snapshots for the debugger's step-back (undo).
+
+    A snapshot is a plain dict of field-name -> value. The caller lists which
+    fields are mutable containers (mem, touched, visible) so History copies them
+    on push and on pop — the machine keeps mutating its own mem/sets, so both
+    directions must copy or the snapshot would alias the live state. Pure Python,
+    no Qt, so the undo logic is testable without a GUI."""
+
+    def __init__(self, mutable_fields=("mem", "touched", "visible")):
+        self._mutable = tuple(mutable_fields)
+        self._stack = []
+
+    def __len__(self):
+        return len(self._stack)
+
+    def clear(self):
+        self._stack.clear()
+
+    @staticmethod
+    def _copy_value(v):
+        if isinstance(v, list):
+            return list(v)
+        if isinstance(v, (set, frozenset)):
+            return set(v)
+        return v
+
+    def push(self, state):
+        """Snapshot `state` (a dict of field -> value), copying mutable ones."""
+        snap = {}
+        for k, v in state.items():
+            snap[k] = self._copy_value(v) if k in self._mutable else v
+        self._stack.append(snap)
+
+    def pop(self):
+        """Return the most recent snapshot (mutable fields copied again so the
+        caller can mutate freely), or None if the stack is empty."""
+        if not self._stack:
+            return None
+        snap = self._stack.pop()
+        return {k: (self._copy_value(v) if k in self._mutable else v)
+                for k, v in snap.items()}
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
@@ -344,8 +389,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
 
             bottom.addStretch(1)
 
+            self.btn_back = QPushButton("Back")
             self.btn_step = QPushButton("Step")
             self.btn_run = QPushButton("Run")
+            bottom.addWidget(self.btn_back)
             bottom.addWidget(self.btn_step)
             bottom.addWidget(self.btn_run)
 
@@ -364,9 +411,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.btn_reset = QPushButton("Reset")
             bottom.addWidget(self.btn_reset)
 
-            for btn in (self.btn_step, self.btn_run, self.btn_reset):
+            for btn in (self.btn_back, self.btn_step, self.btn_run, self.btn_reset):
                 btn.setFont(mono)
 
+            self.btn_back.clicked.connect(self.step_back)
             self.btn_step.clicked.connect(self.step)
             self.btn_run.clicked.connect(self._toggle_run)
             self.btn_reset.clicked.connect(self.reset)
@@ -377,6 +425,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
         def _setup_shortcuts(self):
             QShortcut(QKeySequence(Qt.Key_Space), self, self.step)
             QShortcut(QKeySequence(Qt.Key_Return), self, self.step)
+            QShortcut(QKeySequence(Qt.Key_Backspace), self, self.step_back)
             QShortcut(QKeySequence(Qt.Key_R), self, self._toggle_run)
             QShortcut(QKeySequence(Qt.Key_Escape), self, self.reset)
 
@@ -393,9 +442,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.acc_written = False     # did the last step write ACC?
             self.overwrite_ok = False   # re-arm the code-overwrite prompt
             self._mem_line_addrs = {}
+            self._history = History()   # snapshots for step-back (undo)
             self.timer.stop()
             self.btn_step.setEnabled(True)
             self.btn_run.setEnabled(True)
+            self.btn_back.setEnabled(False)   # nothing to undo yet
             self.btn_run.setText("Run")
             self.refresh()
 
@@ -450,6 +501,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 if was_running:
                     self._start_timer()           # resume auto-run
 
+            # snapshot the pre-execution state so this step can be undone. Done
+            # here, after the STOP/overwrite-abort early returns, so a snapshot
+            # is only pushed for a step that actually runs.
+            self._push_history()
+
             self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
             if instr == 21:  # STORE wrote memory
                 self.touched.add(arg_addr)
@@ -458,6 +514,35 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.selected_addr = None
             self.arg_addr = arg_addr
             self.visible.update(self.touched)
+            self.btn_back.setEnabled(True)
+            self.refresh()
+
+        # All machine state that step-back must capture and restore. mem/touched/
+        # visible are mutable containers (History copies them); the rest scalars.
+        _SNAPSHOT_FIELDS = ("mem", "touched", "visible", "acc", "pc", "stopped",
+                            "step_count", "arg_addr", "selected_addr",
+                            "changed_cell", "acc_written", "overwrite_ok")
+
+        def _push_history(self):
+            """Save the current machine state onto the undo stack."""
+            self._history.push({f: getattr(self, f)
+                                for f in self._SNAPSHOT_FIELDS})
+
+        def step_back(self):
+            """Undo the last executed step, restoring the machine to the state
+            just before it ran. No-op if there is nothing to undo."""
+            snap = self._history.pop()
+            if snap is None:
+                return
+            self.timer.stop()   # never auto-run while stepping back
+            for f in self._SNAPSHOT_FIELDS:
+                setattr(self, f, snap[f])
+            # stepping back always lands on a runnable (non-halted) state, so
+            # re-enable the controls the halt may have disabled.
+            self.btn_step.setEnabled(True)
+            self.btn_run.setEnabled(True)
+            self.btn_run.setText("Run")
+            self.btn_back.setEnabled(len(self._history) > 0)
             self.refresh()
 
         def _toggle_run(self):
