@@ -1,0 +1,27 @@
+# Toy CPU – compiled listing
+#
+# ADDR  BYTES                   SOURCE
+# ────────────────────────────────────────────────────────
+#                                # sum3.toys
+#                                # Adds three named values: a + b + c.
+#                                #
+#                                # The three values are the first three digits of pi (a=3, b=1, c=4),
+#                                # so the expected result is 3 + 1 + 4 = 8.
+#                                #
+#                                # No loop needed -- just load the first, add the other two.
+#                                # (For summing a whole array, see sum.toys.)
+#                                
+     0   00010100  00000111              load  a         # acc = a
+     2   00010110  00001000              add   b         # acc = a + b
+     4   00010110  00001001              add   c         # acc = a + b + c
+     6   00000000                        stop            # result 8 in accumulator
+#                                
+#                                # data
+     7   00000011                a:      3
+     8   00000001                b:      1
+     9   00000100                c:      4
+
+# SYMBOLS
+#   a               =   7  (00000111)
+#   b               =   8  (00001000)
+#   c               =   9  (00001001)

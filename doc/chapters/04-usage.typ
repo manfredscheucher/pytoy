@@ -85,6 +85,20 @@ python3 run.py sim examples/asm/max_array.toyo --cli --run
 The final line reports the result in the accumulator in binary, hex, and
 decimal.
 
+Two ready-made `.toyo` examples are checked in under `examples/toyo/`
+(`sum3.toyo` and `fibonacci.toyo`), so you can try loading a compiled byte
+listing without assembling one first. They were generated from the matching
+assembly sources with `run.py asm`:
+
+```bash
+python3 run.py asm examples/asm/sum3.toys      -o examples/toyo/sum3.toyo
+python3 run.py asm examples/asm/fibonacci.toys -o examples/toyo/fibonacci.toyo
+```
+
+Loading a `.toyo` shows only the memory panel — a compiled listing carries no
+re-runnable source. (Most `.toyo` files are build artifacts and git-ignored;
+these two are committed on purpose as examples.)
+
 == Memory limits and code-overwrite detection
 
 The Toy CPU has exactly 256 bytes, shared by code and data. Two things can go
