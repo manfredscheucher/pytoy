@@ -44,6 +44,11 @@ def cmd_sim(args):
 
     is_toyo = args.file.lower().endswith('.toyo')
 
+    # The GUI is the default. --cli forces the terminal; --run/--quiet also
+    # imply the terminal (you asked to run it, not to open a window). Decide
+    # this from what the USER passed, before any .toyo-specific tweaks below.
+    use_gui = not (args.cli or args.run or args.quiet)
+
     if is_toyo:
         # A .toyo is a compiled byte listing with no re-runnable source: load the
         # memory image directly and skip assembly. Mirror the GUI's .toyo Load
@@ -61,14 +66,10 @@ def cmd_sim(args):
             print("NOTE: nothing to export from a .toyo (no source); "
                   "skipping --export.", file=sys.stderr)
             args.export = False
-        # force compact output: there is no per-line source to explain.
-        args.quiet = True
-    else:
-        mem, listing, syms, data_addrs, errors, data_start = assemble(src)
-
-    # The GUI is the default. --cli forces the terminal; --run/--quiet also
-    # imply the terminal (you asked to run it, not to open a window).
-    use_gui = not (args.cli or args.run or args.quiet)
+        # In the terminal there is no per-line source to explain, so force the
+        # compact output. (Only affects CLI mode; the GUI is unaffected.)
+        if not use_gui:
+            args.quiet = True
 
     if not is_toyo and errors:
         # Assembly failed: in the GUI show a scrollable dialog; on the terminal
