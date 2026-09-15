@@ -202,6 +202,44 @@ def step_change(opcode, arg_addr):
     changed_cell = arg_addr if opcode == 21 else None
     return changed_cell, opcode in WRITES_ACC
 
+
+# ── Row highlighting (full-width, multi-colour stripes) ─────────────────────
+
+# The highlight colours, in a fixed left-to-right stripe order. A line can carry
+# several roles at once (e.g. a byte that is both the PC and the just-written
+# cell); instead of one colour winning, the row is split into equal vertical
+# stripes, one per active colour, in this order.
+HL_SELECTED = "#ffcc66"   # orange: the address the user clicked
+HL_PC       = "#ffffaa"   # yellow: the byte(s) of the current instruction
+HL_ARG      = "#aaffaa"   # green:  the address this instruction reads/writes
+HL_CHANGE   = "#99ccff"   # blue:   the cell/ACC written in the last step
+
+# Pad every rendered row to this width so a background colour fills the whole
+# line out to the panel's right edge, not just behind the text.
+ROW_WIDTH = 80
+
+def highlight_row(text, colours, width=ROW_WIDTH):
+    """Render one panel row as full-width HTML with 0..N vertical colour stripes.
+
+    `text` is the raw (unescaped) row text; `colours` is a list of hex colours
+    in stripe order (already de-duplicated, may be empty). The text is padded to
+    `width` and split into len(colours) equal stripes, each wrapped in a coloured
+    span, so a row with two active colours shows a 50/50 split, three a 33/33/33
+    split, and so on. With no colours the row is returned escaped but unstyled.
+    Pure — no Qt."""
+    padded = text.ljust(width)[:width] if len(text) < width else text
+    if not colours:
+        return _esc(padded)
+    n = len(colours)
+    total = len(padded)
+    spans = []
+    for i, colour in enumerate(colours):
+        start = (i * total) // n
+        end = total if i == n - 1 else ((i + 1) * total) // n
+        chunk = _esc(padded[start:end])
+        spans.append(f'<span style="background-color:{colour};">{chunk}</span>')
+    return "".join(spans)
+
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
 def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
@@ -514,16 +552,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                     marker = "**"
                 else:
                     marker = "  "
-                text = orig.rstrip() if orig else ""
-                escaped = _esc(text)
-                if i == sel_line:
-                    lines.append(f'<span style="background-color:#ffcc66;">{marker} {escaped}</span>')
-                elif i in pc_lines:
-                    lines.append(f'<span style="background-color:#ffffaa;">{marker} {escaped}</span>')
-                elif i == arg_line:
-                    lines.append(f'<span style="background-color:#aaffaa;">{marker} {escaped}</span>')
-                else:
-                    lines.append(f'{marker} {escaped}')
+                text = f"{marker} {orig.rstrip()}" if orig else marker
+                # Same multi-colour stripe scheme as the memory panel (no change
+                # highlight here — that tracks memory cells, not source lines).
+                colours = []
+                if i == sel_line:  colours.append(HL_SELECTED)
+                if i in pc_lines:  colours.append(HL_PC)
+                if i == arg_line:  colours.append(HL_ARG)
+                lines.append(highlight_row(text, colours))
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.source_view.setHtml(html)
 
@@ -565,28 +601,22 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self._mem_line_addrs = {}
             lines.append(f'<b>memory:</b>')
             lines.append(_esc(f"      {'address':>14}  {'value':>14}"))
+            # Blue (change) only lingers while running, never once stopped.
+            changed = self.changed_cell if not self.stopped else None
             for a in sorted(self.visible):
                 line_idx = len(lines)
                 self._mem_line_addrs[line_idx] = a
                 marker = ">>" if a == self.pc else "  "
                 v = self.mem[a]
                 text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}"
-                escaped = _esc(text)
-                # precedence: selected > PC > argument > changed. The change
-                # highlight is the lowest — it only lingers from the last step,
-                # so a live PC byte or the current instruction's argument (green)
-                # always wins over it, and it never shows once stopped.
-                changed = self.changed_cell if not self.stopped else None
-                if a == self.selected_addr:
-                    lines.append(f'<span style="background-color:#ffcc66;">{escaped}</span>')
-                elif a in pc_bytes:      # opcode + operand byte of the current instr
-                    lines.append(f'<span style="background-color:#ffffaa;">{escaped}</span>')
-                elif a == cur_arg:       # address this instruction reads/writes
-                    lines.append(f'<span style="background-color:#aaffaa;">{escaped}</span>')
-                elif a == changed:       # cell written in the last step
-                    lines.append(f'<span style="background-color:#99ccff;">{escaped}</span>')
-                else:
-                    lines.append(escaped)
+                # A cell can hold several roles at once; collect all active
+                # colours (fixed stripe order) instead of letting one win.
+                colours = []
+                if a == self.selected_addr: colours.append(HL_SELECTED)
+                if a in pc_bytes:           colours.append(HL_PC)
+                if a == cur_arg:            colours.append(HL_ARG)
+                if a == changed:            colours.append(HL_CHANGE)
+                lines.append(highlight_row(text, colours))
 
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.mem_view.setHtml(html)
