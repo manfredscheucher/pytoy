@@ -53,12 +53,48 @@ def test_unknown_mnemonic_reports_bad_value_or_unknown_instruction():
     assert "foobar" in errors[0]
 
 
-def test_unknown_instruction_with_operand_ignores_the_operand():
-    # `foobar 5` is not an opcode, so `foobar` is treated as a data token (and
-    # fails); the trailing `5` is silently dropped. Pins this quirky behaviour.
+def test_unknown_instruction_with_operand_reports_ignored_operand():
+    # `foobar 5` is not an opcode; the error must call it out as a non-
+    # instruction AND note the ignored operand (was previously silently dropped).
     _, _, _, _, errors, _ = assemble("foobar 5")
     assert len(errors) == 1
     assert "foobar" in errors[0]
+    assert "not an instruction" in errors[0]
+    assert "'5' was ignored" in errors[0]
+
+
+# ── did-you-mean suggestions ────────────────────────────────────────────────
+
+def test_typo_opcode_suggests_nearest():
+    # 'addd' should suggest 'add'
+    _, _, _, _, errors, _ = assemble("addd x\nstop")
+    assert "did you mean 'add'?" in errors[0]
+
+
+def test_typo_with_operand_suggests_and_notes_ignored_operand():
+    _, _, _, _, errors, _ = assemble("looad 5\nstop")
+    assert "did you mean 'load'?" in errors[0]
+    assert "'5' was ignored" in errors[0]
+
+
+# ── source line echoed in the message ───────────────────────────────────────
+
+def test_error_echoes_the_offending_source_line():
+    _, _, _, _, errors, _ = assemble("goto nowhere")
+    # the line text appears under the message (stripped)
+    assert "goto nowhere" in errors[0]
+    assert "line 1:" in errors[0]
+
+
+# ── too-big explains the 2-byte cost ────────────────────────────────────────
+
+def test_too_big_explains_two_byte_cost_and_overage():
+    _, _, _, _, errors, _ = assemble("load 0\n" * 130)   # 260 bytes
+    assert len(errors) == 1
+    msg = errors[0]
+    assert "260 bytes" in msg
+    assert "4 too many" in msg
+    assert "2 bytes" in msg   # explains operand instructions cost 2
 
 
 # ── multiple errors collected ───────────────────────────────────────────────

@@ -9,8 +9,23 @@ lives in pytoy.core; the runnable simulator/GUI lives in pytoy.simulator.
 """
 
 import re
+import difflib
 
 from .core import OPCODES, has_operand, parse_val, _describe
+
+
+def _did_you_mean(word):
+    """If `word` looks like a mistyped opcode, return ' (did you mean 'add'?)',
+    else ''. Uses a close-match against the instruction set so a typo like
+    'addd' or 'looad' gets a helpful suggestion."""
+    match = difflib.get_close_matches(word.lower(), OPCODES, n=1, cutoff=0.6)
+    return f" (did you mean '{match[0]}'?)" if match else ""
+
+
+def _err(lineno, orig, msg):
+    """Format an assembler error: line number, the message, and the offending
+    source line echoed underneath so the user sees exactly what's wrong."""
+    return f"line {lineno}: {msg}\n    {orig.strip()}"
 
 # ── Source parser ──────────────────────────────────────────────────────────
 
@@ -71,7 +86,9 @@ def assemble(src):
     # instead of letting pass 2 crash with an IndexError.
     if addr > 256:
         errors = [f"Program is too big: it needs {addr} bytes, but the Toy CPU "
-                  f"has only 256. Remove instructions or data."]
+                  f"has only 256 ({addr - 256} too many). Instructions with an "
+                  f"operand (load/store/add/sub/and/or/xor/goto/ifzero) take 2 "
+                  f"bytes; the rest take 1. Remove some instructions or data."]
         return [0]*256, [], syms, set(), errors, None
 
     # pass 2 – emit
@@ -87,7 +104,7 @@ def assemble(src):
         if mn in OPCODES:
             opc = OPCODES[mn]
             if has_operand(opc):
-                v = _resolve(op, syms, mn, errors, lineno)
+                v = _resolve(op, syms, mn, errors, lineno, orig)
                 mem[addr] = opc; mem[addr+1] = v & 0xFF
                 listing.append((addr, [opc, v & 0xFF], orig, False))
                 addr += 2
@@ -100,10 +117,21 @@ def assemble(src):
             if mn in syms:
                 v = syms[mn] & 0xFF
             else:
-                try:    v = parse_val(mn) & 0xFF
+                try:
+                    v = parse_val(mn) & 0xFF
                 except:
-                    errors.append(f"line {lineno}: bad value or unknown "
-                                  f"instruction '{mn}'"); v = 0
+                    v = 0
+                    if op is not None:
+                        # a bare word followed by an operand is almost certainly
+                        # a mistyped instruction, not a data byte — and its
+                        # operand was about to be silently dropped.
+                        errors.append(_err(lineno, orig,
+                            f"'{mn}' is not an instruction{_did_you_mean(mn)}; "
+                            f"its operand '{op}' was ignored"))
+                    else:
+                        errors.append(_err(lineno, orig,
+                            f"'{mn}' is not a valid value or "
+                            f"instruction{_did_you_mean(mn)}"))
             mem[addr] = v
             data_addrs.add(addr)
             listing.append((addr, [v], orig, True))
@@ -111,14 +139,17 @@ def assemble(src):
 
     return mem, listing, syms, data_addrs, errors, data_start
 
-def _resolve(op, syms, ctx, errors, lineno):
+def _resolve(op, syms, ctx, errors, lineno, orig):
     if op is None:
-        errors.append(f"line {lineno}: '{ctx}' needs an operand"); return 0
+        errors.append(_err(lineno, orig,
+            f"'{ctx}' needs an operand (an address or a label)"))
+        return 0
     k = op.lower()
     if k in syms: return syms[k]
     try:    return parse_val(op)
     except:
-        errors.append(f"line {lineno}: unknown label '{op}' for '{ctx}'")
+        errors.append(_err(lineno, orig,
+            f"unknown label '{op}' used by '{ctx}'"))
         return 0
 
 # ── Assembly listing (interactive) ────────────────────────────────────────

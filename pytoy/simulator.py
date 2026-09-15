@@ -650,8 +650,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             else:
                 mem, listing, syms, data_addrs, errors, data_start = assemble(text)
                 if errors:
-                    QMessageBox.critical(self, "Assembly failed",
-                                         "\n".join(errors))
+                    show_error_dialog(f"Assembly failed: {path}",
+                                      "\n".join(errors))
                     return
                 self.load_program(mem, listing, syms, data_addrs,
                                   code_guard=None, has_source=True)
@@ -857,18 +857,28 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
 
 def show_error_dialog(title, message):
-    """Pop up a scrollable error dialog (for assembly failures on GUI startup),
-    then return. Used by run.py so a bad file shows a window instead of only
-    printing to the terminal. The detail box scrolls when the message is long."""
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    """Pop up an error dialog (for assembly failures on GUI startup), then
+    return. Used by run.py so a bad file shows a window instead of only printing
+    to the terminal. Errors are shown INLINE (not hidden behind 'Show Details')
+    so a beginner sees them immediately; long messages get a scrollbar."""
+    from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout,
+                                   QLabel, QTextEdit, QDialogButtonBox)
+    from PySide6.QtGui import QFont
     app = QApplication.instance() or QApplication(sys.argv)
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Critical)
-    box.setWindowTitle(title)
-    box.setText("The program could not be assembled:")
-    box.setDetailedText(message)   # shown in a scrollable, expandable box
-    box.setStandardButtons(QMessageBox.Ok)
-    box.exec()
+    dlg = QDialog()
+    dlg.setWindowTitle(title)
+    dlg.resize(640, 320)
+    layout = QVBoxLayout(dlg)
+    layout.addWidget(QLabel("The program could not be assembled:"))
+    box = QTextEdit()
+    box.setReadOnly(True)
+    box.setPlainText(message)          # inline + scrollable when long
+    box.setFont(QFont("Menlo, Courier New, monospace"))
+    layout.addWidget(box)
+    buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+    buttons.accepted.connect(dlg.accept)
+    layout.addWidget(buttons)
+    dlg.exec()
 
 
 def empty_gui():
