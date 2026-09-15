@@ -10,7 +10,7 @@ debugger GUI. The command-line entry point lives in run.py at the repo root.
 import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
-                   _describe, _esc, WRITES_ACC)
+                   _describe, _esc, WRITES_ACC, parse_val)
 from .assembler import assemble, show_assembly, export
 
 # ── Simulator ──────────────────────────────────────────────────────────────
@@ -310,7 +310,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
-                                   QLabel, QDoubleSpinBox, QFileDialog)
+                                   QLabel, QDoubleSpinBox, QFileDialog,
+                                   QInputDialog)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
 
@@ -385,6 +386,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             self.mem_view.setFont(mono)
             self.mem_view.setLineWrapMode(QTextEdit.NoWrap)
             splitter.addWidget(self.mem_view)
+
+            # our own right-click handler drives the live-edit dialog, so suppress
+            # QTextEdit's native context menu (Copy/Paste/…) on the memory panel.
+            self.mem_view.setContextMenuPolicy(Qt.NoContextMenu)
 
             self.source_view.mouseReleaseEvent = self._source_clicked
             self.mem_view.mouseReleaseEvent = self._mem_clicked
@@ -647,9 +652,51 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
             cursor = self.mem_view.cursorForPosition(event.pos())
             line = cursor.blockNumber()
             addr = self._mem_line_addrs.get(line)
+            # right-click opens the live-edit dialog for that cell; left-click
+            # just selects it (highlight in both panels).
+            if event.button() == Qt.RightButton:
+                self._edit_cell(addr)
+                return
             if addr is not None:
                 self.selected_addr = addr
                 self.refresh()
+
+        def _edit_cell(self, addr):
+            """Live-edit a memory cell: ask for an address (pre-filled with the
+            clicked one, editable) and a new value, then write it. The value
+            accepts the same forms as the assembler (decimal, 0x…, 0b…, 8-bit
+            binary) and is masked to 8 bits. The edit is undoable (snapshotted
+            like a step) and Reset restores the original file."""
+            # address prompt, pre-filled with the clicked cell (0 if none)
+            a, ok = QInputDialog.getInt(
+                self, "Edit memory", "Address (0–255):",
+                value=(addr if addr is not None else 0), minValue=0, maxValue=255)
+            if not ok:
+                return
+            # value prompt, current value shown as the default text
+            text, ok = QInputDialog.getText(
+                self, "Edit memory",
+                f"New value for address {a}\n(decimal, 0x.., 0b.., or 8-bit binary):",
+                text=str(self.mem[a]))
+            if not ok:
+                return
+            try:
+                value = parse_val(text) & 0xFF
+            except Exception:
+                QMessageBox.warning(self, "Invalid value",
+                                    f"Could not parse '{text}' as a number.")
+                return
+
+            # snapshot so the edit can be undone with Back, exactly like a step
+            self._push_history()
+            self.mem[a] = value
+            self.touched.add(a)
+            self.visible.add(a)
+            self.changed_cell = a       # highlight the edited cell (blue)
+            self.acc_written = False
+            self.selected_addr = a
+            self.btn_back.setEnabled(True)
+            self.refresh()
 
         def refresh(self):
             self._refresh_source()
