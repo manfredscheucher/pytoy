@@ -64,6 +64,17 @@ def execute_one(mem, pc, acc):
     # opcode 128 (NOP) and any unrecognized opcode: do nothing, just advance
     return next_pc, acc & 0xFF, arg_addr, stopped
 
+# Opcodes whose execute_one branch assigns to `acc` (RIGHT/LEFT/NOT/AND/OR/XOR/
+# LOAD/ADD/SUB). STORE/GOTO/IFZERO/STOP/NOP leave it alone. Kept next to
+# execute_one so the two can't drift; the GUI uses it to highlight ACC writes.
+# When you add or change an opcode above, update this set too.
+WRITES_ACC = frozenset({1, 2, 15, 17, 18, 19, 20, 22, 23})
+
+# Every known opcode must be classified as an ACC-writer or not; guard against
+# WRITES_ACC drifting from the instruction set (mirrors the OPCODES/_INSTR assert
+# below). NOP (128) is a known opcode that does not write ACC.
+assert WRITES_ACC <= set(OPCODES.values()), "WRITES_ACC has an unknown opcode"
+
 def is_code_store(mem, pc, code_guard):
     """True if the instruction at pc is a STORE writing into the code region
     (below code_guard). Used to trigger the overwrite warning before the

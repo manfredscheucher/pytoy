@@ -10,7 +10,7 @@ debugger GUI. The command-line entry point lives in run.py at the repo root.
 import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
-                   _describe, _esc)
+                   _describe, _esc, WRITES_ACC)
 from .assembler import assemble, show_assembly, export
 
 # ── Simulator ──────────────────────────────────────────────────────────────
@@ -191,19 +191,16 @@ def sps_to_interval(sps):
 
 # ── Change highlight ───────────────────────────────────────────────────────
 
-# Opcodes that write the accumulator (LOAD/ADD/SUB/AND/OR/XOR/NOT/LEFT/RIGHT).
-# STORE/GOTO/IFZERO/STOP/NOP leave ACC alone. We highlight on *write*, not on
-# value change, so a `load` of the value already in ACC still lights up.
-_ACC_WRITERS = frozenset({1, 2, 15, 17, 18, 19, 20, 22, 23})
-
 def step_change(opcode, arg_addr):
     """Decide what a single executed step wrote, for the GUI's change highlight.
     Returns (changed_cell, acc_written): changed_cell is the memory address
     written by a STORE (opcode 21), else None; acc_written is True iff the
     instruction writes the accumulator — regardless of whether the value
-    actually changed. Pure — no Qt, no mem access."""
+    actually changed, so a `load` of the value already in ACC still lights up.
+    The ACC-writer classification lives in core.WRITES_ACC, next to execute_one,
+    so it can't drift from the CPU semantics. Pure — no Qt, no mem access."""
     changed_cell = arg_addr if opcode == 21 else None
-    return changed_cell, opcode in _ACC_WRITERS
+    return changed_cell, opcode in WRITES_ACC
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
@@ -575,16 +572,19 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True):
                 v = self.mem[a]
                 text = f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}"
                 escaped = _esc(text)
-                # precedence: selected > PC > changed > argument, so the program
-                # counter is never hidden by a lingering change highlight.
+                # precedence: selected > PC > argument > changed. The change
+                # highlight is the lowest — it only lingers from the last step,
+                # so a live PC byte or the current instruction's argument (green)
+                # always wins over it, and it never shows once stopped.
+                changed = self.changed_cell if not self.stopped else None
                 if a == self.selected_addr:
                     lines.append(f'<span style="background-color:#ffcc66;">{escaped}</span>')
                 elif a in pc_bytes:      # opcode + operand byte of the current instr
                     lines.append(f'<span style="background-color:#ffffaa;">{escaped}</span>')
-                elif a == self.changed_cell:   # cell written in the last step
-                    lines.append(f'<span style="background-color:#99ccff;">{escaped}</span>')
-                elif a == cur_arg:
+                elif a == cur_arg:       # address this instruction reads/writes
                     lines.append(f'<span style="background-color:#aaffaa;">{escaped}</span>')
+                elif a == changed:       # cell written in the last step
+                    lines.append(f'<span style="background-color:#99ccff;">{escaped}</span>')
                 else:
                     lines.append(escaped)
 
