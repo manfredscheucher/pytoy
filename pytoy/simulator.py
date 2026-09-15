@@ -396,6 +396,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # our own right-click handler drives the live-edit dialog, so suppress
             # QTextEdit's native context menu (Copy/Paste/…) on the memory panel.
             self.mem_view.setContextMenuPolicy(Qt.NoContextMenu)
+            self.mem_view.setToolTip("Right-click a cell to edit its value")
 
             self.source_view.mouseReleaseEvent = self._source_clicked
             self.mem_view.mouseReleaseEvent = self._mem_clicked
@@ -408,6 +409,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             self.btn_load = QPushButton("Load…")
             self.btn_load.setFont(mono)
+            self.btn_load.setToolTip("Open an assembly (.toys) or byte (.toyo) "
+                                     "file")
             bottom.addWidget(self.btn_load)
             self.btn_load.clicked.connect(self._load_clicked)
 
@@ -416,14 +419,19 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.btn_reload = QPushButton("Reload")
             self.btn_reload.setFont(mono)
             self.btn_reload.setEnabled(False)   # enabled once a file is loaded
+            self.btn_reload.setToolTip("Re-read the current file from disk "
+                                       "(picks up external edits)")
             bottom.addWidget(self.btn_reload)
             self.btn_reload.clicked.connect(self._reload_clicked)
 
             bottom.addStretch(1)
 
-            self.btn_back = QPushButton("Back")
+            self.btn_back = QPushButton("Undo")
             self.btn_step = QPushButton("Step")
             self.btn_run = QPushButton("Run")
+            self.btn_back.setToolTip("Undo the last step or edit (Backspace)")
+            self.btn_step.setToolTip("Execute one instruction (Space)")
+            self.btn_run.setToolTip("Auto-run / pause (R)")
             bottom.addWidget(self.btn_back)
             bottom.addWidget(self.btn_step)
             bottom.addWidget(self.btn_run)
@@ -441,6 +449,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.spin_speed.valueChanged.connect(self._speed_changed)
 
             self.btn_reset = QPushButton("Reset")
+            self.btn_reset.setToolTip("Restart this program from step 0, "
+                                      "restoring the original file (Esc)")
             bottom.addWidget(self.btn_reset)
 
             for btn in (self.btn_back, self.btn_step, self.btn_run, self.btn_reset):
@@ -473,6 +483,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.changed_cell = None    # cell written in the last step (blue)
             self.acc_written = False     # did the last step write ACC?
             self.overwrite_ok = False   # re-arm the code-overwrite prompt
+            self._has_live_edits = False # any right-click edits since load/reset?
             self._mem_line_addrs = {}
             self._history = History()   # snapshots for step-back (undo)
             self.timer.stop()
@@ -589,16 +600,16 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 self._start_timer()
 
         def _confirm_discard(self):
-            """If there are pending changes (anything on the undo stack — steps
-            or live edits), ask before discarding them. Returns True to proceed,
-            False to cancel. With an empty stack there is nothing to lose, so it
-            proceeds without asking."""
-            if len(self._history) == 0:
+            """Ask before throwing away hand edits. Only prompts when the user
+            has made live memory edits (right-click) — plain stepping is not
+            worth a prompt, since loading/reloading is expected to reset
+            execution anyway. Returns True to proceed, False to cancel."""
+            if not self._has_live_edits:
                 return True
             reply = QMessageBox.question(
-                self, "Discard changes?",
-                "You have unsaved changes (stepping / edits). Loading a file "
-                "discards them.\n\nContinue?",
+                self, "Discard your edits?",
+                "You've hand-edited memory. Loading a file will replace it with "
+                "the file's contents.\n\nContinue?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             return reply == QMessageBox.Yes
 
@@ -682,7 +693,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # right-click opens the live-edit dialog for that cell; left-click
             # just selects it (highlight in both panels).
             if event.button() == Qt.RightButton:
-                self._edit_cell(addr)
+                if addr is not None:      # ignore right-clicks on header/blank
+                    self._edit_cell(addr)
                 return
             if addr is not None:
                 self.selected_addr = addr
@@ -692,29 +704,37 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             """Live-edit a memory cell: ask for an address (pre-filled with the
             clicked one, editable) and a new value, then write it. The value
             accepts the same forms as the assembler (decimal, 0x…, 0b…, 8-bit
-            binary) and is masked to 8 bits. The edit is undoable (snapshotted
-            like a step) and Reset restores the original file."""
-            # address prompt, pre-filled with the clicked cell (0 if none)
+            binary). Values outside 0–255 wrap mod 256, and we say so. The edit
+            is undoable (snapshotted like a step) and Reset restores the file."""
+            # address prompt, pre-filled with the clicked cell
             a, ok = QInputDialog.getInt(
                 self, "Edit memory", "Address (0–255):",
-                value=(addr if addr is not None else 0), minValue=0, maxValue=255)
+                value=addr, minValue=0, maxValue=255)
             if not ok:
                 return
             # value prompt, current value shown as the default text
             text, ok = QInputDialog.getText(
                 self, "Edit memory",
-                f"New value for address {a}\n(decimal, 0x.., 0b.., or 8-bit binary):",
+                f"New value for address {a}\n"
+                f"(decimal, 0x.., 0b.., or 8-bit binary; 0–255, wraps mod 256):",
                 text=str(self.mem[a]))
             if not ok:
                 return
             try:
-                value = parse_val(text) & 0xFF
+                raw = parse_val(text)
             except Exception:
                 QMessageBox.warning(self, "Invalid value",
                                     f"Could not parse '{text}' as a number.")
                 return
+            value = raw & 0xFF
+            # the whole point of an 8-bit machine: make the wraparound explicit
+            if raw != value:
+                QMessageBox.information(
+                    self, "Value wrapped",
+                    f"{raw} doesn't fit in 8 bits — stored as "
+                    f"{value} ({raw} mod 256).")
 
-            # snapshot so the edit can be undone with Back, exactly like a step
+            # snapshot so the edit can be undone with Undo, exactly like a step
             self._push_history()
             self.mem[a] = value
             self.touched.add(a)
@@ -722,6 +742,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.changed_cell = a       # highlight the edited cell (blue)
             self.acc_written = False
             self.selected_addr = a
+            self._has_live_edits = True  # a Load/Reload now warns before discard
             self.btn_back.setEnabled(True)
             self.refresh()
 
