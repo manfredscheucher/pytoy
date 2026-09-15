@@ -1,4 +1,4 @@
-# sum.toy
+# sum_array.toys
 # Sums an array of values using self-modifying code
 #
 # Trick: the LOAD instruction is 2 bytes [opcode=20, address].

@@ -1,4 +1,4 @@
-# max3.toy
+# max3.toys
 # Largest of three named values a, b, c.
 #
 # The three values are the first three digits of pi (a=3, b=1, c=4),

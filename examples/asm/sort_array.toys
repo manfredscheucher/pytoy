@@ -1,4 +1,4 @@
-# bubblesort.toys
+# sort_array.toys
 # ---------------------------------------------------------------------------
 # Bubble sort of 10 bytes, in place, ascending.
 #

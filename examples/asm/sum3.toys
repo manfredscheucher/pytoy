@@ -1,4 +1,4 @@
-# sum3.toy
+# sum3.toys
 # Adds three named values: a + b + c.
 #
 # The three values are the first three digits of pi (a=3, b=1, c=4),

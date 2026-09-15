@@ -1,4 +1,4 @@
-# fibonacci_rec.toy — RECURSIVE Fibonacci on the Toy CPU
+# fibonacci_rec_attempt1_toobig.toys — RECURSIVE Fibonacci on the Toy CPU
 #
 # Proof that a real call stack (and thus recursion) is possible on this
 # machine, despite no stack pointer register, no call/return, no index

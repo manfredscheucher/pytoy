@@ -1,4 +1,4 @@
-# sevenfold.toy
+# sevenfold.toys
 # Computes res = 7 * a using doubling and addition
 #
 # b = a + a      (2a)

@@ -1,4 +1,4 @@
-# sort3.toy
+# sort3.toys
 # Sorts three named values a, b, c ascending, then returns the smallest.
 #
 # The three values are the first three digits of pi (a=3, b=1, c=4).
