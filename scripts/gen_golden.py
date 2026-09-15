@@ -28,8 +28,8 @@ import json
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
-from pytoy.assembler import assemble
-from pytoy.core import decode, execute_one, is_code_store  # noqa: E402
+from pytoy.assembler import assemble  # noqa: E402
+from pytoy.core import decode, execute_one  # noqa: E402
 
 ASM_DIR = os.path.join(REPO_ROOT, "examples", "asm")
 OUT_PATH = os.path.join(REPO_ROOT, "tests", "golden", "asm_golden.json")
