@@ -1,0 +1,18 @@
+# typos.toys — a deliberately BROKEN program to show off the assembler's
+# error messages. Every line below is wrong on purpose. Load it with:
+#
+#     python3 run.py sim examples/broken/typos.toys
+#
+# and you should get a dialog listing each problem with its line number, the
+# offending source line, and a "did you mean …?" hint where it applies.
+
+        addd  a         # typo'd opcode -> should suggest 'add', operand ignored
+        looad b         # another opcode typo -> should suggest 'load'
+        goto  nowhere   # jump to a label that doesn't exist
+        load            # missing operand
+        stop
+
+# data
+a:      3
+b:      1
+c:      notanumber      # a data byte that isn't a number
