@@ -219,26 +219,31 @@ HL_CHANGE   = "#99ccff"   # blue:   the cell/ACC written in the last step
 ROW_WIDTH = 80
 
 def highlight_row(text, colours, width=ROW_WIDTH):
-    """Render one panel row as full-width HTML with 0..N vertical colour stripes.
+    """Render one panel row as full-width HTML, its characters coloured by
+    *alternating* through `colours`.
 
     `text` is the raw (unescaped) row text; `colours` is a list of hex colours
-    in stripe order (already de-duplicated, may be empty). The text is padded to
-    `width` and split into len(colours) equal stripes, each wrapped in a coloured
-    span, so a row with two active colours shows a 50/50 split, three a 33/33/33
-    split, and so on. With no colours the row is returned escaped but unstyled.
+    (already de-duplicated, may be empty). The text is padded to `width`, then
+    character j gets colours[j % len(colours)] — so with two active colours the
+    row is a fine per-character checkerboard of the two, three colours cycle
+    every three characters, and so on. With one colour the whole row is that
+    colour; with none it's returned escaped but unstyled. Runs of the same
+    colour are merged into one span so a single-colour row is one span, not N.
     Pure — no Qt."""
     padded = text.ljust(width)[:width] if len(text) < width else text
     if not colours:
         return _esc(padded)
     n = len(colours)
-    total = len(padded)
-    spans = []
-    for i, colour in enumerate(colours):
-        start = (i * total) // n
-        end = total if i == n - 1 else ((i + 1) * total) // n
-        chunk = _esc(padded[start:end])
-        spans.append(f'<span style="background-color:{colour};">{chunk}</span>')
-    return "".join(spans)
+    if n == 1:
+        return f'<span style="background-color:{colours[0]};">{_esc(padded)}</span>'
+    # >1 colour: character j gets colours[j % n]. Emit one span per maximal run
+    # of the same colour (with >1 colour that's every single character, since
+    # adjacent characters always differ in colour).
+    out = []
+    for j, ch in enumerate(padded):
+        colour = colours[j % n]
+        out.append(f'<span style="background-color:{colour};">{_esc(ch)}</span>')
+    return "".join(out)
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
