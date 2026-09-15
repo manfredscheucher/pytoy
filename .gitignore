@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.toyo
+!examples/toyo/*.toyo   # these .toyo are checked-in example programs
 .claude/
 .DS_Store
 examples/c/*.toys
