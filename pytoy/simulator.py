@@ -314,7 +314,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
                                    QLabel, QDoubleSpinBox, QFileDialog,
-                                   QInputDialog)
+                                   QInputDialog, QGroupBox)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
 
@@ -363,7 +363,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # collect all visible addresses
             self.visible = set(self.addr_orig.keys())
 
-            self.source_view.setVisible(has_source)
+            self.source_box.setVisible(has_source)
             self.reset()
 
         def _build_ui(self):
@@ -379,19 +379,27 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             splitter = QSplitter(Qt.Horizontal)
             main_layout.addWidget(splitter, stretch=1)
 
-            # left: source code
+            # left: source code, in a labelled box
             self.source_view = QTextEdit()
             self.source_view.setReadOnly(True)
             self.source_view.setFont(mono)
             self.source_view.setLineWrapMode(QTextEdit.NoWrap)
-            splitter.addWidget(self.source_view)
+            self.source_box = QGroupBox("Assembly")
+            _src_layout = QVBoxLayout(self.source_box)
+            _src_layout.setContentsMargins(4, 4, 4, 4)
+            _src_layout.addWidget(self.source_view)
+            splitter.addWidget(self.source_box)
 
-            # right: memory + variables
+            # right: CPU registers/status + memory listing, in a labelled box
             self.mem_view = QTextEdit()
             self.mem_view.setReadOnly(True)
             self.mem_view.setFont(mono)
             self.mem_view.setLineWrapMode(QTextEdit.NoWrap)
-            splitter.addWidget(self.mem_view)
+            self.mem_box = QGroupBox("CPU & memory")
+            _mem_layout = QVBoxLayout(self.mem_box)
+            _mem_layout.setContentsMargins(4, 4, 4, 4)
+            _mem_layout.addWidget(self.mem_view)
+            splitter.addWidget(self.mem_box)
 
             # our own right-click handler drives the live-edit dialog, so suppress
             # QTextEdit's native context menu (Copy/Paste/…) on the memory panel.
