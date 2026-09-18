@@ -220,7 +220,7 @@ HL_CODE     = "#ff6666"   # strong red: a code byte was overwritten at runtime
 # line out to the panel's right edge, not just behind the text.
 ROW_WIDTH = 80
 
-def highlight_row(text, colours, width=ROW_WIDTH):
+def highlight_row(text, colours, width=ROW_WIDTH, text_color=None):
     """Render one panel row as full-width HTML, its characters coloured by
     *alternating* through `colours`.
 
@@ -231,21 +231,25 @@ def highlight_row(text, colours, width=ROW_WIDTH):
     every three characters, and so on. With one colour the whole row is that
     colour; with none it's returned escaped but unstyled. Runs of the same
     colour are merged into one span so a single-colour row is one span, not N.
-    Pure — no Qt."""
+    `text_color` (a hex colour, or None) sets the foreground of the whole row —
+    used to grey out untouched memory rows. Pure — no Qt."""
     padded = text.ljust(width)[:width] if len(text) < width else text
-    if not colours:
-        return _esc(padded)
     n = len(colours)
-    if n == 1:
-        return f'<span style="background-color:{colours[0]};">{_esc(padded)}</span>'
-    # >1 colour: character j gets colours[j % n]. Emit one span per maximal run
-    # of the same colour (with >1 colour that's every single character, since
-    # adjacent characters always differ in colour).
-    out = []
-    for j, ch in enumerate(padded):
-        colour = colours[j % n]
-        out.append(f'<span style="background-color:{colour};">{_esc(ch)}</span>')
-    return "".join(out)
+    if not colours:
+        body = _esc(padded)
+    elif n == 1:
+        body = f'<span style="background-color:{colours[0]};">{_esc(padded)}</span>'
+    else:
+        # >1 colour: character j gets colours[j % n]. Emit one span per maximal
+        # run (with >1 colour that's every single character).
+        out = []
+        for j, ch in enumerate(padded):
+            colour = colours[j % n]
+            out.append(f'<span style="background-color:{colour};">{_esc(ch)}</span>')
+        body = "".join(out)
+    if text_color is not None:
+        body = f'<span style="color:{text_color};">{body}</span>'
+    return body
 
 def line_changed_bytes(mem, mem_original, addr, blist):
     """True if any byte a source line owns now differs from the freshly-
@@ -895,7 +899,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             lines.append(_esc(hdr))
             # Blue (change) only lingers while running, never once stopped.
             changed = self.changed_cell if not self.stopped else None
-            for a in sorted(self.visible):
+            # Show ALL 256 addresses; untouched, non-program bytes (not in
+            # self.visible) are greyed out rather than hidden.
+            for a in range(256):
                 line_idx = len(lines)
                 self._mem_line_addrs[line_idx] = a
                 marker = ">>" if a == self.pc else "  "
@@ -910,7 +916,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 if a in pc_bytes:           colours.append(HL_PC)
                 if a == cur_arg:            colours.append(HL_ARG)
                 if a == changed:            colours.append(HL_CHANGE)
-                lines.append(highlight_row(text, colours))
+                grey = None if a in self.visible else "#aaaaaa"
+                lines.append(highlight_row(text, colours, text_color=grey))
 
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.mem_view.setHtml(html)
