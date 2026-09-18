@@ -453,6 +453,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             bottom.addWidget(self.spin_speed)
             self.spin_speed.valueChanged.connect(self._speed_changed)
 
+            # Edit the value at the cell selected in the memory panel (same as
+            # right-clicking it); enabled only when such a cell is selected.
+            self.btn_edit = QPushButton("Edit")
+            self.btn_edit.setToolTip("Edit the value at the address selected in "
+                                     "the CPU & memory panel")
+            self.btn_edit.setEnabled(False)
+            bottom.addWidget(self.btn_edit)
+
             # Undo and Reset sit together on the right: Undo (one step/edit back)
             # left of Reset (restart from step 0).
             self.btn_back = QPushButton("Undo")
@@ -463,9 +471,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             bottom.addWidget(self.btn_back)
             bottom.addWidget(self.btn_reset)
 
-            for btn in (self.btn_back, self.btn_step, self.btn_run, self.btn_reset):
+            for btn in (self.btn_edit, self.btn_back, self.btn_step,
+                        self.btn_run, self.btn_reset):
                 btn.setFont(mono)
 
+            self.btn_edit.clicked.connect(self._edit_selected)
             self.btn_back.clicked.connect(self.step_back)
             self.btn_step.clicked.connect(self.step)
             self.btn_run.clicked.connect(self._toggle_run)
@@ -490,6 +500,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.step_count = 0
             self.arg_addr = None
             self.selected_addr = None
+            self.mem_selected_addr = None   # cell picked in the memory panel (Edit)
             self.changed_cell = None    # cell written in the last step (blue)
             self.acc_written = False     # did the last step write ACC?
             self.overwrite_ok = False   # re-arm the code-overwrite prompt
@@ -573,6 +584,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.changed_cell, self.acc_written = step_change(instr, arg_addr)
             self.step_count += 1
             self.selected_addr = None
+            self.mem_selected_addr = None   # selection no longer current
             self.arg_addr = arg_addr
             self.visible.update(self.touched)
             self._mark_dirty()
@@ -706,6 +718,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             addr = self.line_to_addr.get(line)
             if addr is not None:
                 self.selected_addr = addr
+                # a source-line selection doesn't enable the Edit button — that
+                # only edits a cell picked in the memory panel.
+                self.mem_selected_addr = None
                 self.refresh()
 
         def _mem_clicked(self, event):
@@ -714,14 +729,21 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             line = cursor.blockNumber()
             addr = self._mem_line_addrs.get(line)
             # right-click opens the live-edit dialog for that cell; left-click
-            # just selects it (highlight in both panels).
+            # just selects it (highlight in both panels + enables Edit).
             if event.button() == Qt.RightButton:
                 if addr is not None:      # ignore right-clicks on header/blank
                     self._edit_cell(addr)
                 return
             if addr is not None:
                 self.selected_addr = addr
+                self.mem_selected_addr = addr
                 self.refresh()
+
+        def _edit_selected(self):
+            """Edit the value at the address selected in the memory panel (the
+            Edit button). Does nothing if no memory cell is selected."""
+            if self.mem_selected_addr is not None:
+                self._edit_cell(self.mem_selected_addr)
 
         def _edit_cell(self, addr):
             """Live-edit the value of the clicked memory cell. Asks only for the
@@ -766,6 +788,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         def refresh(self):
             self._refresh_source()
             self._refresh_memory()
+            # Edit is available only when a cell is selected in the memory panel
+            self.btn_edit.setEnabled(self.mem_selected_addr is not None)
 
         def _line_changed_bytes(self, addr, blist):
             """Widget wrapper around line_changed_bytes() using the live memory."""
