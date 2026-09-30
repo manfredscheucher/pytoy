@@ -83,7 +83,7 @@ Constants may be decimal (`42`) or hexadecimal (`0xF0`).
 
 **Comparisons — what actually works.** `==` and `!=` are exact (via
 subtraction + `ifzero`). The ordering comparisons `<`, `>`, `<=`, `>=` use the
-sign-bit trick from `examples/asm/max_array.toys`: bit 7 of the mod-256 difference `a - b` tells
+sign-bit trick from `examples/asm/03-programs/max_array.toys`: bit 7 of the mod-256 difference `a - b` tells
 you whether `a < b`. This is correct as long as the two operands **differ by
 less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
@@ -102,12 +102,12 @@ a[i] = expr;                                  // indexed write
 ```
 
 The size and the initializer values must be compile-time constants. An array is
-laid out as a contiguous block of data bytes (like `arr:` in `examples/asm/sum_array.toys`)
+laid out as a contiguous block of data bytes (like `arr:` in `examples/asm/03-programs/sum_array.toys`)
 plus a base-pointer byte holding its address.
 
 **How indexing works with no index register.** The Toy CPU has no index
 register and no indirect load/store, so `a[i]` is compiled with **self-modifying
-code** (the `examples/asm/sum_array.toys` / `examples/asm/sort_array.toys` trick): compute the element address
+code** (the `examples/asm/03-programs/sum_array.toys` / `examples/asm/03-programs/sort_array.toys` trick): compute the element address
 `base + i`, write it into the address byte of a raw `LOAD` (or `STORE`)
 instruction, then execute that instruction. `base` is the array's address, held
 in a data byte the assembler fills in.
@@ -198,9 +198,9 @@ Because a function has only one set of slots, a recursive call would clobber its
 caller's values. So around **every** call, `toycc` saves the caller's live
 values (the ones needed after the call) onto a real stack and restores them
 afterward — giving each activation its own copies. The stack is one `sp` byte
-plus self-modifying indirect load/store (the same trick as `examples/asm/sum_array.toys`), growing
+plus self-modifying indirect load/store (the same trick as `examples/asm/03-programs/sum_array.toys`), growing
 *down* from address 255. This is the same mechanism the hand-written
-`examples/asm/fibonacci_rec.toys` uses, generated automatically.
+`examples/asm/03-programs/fibonacci_rec.toys` uses, generated automatically.
 
 ### The `-O` flag
 

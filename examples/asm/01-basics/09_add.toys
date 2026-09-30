@@ -1,0 +1,9 @@
+# ADD (00010110) — add a memory value to the accumulator
+# 40 + 2 = 42.
+
+        load  x         # acc = 40
+        add   y         # acc = 42
+        stop
+
+x:      40
+y:      2

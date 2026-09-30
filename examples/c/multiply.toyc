@@ -2,7 +2,7 @@
 /*
  * multiply.c - compute a * b.
  *
- * Port of examples/asm/multiply.toys. The Toy CPU has no multiply instruction,
+ * Port of examples/asm/03-programs/multiply.toys. The Toy CPU has no multiply instruction,
  * so the '*' operator is compiled to repeated addition.
  *
  * With a = 7, b = 6: result = 42.

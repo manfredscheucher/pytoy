@@ -1,0 +1,9 @@
+# XOR (00010011) — bitwise XOR of accumulator with a memory value
+# 11001100 XOR 10101010 = 01100110.
+
+        load  x         # acc = 11001100
+        xor   y         # acc = 01100110
+        stop
+
+x:      204             # 11001100
+y:      170             # 10101010

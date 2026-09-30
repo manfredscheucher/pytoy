@@ -270,7 +270,7 @@ b:      20
 
 def test_sim_fibonacci():
     """fibonacci.toys with n=7 should produce fib(7) = 13."""
-    src = open('examples/asm/fibonacci.toys').read()
+    src = open('examples/asm/03-programs/fibonacci.toys').read()
     assert _run(src) == 13
 
 def test_sim_left_shift_overflow():
@@ -293,33 +293,33 @@ val:    42
 
 def test_sim_sum():
     """sum_array.toys with [3,1,4,1,5,9,2] should produce 25."""
-    src = open('examples/asm/sum_array.toys').read()
+    src = open('examples/asm/03-programs/sum_array.toys').read()
     assert _run(src) == 25
 
 def test_sim_max():
     """max_array.toys with [3,1,4,1,5,9,2] should produce 9."""
-    src = open('examples/asm/max_array.toys').read()
+    src = open('examples/asm/03-programs/max_array.toys').read()
     assert _run(src) == 9
 
 def test_sim_sum3():
     """sum3.toys with a,b,c = 3,1,4 should produce 8."""
-    src = open('examples/asm/sum3.toys').read()
+    src = open('examples/asm/03-programs/sum3.toys').read()
     assert _run(src) == 8
 
 def test_sim_max3():
     """max3.toys with a,b,c = 3,1,4 should produce max = 4."""
-    src = open('examples/asm/max3.toys').read()
+    src = open('examples/asm/03-programs/max3.toys').read()
     assert _run(src) == 4
 
 def test_sim_sort3():
     """sort3.toys with a,b,c = 3,1,4 sorts ascending and returns smallest = 1."""
-    src = open('examples/asm/sort3.toys').read()
+    src = open('examples/asm/03-programs/sort3.toys').read()
     assert _run(src) == 1
 
 def test_sim_bubblesort():
     """sort_array.toys sorts the 10 digits of pi in place. Check the whole
     array from memory, not just ACC."""
-    src = open('examples/asm/sort_array.toys').read()
+    src = open('examples/asm/03-programs/sort_array.toys').read()
     mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     m, pc, acc, steps = list(mem), 0, 0, 0
@@ -337,7 +337,7 @@ def test_sim_fibonacci_rec():
     """fibonacci_rec.toys computes fib recursively via a self-modifying-code
     stack. Verify several n by patching only `input`."""
     import re
-    base = open('examples/asm/fibonacci_rec.toys').read()
+    base = open('examples/asm/03-programs/fibonacci_rec.toys').read()
     expected = {0: 0, 1: 1, 2: 1, 5: 5, 7: 13, 10: 55, 13: 233}
     for n, want in expected.items():
         src = re.sub(r'(input:\s+)\d+', r'\g<1>' + str(n), base)
@@ -345,7 +345,7 @@ def test_sim_fibonacci_rec():
 
 def test_sim_multiply():
     """multiply.toys with a=7, b=6 should produce 42."""
-    src = open('examples/asm/multiply.toys').read()
+    src = open('examples/asm/03-programs/multiply.toys').read()
     assert _run(src) == 42
 
 def test_sim_loop_countdown():

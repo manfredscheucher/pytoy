@@ -16,8 +16,8 @@ python3 run.py sim examples/toyo/sum3.toyo --run    # terminal, -> ACC = 8
 Each file was produced by assembling its `.toys` source with `run.py asm`:
 
 ```bash
-python3 run.py asm examples/asm/sum3.toys      -o examples/toyo/sum3.toyo
-python3 run.py asm examples/asm/fibonacci.toys -o examples/toyo/fibonacci.toyo
+python3 run.py asm examples/asm/03-programs/sum3.toys      -o examples/toyo/sum3.toyo
+python3 run.py asm examples/asm/03-programs/fibonacci.toys -o examples/toyo/fibonacci.toyo
 ```
 
 To regenerate after changing the source, re-run the same commands.

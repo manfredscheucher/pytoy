@@ -1,0 +1,9 @@
+# SUB (00010111) — subtract a memory value from the accumulator
+# 50 - 8 = 42.
+
+        load  x         # acc = 50
+        sub   y         # acc = 42
+        stop
+
+x:      50
+y:      8

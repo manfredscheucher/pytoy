@@ -1,0 +1,18 @@
+# store indirect: write val into data[i]  (watch data[3]: 0 -> 42)
+        load  base
+        add   i
+        store patch       # patch the STORE address below
+
+        load  val
+store:  21                # STORE opcode
+patch:  0                 # address byte -> data+i
+        stop
+
+base:   data
+i:      3
+val:    42
+data:   0
+        0
+        0
+        0
+        0

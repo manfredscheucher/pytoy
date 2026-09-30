@@ -1,0 +1,8 @@
+# RIGHT (00000001) — shift accumulator right by 1
+# 00000100 (4) becomes 00000010 (2).
+
+        load  x         # acc = 4
+        right           # acc = 2
+        stop
+
+x:      4

@@ -1,4 +1,167 @@
 {
+  "00_stop": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 42,
+      "y": 99
+    },
+    "steps": 1
+  },
+  "01_right": {
+    "assembled": true,
+    "final_acc": 2,
+    "hit_cap": false,
+    "memory": {
+      "x": 4
+    },
+    "steps": 2
+  },
+  "02_left": {
+    "assembled": true,
+    "final_acc": 8,
+    "hit_cap": false,
+    "memory": {
+      "x": 4
+    },
+    "steps": 2
+  },
+  "03_not": {
+    "assembled": true,
+    "final_acc": 240,
+    "hit_cap": false,
+    "memory": {
+      "x": 15
+    },
+    "steps": 2
+  },
+  "04_and": {
+    "assembled": true,
+    "final_acc": 136,
+    "hit_cap": false,
+    "memory": {
+      "x": 204,
+      "y": 170
+    },
+    "steps": 2
+  },
+  "05_or": {
+    "assembled": true,
+    "final_acc": 238,
+    "hit_cap": false,
+    "memory": {
+      "x": 204,
+      "y": 170
+    },
+    "steps": 2
+  },
+  "06_xor": {
+    "assembled": true,
+    "final_acc": 102,
+    "hit_cap": false,
+    "memory": {
+      "x": 204,
+      "y": 170
+    },
+    "steps": 2
+  },
+  "07_load": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 42
+    },
+    "steps": 1
+  },
+  "08_store": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "dst": 42,
+      "x": 42
+    },
+    "steps": 2
+  },
+  "09_add": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 40,
+      "y": 2
+    },
+    "steps": 2
+  },
+  "10_sub": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 50,
+      "y": 8
+    },
+    "steps": 2
+  },
+  "11_goto": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 42,
+      "y": 99
+    },
+    "steps": 2
+  },
+  "12_ifzero": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 42,
+      "y": 99,
+      "z": 0
+    },
+    "steps": 3
+  },
+  "13_nop": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "x": 42
+    },
+    "steps": 2
+  },
+  "bit_set_clear_toggle": {
+    "assembled": true,
+    "final_acc": 1,
+    "hit_cap": false,
+    "memory": {
+      "keep": 247,
+      "mask": 8,
+      "r_clear": 1,
+      "r_set": 9,
+      "r_toggle": 1,
+      "x": 1
+    },
+    "steps": 9
+  },
+  "compare": {
+    "assembled": true,
+    "final_acc": 1,
+    "hit_cap": false,
+    "memory": {
+      "a": 3,
+      "b": 5,
+      "one": 1,
+      "sign": 128,
+      "zero": 0
+    },
+    "steps": 5
+  },
   "fibonacci": {
     "assembled": true,
     "final_acc": 13,
@@ -72,6 +235,28 @@
     },
     "steps": 446
   },
+  "load_indirect": {
+    "assembled": true,
+    "final_acc": 9,
+    "hit_cap": false,
+    "memory": {
+      "12": 1,
+      "13": 4,
+      "14": 1,
+      "15": 5,
+      "16": 9,
+      "17": 2,
+      "18": 6,
+      "19": 5,
+      "20": 3,
+      "base": 11,
+      "data": 3,
+      "i": 5,
+      "load": 20,
+      "patch": 16
+    },
+    "steps": 4
+  },
   "max3": {
     "assembled": true,
     "final_acc": 4,
@@ -119,6 +304,16 @@
       "sum": 42
     },
     "steps": 59
+  },
+  "negate": {
+    "assembled": true,
+    "final_acc": 251,
+    "hit_cap": false,
+    "memory": {
+      "x": 5,
+      "zero": 0
+    },
+    "steps": 2
   },
   "sevenfold": {
     "assembled": true,
@@ -179,6 +374,24 @@
       "stj_arg": 97
     },
     "steps": 1955
+  },
+  "store_indirect": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "15": 0,
+      "16": 0,
+      "17": 42,
+      "18": 0,
+      "base": 14,
+      "data": 0,
+      "i": 3,
+      "patch": 17,
+      "store": 21,
+      "val": 42
+    },
+    "steps": 5
   },
   "sum3": {
     "assembled": true,

@@ -1,0 +1,21 @@
+# set / clear / toggle bit 3 (mask 00001000) of x
+# x=00000001 -> set:00001001 -> toggle:00000001 -> stored in results
+        load  x
+        or    mask        # set bit 3
+        store r_set
+
+        load  r_set
+        xor   mask        # toggle bit 3 (back off)
+        store r_toggle
+
+        load  x
+        and   keep        # clear bit 3 (mask's complement)
+        store r_clear
+        stop
+
+x:        1               # 00000001
+mask:     8               # 00001000
+keep:     247             # 11110111 (NOT mask)
+r_set:    0
+r_toggle: 0
+r_clear:  0

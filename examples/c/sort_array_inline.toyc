@@ -4,7 +4,7 @@
  * done inline in main (see sort_array_function.toyc for the version that
  * passes the array to a function).
  *
- * Port of examples/asm/sort_array.toys to C. The array holds the 10 digits of pi
+ * Port of examples/asm/03-programs/sort_array.toys to C. The array holds the 10 digits of pi
  * (3 1 4 1 5 9 2 6 5 3); after sorting it is 1 1 2 3 3 4 5 5 6 9, so main
  * returns a[0] = 1.
  *

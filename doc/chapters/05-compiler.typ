@@ -73,7 +73,7 @@ live values onto a real stack (one `sp` byte plus self-modifying indirect
 push/pop, growing down from address 255) and restores them afterward --- giving
 each activation its own copies. This makes recursion, including mutual
 recursion, work automatically; `examples/c/fibonacci_rec.toyc` is a recursive
-Fibonacci. It is the same _idea_ as the hand-written `examples/asm/fibonacci_rec.toys` (next
+Fibonacci. It is the same _idea_ as the hand-written `examples/asm/03-programs/fibonacci_rec.toys` (next
 chapter) --- a self-modifying-code stack --- though the compiler's stack grows
 *down* from 255 while the hand-written one grows up; the direction is a free
 choice, the principle is identical.
@@ -92,8 +92,8 @@ Keep recursion shallow, or use `-O` and small inputs.
 Fixed-size local arrays (`int a[10] = {...};`, `a[i]` read/write with any index
 expression) are supported. With no index register, `a[i]` compiles with
 self-modifying code: compute `base + i`, patch it into a raw load/store's
-address byte, and execute it --- the same trick the `examples/asm/sum_array.toys` and
-`examples/asm/sort_array.toys` assembly examples use. `examples/c/sum_array.toyc`, `examples/c/max_array.toyc` and `examples/c/sort_array_inline.toyc`
+address byte, and execute it --- the same trick the `examples/asm/03-programs/sum_array.toys` and
+`examples/asm/03-programs/sort_array.toys` assembly examples use. `examples/c/sum_array.toyc`, `examples/c/max_array.toyc` and `examples/c/sort_array_inline.toyc`
 operate on the ten digits of pi. (Arrays are not saved across recursive calls,
 so a recursive function may not declare one --- the compiler rejects that.)
 

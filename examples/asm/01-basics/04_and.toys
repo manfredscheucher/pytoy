@@ -1,0 +1,9 @@
+# AND (00010001) — bitwise AND of accumulator with a memory value
+# 11001100 AND 10101010 = 10001000.
+
+        load  x         # acc = 11001100
+        and   y         # acc = 10001000
+        stop
+
+x:      204             # 11001100
+y:      170             # 10101010

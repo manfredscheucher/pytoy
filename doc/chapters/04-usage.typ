@@ -27,7 +27,7 @@ Just point the simulator at a program (or run `python3 run.py` with no arguments
 to open the GUI empty and load an example via the Load button):
 
 ```bash
-python3 run.py sim examples/asm/fibonacci.toys
+python3 run.py sim examples/asm/03-programs/fibonacci.toys
 ```
 
 The window has:
@@ -55,7 +55,7 @@ which memory box a label refers to.
 Use `-c` / `--cli` to run in the terminal instead of opening the window:
 
 ```bash
-python3 run.py sim examples/asm/fibonacci.toys --cli
+python3 run.py sim examples/asm/03-programs/fibonacci.toys --cli
 ```
 
 By default the CLI runs step-by-step with full verbose output; press Enter to
@@ -75,11 +75,11 @@ Run `python3 run.py sim -h` for the full list.
 
 ```bash
 # Run to the end, compact output:
-python3 run.py sim examples/asm/multiply.toys --cli --run --quiet
+python3 run.py sim examples/asm/03-programs/multiply.toys --cli --run --quiet
 
 # Assemble to a standalone .toyo, then run it:
-python3 run.py asm examples/asm/max_array.toys      # -> examples/asm/max_array.toyo
-python3 run.py sim examples/asm/max_array.toyo --cli --run
+python3 run.py asm examples/asm/03-programs/max_array.toys      # -> examples/asm/03-programs/max_array.toyo
+python3 run.py sim examples/asm/03-programs/max_array.toyo --cli --run
 ```
 
 The final line reports the result in the accumulator in binary, hex, and
@@ -91,8 +91,8 @@ listing without assembling one first. They were generated from the matching
 assembly sources with `run.py asm`:
 
 ```bash
-python3 run.py asm examples/asm/sum3.toys      -o examples/toyo/sum3.toyo
-python3 run.py asm examples/asm/fibonacci.toys -o examples/toyo/fibonacci.toyo
+python3 run.py asm examples/asm/03-programs/sum3.toys      -o examples/toyo/sum3.toyo
+python3 run.py asm examples/asm/03-programs/fibonacci.toys -o examples/toyo/fibonacci.toyo
 ```
 
 Loading a `.toyo` shows only the memory panel — a compiled listing carries no

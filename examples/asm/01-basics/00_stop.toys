@@ -1,0 +1,9 @@
+# STOP (00000000) — halt execution
+# The CPU runs until STOP. Everything after it is never executed.
+
+        load  x         # acc = 42
+        stop            # halt here
+        load  y         # never runs (acc stays 42)
+
+x:      42
+y:      99

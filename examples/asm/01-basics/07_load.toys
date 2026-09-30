@@ -1,0 +1,6 @@
+# LOAD (00010100) — copy a memory value into the accumulator
+
+        load  x         # acc = 42
+        stop
+
+x:      42

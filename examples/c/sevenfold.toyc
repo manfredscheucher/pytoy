@@ -2,7 +2,7 @@
 /*
  * sevenfold.c - compute 7 * a.
  *
- * Port of examples/asm/sevenfold.toys. Uses the '*' operator (repeated addition).
+ * Port of examples/asm/03-programs/sevenfold.toys. Uses the '*' operator (repeated addition).
  * With a = 4: result = 28.
  *
  * Expected result: ACC = 28

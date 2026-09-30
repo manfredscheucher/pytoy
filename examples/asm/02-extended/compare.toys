@@ -1,0 +1,16 @@
+# compare a < b: sign bit of (a-b) is set on underflow
+# a=3, b=5 -> a<b -> acc=1  (try a=5,b=3 -> acc=0)
+        load  a
+        sub   b
+        and   sign        # isolate bit 7
+        ifzero ge         # bit 7 clear -> a >= b
+        load  one
+        stop
+ge:     load  zero
+        stop
+
+a:      3
+b:      5
+sign:   128
+one:    1
+zero:   0

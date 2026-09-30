@@ -1,0 +1,9 @@
+# STORE (00010101) — copy the accumulator into a memory address
+# Watch address `dst` change from 0 to 42 in the memory panel.
+
+        load  x         # acc = 42
+        store dst       # dst = 42
+        stop
+
+x:      42
+dst:    0

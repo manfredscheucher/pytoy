@@ -2,7 +2,7 @@
 """
 Generate a "golden" behaviour table for pytoy's example assembly programs.
 
-For every examples/asm/*.toys this assembles the source in-process (same
+For every examples/asm/**/*.toys this assembles the source in-process (same
 pytoy.assembler.assemble the CLI uses), runs it on the same CPU core
 (pytoy.core.execute_one / decode — the single source of truth), and records the
 final ACC, the number of steps executed, whether a max-step cap was hit, and the
@@ -101,9 +101,14 @@ def golden_for_file(path):
 
 
 def build_golden():
-    """Build the full golden table for every examples/asm/*.toys (sorted)."""
+    """Build the full golden table for every examples/asm/**/*.toys (sorted).
+
+    Recurses into the tier subfolders (01-basics/, 02-extended/, 03-programs/).
+    Keyed by the file's basename (without .toys); basenames are unique across
+    the folders."""
     table = {}
-    for path in sorted(glob.glob(os.path.join(ASM_DIR, "*.toys"))):
+    for path in sorted(glob.glob(os.path.join(ASM_DIR, "**", "*.toys"),
+                                 recursive=True)):
         name = os.path.splitext(os.path.basename(path))[0]
         table[name] = golden_for_file(path)
     return table

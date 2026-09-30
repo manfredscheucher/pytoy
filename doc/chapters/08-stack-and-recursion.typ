@@ -3,7 +3,7 @@
 The Toy CPU has no stack pointer, no call/return instruction, and no index
 register. It is tempting to conclude that recursion is impossible on it. It is
 not --- you can build a real call stack by hand, and this chapter shows how.
-The worked result is `examples/asm/fibonacci_rec.toys`, which computes Fibonacci
+The worked result is `examples/asm/03-programs/fibonacci_rec.toys`, which computes Fibonacci
 *recursively*.
 
 == The one primitive you need: indirect access
@@ -32,7 +32,7 @@ address of the next free slot.
 
 The one subtlety: `sp` changes on every push and pop, so the indirect
 instruction's address byte must be *re-patched from the current `sp` before
-each access*. (This is different from `examples/asm/sum_array.toys`, which patches its pointer once
+each access*. (This is different from `examples/asm/03-programs/sum_array.toys`, which patches its pointer once
 and then walks it.)
 
 The stack grows upward; there is no hardware bounds check, so a program must
@@ -73,7 +73,7 @@ body, for the non-base case:
 The subtle point --- pointed out during design and confirmed by hand-tracing
 `fib(3) = 2` --- is that you must compute and *stash* `fib(n-1)` on the stack
 before starting `fib(n-2)`, because both use the same shared body and the same
-stack. `examples/asm/fibonacci_rec.toys` is verified against `fib(0..13)`.
+stack. `examples/asm/03-programs/fibonacci_rec.toys` is verified against `fib(0..13)`.
 
 == The compiler emits this automatically
 

@@ -1,0 +1,10 @@
+# GOTO (00011000) — unconditional jump to a program address
+# Jumps over the middle LOAD, so acc ends up 42, not 99.
+
+        goto  skip
+        load  y         # skipped
+skip:   load  x         # acc = 42
+        stop
+
+x:      42
+y:      99

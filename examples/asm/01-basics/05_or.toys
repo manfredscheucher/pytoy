@@ -1,0 +1,9 @@
+# OR (00010010) — bitwise OR of accumulator with a memory value
+# 11001100 OR 10101010 = 11101110.
+
+        load  x         # acc = 11001100
+        or    y         # acc = 11101110
+        stop
+
+x:      204             # 11001100
+y:      170             # 10101010

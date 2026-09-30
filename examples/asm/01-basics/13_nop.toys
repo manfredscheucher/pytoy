@@ -1,0 +1,7 @@
+# NOP (10000000) — do nothing, just advance to the next instruction
+
+        load  x         # acc = 42
+        nop             # no effect
+        stop
+
+x:      42

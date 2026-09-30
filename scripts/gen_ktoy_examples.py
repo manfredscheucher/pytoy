@@ -52,11 +52,15 @@ def main():
         "",
         "val EXAMPLES: List<Example> = listOf(",
     ]
-    for f in sorted(os.listdir(ASM_DIR)):
+    # Only the full programs (examples/asm/03-programs/). The 01-basics/ and
+    # 02-extended/ folders are per-opcode / concept demos meant for the pytoy
+    # repo, not the ktoy app, so they stay out of the embedded list.
+    prog_dir = os.path.join(ASM_DIR, "03-programs")
+    for f in sorted(os.listdir(prog_dir)):
         if not f.endswith(".toys"):
             continue
         name = f[:-5]
-        src = open(os.path.join(ASM_DIR, f)).read()
+        src = open(os.path.join(prog_dir, f)).read()
         lines.append(f'    Example("{name}", ExampleKind.ASM, '
                      f'{kotlin_triple_string(src)}),')
     for f in sorted(os.listdir(TOYO_DIR)):

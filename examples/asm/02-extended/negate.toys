@@ -1,0 +1,7 @@
+# negate: 0 - x  (two's complement)  x=5 -> 251 (= -5 mod 256)
+        load  zero
+        sub   x
+        stop
+
+zero:   0
+x:      5

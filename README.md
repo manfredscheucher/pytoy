@@ -34,11 +34,11 @@ because the point is to *see* how a CPU works.
 pip install PySide6                                 # required for the default GUI
 
 python3 run.py                                       # open the GUI empty (Load an example)
-python3 run.py sim examples/asm/fibonacci.toys       # open the GUI on an example
-python3 run.py sim examples/asm/fibonacci.toys --cli --run   # or run in the terminal
+python3 run.py sim examples/asm/03-programs/fibonacci.toys       # open the GUI on an example
+python3 run.py sim examples/asm/03-programs/fibonacci.toys --cli --run   # or run in the terminal
 
-python3 run.py asm examples/asm/fibonacci.toys       # assemble -> examples/asm/fibonacci.toyo
-python3 run.py sim examples/asm/fibonacci.toyo --run # run a compiled .toyo directly
+python3 run.py asm examples/asm/03-programs/fibonacci.toys       # assemble -> examples/asm/03-programs/fibonacci.toyo
+python3 run.py sim examples/asm/03-programs/fibonacci.toyo --run # run a compiled .toyo directly
 
 python3 run.py cc examples/c/multiply.toyc --run     # compile C and run
 ```

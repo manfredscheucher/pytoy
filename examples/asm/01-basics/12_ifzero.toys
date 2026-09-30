@@ -1,0 +1,12 @@
+# IFZERO (00011001) — jump only if the accumulator is zero
+# acc is 0 here, so the jump is taken and acc ends up 42.
+
+        load  z         # acc = 0
+        ifzero skip     # acc == 0 -> jump
+        load  y         # skipped
+skip:   load  x         # acc = 42
+        stop
+
+x:      42
+y:      99
+z:      0

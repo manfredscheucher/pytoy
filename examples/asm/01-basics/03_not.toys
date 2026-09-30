@@ -1,0 +1,8 @@
+# NOT (00001111) — bitwise NOT of the accumulator
+# 00001111 (15) becomes 11110000 (240).
+
+        load  x         # acc = 00001111
+        not             # acc = 11110000
+        stop
+
+x:      15
