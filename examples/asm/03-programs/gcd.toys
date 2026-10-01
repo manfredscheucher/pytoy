@@ -1,0 +1,29 @@
+# gcd.toys
+# Greatest common divisor by subtraction (Euclid):
+#   while a != b: if a > b: a -= b  else: b -= a
+# gcd(48, 36) = 12.  Values 0..127 (msb is used as the sign for a > b).
+
+loop:   load  a
+        sub   b
+        ifzero done       # a == b -> gcd found
+        and   sign        # sign bit of (a - b)
+        ifzero a_gt_b     # bit clear -> a > b
+
+        # a < b:  b -= a
+        load  b
+        sub   a
+        store b
+        goto  loop
+
+a_gt_b: load  a
+        sub   b
+        store a           # a -= b
+        goto  loop
+
+done:   load  a           # a == b == gcd
+        stop
+
+# data
+a:      48
+b:      36
+sign:   128

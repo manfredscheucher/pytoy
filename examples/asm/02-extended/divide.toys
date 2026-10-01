@@ -1,0 +1,22 @@
+# divide: a / b by repeated subtraction  (20 / 6 = 3)
+# count how often b fits in a; stop when a-b goes negative (msb set).
+# valid for a in 0..127 (msb is the sign).
+loop:   load  a
+        sub   b
+        and   sign        # a-b < 0 ?
+        ifzero cont       # no -> subtract for real
+        load  q
+        stop              # q = quotient
+cont:   load  a
+        sub   b
+        store a           # a -= b
+        load  q
+        add   one
+        store q           # q++
+        goto  loop
+
+a:      20
+b:      6
+q:      0
+one:    1
+sign:   128

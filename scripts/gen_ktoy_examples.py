@@ -10,7 +10,7 @@ Run from the pytoy repo root:
     python3 scripts/gen_ktoy_examples.py
 
 Writes:
-    ~/github/ktoy/composeApp/src/commonMain/kotlin/dev/scheucher/ktoy/core/ExampleSources.kt
+    ~/github/ktoy/composeApp/src/commonMain/kotlin/org/bytefred/ktoy/core/ExampleSources.kt
 """
 
 import os
@@ -19,7 +19,7 @@ PYTOY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASM_DIR = os.path.join(PYTOY, "examples", "asm")
 TOYO_DIR = os.path.join(PYTOY, "examples", "toyo")
 OUT = os.path.expanduser(
-    "~/github/ktoy/composeApp/src/commonMain/kotlin/dev/scheucher/ktoy/core/"
+    "~/github/ktoy/composeApp/src/commonMain/kotlin/org/bytefred/ktoy/core/"
     "ExampleSources.kt")
 
 
@@ -36,7 +36,7 @@ def kotlin_triple_string(s):
 
 def main():
     lines = [
-        "package dev.scheucher.ktoy.core",
+        "package org.bytefred.ktoy.core",
         "",
         "/**",
         " * The bundled example programs, embedded as strings so they ship inside",

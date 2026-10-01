@@ -75,7 +75,7 @@ Run `python3 run.py sim -h` for the full list.
 
 ```bash
 # Run to the end, compact output:
-python3 run.py sim examples/asm/03-programs/multiply.toys --cli --run --quiet
+python3 run.py sim examples/asm/02-extended/multiply.toys --cli --run --quiet
 
 # Assemble to a standalone .toyo, then run it:
 python3 run.py asm examples/asm/03-programs/max_array.toys      # -> examples/asm/03-programs/max_array.toyo

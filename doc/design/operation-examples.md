@@ -17,8 +17,8 @@ explanation lives here in `doc/`.
   `load y` (99) vs. taken `load x` (42) so the branch shows in the final ACC.
 - **`02-extended/`** — small *concept* demos above the single-opcode level, but
   still minimal (see below).
-- **`03-programs/`** — the full worked programs (fibonacci, multiply, the
-  array sum/max/sort, recursive fibonacci, …). Previously the top level of
+- **`03-programs/`** — the full worked programs (fibonacci, the array
+  sum/max/sort, recursive fibonacci, gcd, …). Previously the top level of
   `examples/asm/`.
 
 ## The extended concepts
@@ -39,6 +39,27 @@ extended demos show the standard ways around that.
 - **`bit_set_clear_toggle.toys`** — one-bit masking: `OR mask` sets bit 3,
   `XOR mask` toggles it, `AND (NOT mask)` clears it. Results in `r_set`,
   `r_toggle`, `r_clear`.
+- **`multiply.toys`** — `a * b` by adding `a` to itself `b` times. `6 * 7 = 42`.
+- **`multiply_fast.toys`** — `a * b` by double-and-add: each step test `lsb(b)`
+  (`AND 1`); if set, `res += a`; then `a <<= 1` (LEFT), `b >>= 1` (RIGHT). Same
+  result, fewer steps for large `b`.
+- **`divide.toys`** — `a / b` by repeated subtraction, counting how often `b`
+  fits. Stops when `a - b` goes negative (bit 7 set). Quotient in `q`.
+  `20 / 6 = 3`. Valid for `a` in 0..127 (bit 7 is read as the sign).
+- **`modulo.toys`** — `a % b`, same subtraction loop; the leftover `a` is the
+  remainder. `20 % 6 = 2`. Same 0..127 range.
+- **`switch.toys`** — `switch(x)`: 0→0, 1→1, 2→2, else→3. No jump table; a chain
+  of equality tests, each `x == k` done as `(x - k) == 0` via `SUB` + `IFZERO`.
+
+These are machine-level: the CPU has no multiply/divide opcode, so they are
+built from the 14 instructions, not new operations. `multiply` is the most
+elementary of these, which is why the old `03-programs/multiply.toys` was
+dropped in favour of the two extended versions here.
+
+Range notes (inherent to the 8-bit accumulator, not bugs): `multiply` /
+`multiply_fast` wrap mod 256 when `a * b > 255`; `divide` / `modulo` assume
+`b > 0` (b=0 loops forever) and are correct for `a` in 0..127, since they read
+bit 7 as a sign.
 
 The self-modifying trick (patch an instruction's operand byte, then execute it)
 is exactly what the `03-programs/` array examples and the C compiler's arrays

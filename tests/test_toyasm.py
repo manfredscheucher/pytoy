@@ -345,7 +345,7 @@ def test_sim_fibonacci_rec():
 
 def test_sim_multiply():
     """multiply.toys with a=7, b=6 should produce 42."""
-    src = open('examples/asm/03-programs/multiply.toys').read()
+    src = open('examples/asm/02-extended/multiply.toys').read()
     assert _run(src) == 42
 
 def test_sim_loop_countdown():

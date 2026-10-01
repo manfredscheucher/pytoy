@@ -25,7 +25,7 @@ fi
 # here are the single source of truth; ktoy/ExampleSources.kt is generated from
 # them. If examples changed but ExampleSources.kt wasn't regenerated + committed,
 # the two would drift — so regenerate and abort if it now differs.
-KTOY_GEN="$HOME/github/ktoy/composeApp/src/commonMain/kotlin/dev/scheucher/ktoy/core/ExampleSources.kt"
+KTOY_GEN="$HOME/github/ktoy/composeApp/src/commonMain/kotlin/org/bytefred/ktoy/core/ExampleSources.kt"
 if git diff --cached --name-only | grep -q '^examples/'; then
     if [ -f "$KTOY_GEN" ]; then
         before=$(cat "$KTOY_GEN")

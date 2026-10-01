@@ -1,0 +1,23 @@
+# multiply fast: a * b by double-and-add  (6 * 7 = 42)
+# each step: if lsb(b) add a to res; then a <<= 1, b >>= 1
+        load  b
+loop:   ifzero done       # b == 0 -> done
+        and   one         # test lsb(b)
+        ifzero skip       # lsb 0 -> don't add
+        load  res
+        add   a
+        store res         # res += a
+skip:   load  a
+        left
+        store a           # a <<= 1
+        load  b
+        right
+        store b           # b >>= 1
+        goto  loop
+done:   load  res
+        stop
+
+a:      6
+b:      7
+res:    0
+one:    1

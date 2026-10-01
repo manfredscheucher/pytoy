@@ -12,9 +12,9 @@ an example via the Load button.
 
 Examples:
     python3 run.py                               # open the GUI, empty
-    python3 run.py sim examples/asm/03-programs/multiply.toys
+    python3 run.py sim examples/asm/02-extended/multiply.toys
     python3 run.py sim examples/asm/03-programs/fibonacci.toys --cli --run --quiet
-    python3 run.py asm examples/asm/03-programs/multiply.toys -o /tmp/m.toyo
+    python3 run.py asm examples/asm/02-extended/multiply.toys -o /tmp/m.toyo
     python3 run.py cc  examples/c/multiply.toyc --run
 """
 

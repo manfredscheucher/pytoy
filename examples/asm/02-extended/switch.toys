@@ -1,0 +1,27 @@
+# switch(x): 0->0, 1->1, 2->2, else->3   (no jump table, just equality tests)
+# equality a==b is (a-b)==0 via SUB + IFZERO.
+        load  x
+        ifzero case0      # x == 0
+
+        load  x
+        sub   one
+        ifzero case1      # x == 1
+
+        load  x
+        sub   two
+        ifzero case2      # x == 2
+
+        load  three       # default
+        stop
+case0:  load  zero
+        stop
+case1:  load  one
+        stop
+case2:  load  two
+        stop
+
+x:      2
+zero:   0
+one:    1
+two:    2
+three:  3

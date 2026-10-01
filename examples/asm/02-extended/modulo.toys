@@ -1,0 +1,17 @@
+# modulo: a % b by repeated subtraction  (20 % 6 = 2)
+# subtract b from a until a-b goes negative; a is then the remainder.
+# valid for a in 0..127 (msb is the sign).
+loop:   load  a
+        sub   b
+        and   sign        # a-b < 0 ?
+        ifzero cont       # no -> subtract for real
+        load  a
+        stop              # a = remainder
+cont:   load  a
+        sub   b
+        store a           # a -= b
+        goto  loop
+
+a:      20
+b:      6
+sign:   128

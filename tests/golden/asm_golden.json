@@ -162,6 +162,19 @@
     },
     "steps": 5
   },
+  "divide": {
+    "assembled": true,
+    "final_acc": 3,
+    "hit_cap": false,
+    "memory": {
+      "a": 2,
+      "b": 6,
+      "one": 1,
+      "q": 3,
+      "sign": 128
+    },
+    "steps": 38
+  },
   "fibonacci": {
     "assembled": true,
     "final_acc": 13,
@@ -235,6 +248,17 @@
     },
     "steps": 446
   },
+  "gcd": {
+    "assembled": true,
+    "final_acc": 12,
+    "hit_cap": false,
+    "memory": {
+      "a": 12,
+      "b": 12,
+      "sign": 128
+    },
+    "steps": 31
+  },
   "load_indirect": {
     "assembled": true,
     "final_acc": 9,
@@ -293,17 +317,40 @@
     },
     "steps": 114
   },
+  "modulo": {
+    "assembled": true,
+    "final_acc": 2,
+    "hit_cap": false,
+    "memory": {
+      "a": 2,
+      "b": 6,
+      "sign": 128
+    },
+    "steps": 29
+  },
   "multiply": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
     "memory": {
-      "a": 0,
-      "b": 6,
+      "a": 6,
+      "b": 0,
       "one": 1,
-      "sum": 42
+      "res": 42
     },
     "steps": 59
+  },
+  "multiply_fast": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "a": 48,
+      "b": 0,
+      "one": 1,
+      "res": 42
+    },
+    "steps": 42
   },
   "negate": {
     "assembled": true,
@@ -424,5 +471,18 @@
       "result": 25
     },
     "steps": 89
+  },
+  "switch": {
+    "assembled": true,
+    "final_acc": 2,
+    "hit_cap": false,
+    "memory": {
+      "one": 1,
+      "three": 3,
+      "two": 2,
+      "x": 2,
+      "zero": 0
+    },
+    "steps": 9
   }
 }

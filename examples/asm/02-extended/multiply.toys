@@ -1,0 +1,17 @@
+# multiply: a * b by adding a to itself b times  (6 * 7 = 42)
+        load  b
+loop:   ifzero done       # b == 0 -> done
+        load  res
+        add   a
+        store res         # res += a
+        load  b
+        sub   one
+        store b           # b--
+        goto  loop
+done:   load  res
+        stop
+
+a:      6
+b:      7
+res:    0
+one:    1
