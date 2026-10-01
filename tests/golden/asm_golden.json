@@ -328,6 +328,20 @@
     },
     "steps": 29
   },
+  "msb_shift_vs_mask": {
+    "assembled": true,
+    "final_acc": 0,
+    "hit_cap": false,
+    "memory": {
+      "m1": 1,
+      "m2": 1,
+      "mask": 128,
+      "one": 1,
+      "x": 200,
+      "zero_v": 0
+    },
+    "steps": 17
+  },
   "multiply": {
     "assembled": true,
     "final_acc": 42,

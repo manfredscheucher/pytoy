@@ -1,0 +1,30 @@
+# MSB of x: two ways, same answer.  x=200 -> msb=1
+# shift: 7x RIGHT.  mask: AND 128 then branch (no shifting).
+        load  x
+        right
+        right
+        right
+        right
+        right
+        right
+        right
+        store m1          # m1 = x >> 7
+
+        load  x
+        and   mask        # keep bit 7 -> 0 or 128
+        ifzero zero
+        load  one
+        goto  done
+zero:   load  zero_v
+done:   store m2          # m2 = (x & 128) ? 1 : 0
+
+        load  m1
+        sub   m2
+        stop              # 0 -> both methods agree
+
+x:      200
+mask:   128
+one:    1
+zero_v: 0
+m1:     0
+m2:     0

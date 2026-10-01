@@ -1,0 +1,37 @@
+// expect: 0
+/*
+ * bigint_add.toyc - add two numbers wider than one byte.
+ *
+ * The Toy CPU is 8-bit, so a 32-bit value is kept as four bytes (little-endian,
+ * least significant first). Addition goes byte by byte, carrying into the next
+ * byte when a sum overflows past 255.
+ *
+ * Carry is detected with the top-bit mask (x & 128), not a 7-step shift:
+ *   carry out of a+b = bit 7 of  (a & b) | ((a ^ b) & ~sum)
+ *
+ * A = 123456789  -> bytes [21, 205, 91, 7]
+ * B = 314159265  -> bytes [161, 176, 185, 18]
+ * C = A + B = 437616054 -> bytes [182, 125, 21, 26]
+ *
+ * Returns 0: C is checked against the expected bytes by XOR-ing the differences
+ * together (0 only if every byte matches).
+ */
+
+int main(void) {
+    int a0 = 21;  int a1 = 205; int a2 = 91;  int a3 = 7;
+    int b0 = 161; int b1 = 176; int b2 = 185; int b3 = 18;
+    int k;
+
+    int c0 = (a0 + b0) & 255;
+    k = ((a0 & b0) | ((a0 ^ b0) & ~c0)) & 128;
+
+    int c1 = (a1 + b1) & 255; if (k) c1 = (c1 + 1) & 255;
+    k = ((a1 & b1) | ((a1 ^ b1) & ~c1)) & 128;
+
+    int c2 = (a2 + b2) & 255; if (k) c2 = (c2 + 1) & 255;
+    k = ((a2 & b2) | ((a2 ^ b2) & ~c2)) & 128;
+
+    int c3 = (a3 + b3) & 255; if (k) c3 = (c3 + 1) & 255;
+
+    return (c0 ^ 182) | (c1 ^ 125) | (c2 ^ 21) | (c3 ^ 26);
+}

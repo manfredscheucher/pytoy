@@ -49,7 +49,9 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
     def vertical_mem(cur_pc, cur_acc, step_num=0, cmd_desc="", cmd_bytes="", cur_arg=None, stopped=False, dump=False):
         lines = []
         if stopped:
-            lines.append(f"Stopped after {step_num} steps.")
+            lines.append(f"Stopped after {step_num} steps "
+                         f"with result ACC={cur_acc} "
+                         f"(b{cur_acc:08b}, 0x{cur_acc:02x}).")
         else:
             lines.append(f"Step #{step_num}:")
         lines.append(f"  ACC={cur_acc}=b{cur_acc:08b}")
@@ -871,7 +873,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 pc_bytes.add((self.pc + 1) % 256)
             n = len(bs.split())
             if self.stopped:
-                lines.append(f'<b>Stopped after {self.step_count} steps.</b>')
+                lines.append(f'<b>Stopped after {self.step_count} steps '
+                             f'with result ACC={self.acc} '
+                             f'(b{self.acc:08b}, 0x{self.acc:02x}).</b>')
             else:
                 lines.append(f'<b>Step #{self.step_count}:</b>')
             acc_text = f"  ACC={self.acc}=b{self.acc:08b}"

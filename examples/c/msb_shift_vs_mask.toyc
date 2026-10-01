@@ -1,0 +1,24 @@
+// expect: 0
+/*
+ * msb_shift_vs_mask.toyc - two ways to read the top bit (bit 7) of a byte.
+ *
+ * Same result, different cost on the Toy CPU:
+ *   x >> 7      shifts right seven times -> seven RIGHT instructions
+ *   x & 128     one AND, then test -> much shorter
+ *
+ * Many tasks have several correct solutions; the cheaper one matters here
+ * because code and data share the same 256 bytes.
+ *
+ * Returns 0 when both methods agree.
+ */
+
+int main(void) {
+    int x = 200;              // 11001000, top bit set
+
+    int msb1 = x >> 7;        // via shift
+
+    int msb2 = 0;             // via mask
+    if (x & 128) msb2 = 1;
+
+    return msb1 ^ msb2;       // 0 -> both agree
+}
