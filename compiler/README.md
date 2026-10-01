@@ -89,6 +89,12 @@ less than 128**, which holds for the small unsigned values these programs work
 with. It is *not* a signed comparison and it is not reliable if operands can be
 more than 127 apart. Treat values as unsigned and keep them modest.
 
+If you do need comparisons that are correct across the full 0–255 range, pass
+`--safe-compare`. It emits a proper unsigned comparison (bit 7 of the borrow
+from `a - b`) for `<`, `>`, `<=`, `>=`. The trade-off is size: each such compare
+grows by ~30 bytes, so tight programs may no longer fit. It is a correctness vs.
+size choice, not an optimization, so `-O` does **not** turn it on.
+
 ## Arrays (fixed-size, local)
 
 `toycc` supports fixed-size local arrays of `int` bytes — see

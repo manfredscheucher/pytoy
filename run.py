@@ -161,6 +161,9 @@ def cmd_cc(args):
                     compact=args.compact_codegen,
                     save_restore=args.optimize_save_restore,
                     prefer_no_stack=args.prefer_no_stack)
+    # safe_compare is a correctness/size trade-off, not an optimization, so it
+    # is independent of -O (which never enables it).
+    opts.safe_compare = args.safe_compare
     compile_file(args.file, out_path=args.output, opts=opts, run=args.run)
 
 
@@ -220,6 +223,10 @@ def build_parser():
     p_cc.add_argument('--prefer-no-stack', action='store_true',
                       help='omit the stack when no function recurses; '
                            'recursion still gets a stack as needed')
+    p_cc.add_argument('--safe-compare', action='store_true',
+                      help='full unsigned 0..255 comparison instead of the '
+                           'compact bit-7 trick (correct for operands >=128 '
+                           'apart; produces larger code). Not enabled by -O.')
     p_cc.set_defaults(func=cmd_cc)
 
     return ap

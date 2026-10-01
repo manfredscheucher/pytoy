@@ -583,8 +583,9 @@ class Parser:
 # temporary is a named data byte placed after the code.
 
 class CodeGen:
-    def __init__(self, compact=False):
+    def __init__(self, compact=False, safe_compare=False):
         self.compact = compact  # enable smaller codegen fast paths (opt-in)
+        self.safe_compare = safe_compare  # full unsigned compare (opt-in, bigger)
         self.code = []          # list of instruction/comment lines (strings)
         self.vars = {}          # C variable name -> data label
         self.consts = {}        # constant value -> data label (dedup)
@@ -992,6 +993,43 @@ class CodeGen:
         self.gen_expr(left)
         self.emit(f"        sub   {t}")
 
+    def _gen_cmp_sign(self, x, y):
+        """Leave a value in ACC whose BIT 7 is set exactly when x < y (unsigned).
+        Both relational call sites then `and 0x80` and branch on it, so they need
+        no change. Default: the compact bit-7-of-(x-y) trick, correct only when
+        |x-y| < 128. With safe_compare: the full unsigned-less-than, correct over
+        all 0..255, at the cost of more instructions and temps."""
+        if not self.safe_compare:
+            # bit 7 of (x - y) — the max.toys trick.
+            self._gen_diff(x, y)
+            return
+        # Full unsigned x < y: bit 7 of  (~x & y) | (~(x ^ y) & (x - y)).
+        # Spill x and y, build the two terms, OR them. Correct for all 0..255.
+        self.gen_expr(x)
+        xt = self.new_temp()
+        self.emit(f"        store {xt}")
+        self.gen_expr(y)
+        yt = self.new_temp()
+        self.emit(f"        store {yt}")
+        # d = x - y
+        self.emit(f"        load  {xt}")
+        self.emit(f"        sub   {yt}")
+        dt = self.new_temp()
+        self.emit(f"        store {dt}")
+        # term1 = ~x & y
+        self.emit(f"        load  {xt}")
+        self.emit(f"        not")
+        self.emit(f"        and   {yt}")
+        t1 = self.new_temp()
+        self.emit(f"        store {t1}")
+        # term2 = ~(x ^ y) & d
+        self.emit(f"        load  {xt}")
+        self.emit(f"        xor   {yt}")
+        self.emit(f"        not")
+        self.emit(f"        and   {dt}")
+        # result = term1 | term2  (bit 7 is the borrow = x < y)
+        self.emit(f"        or    {t1}")
+
     def gen_comparison(self, op, left, right):
         # All comparisons boil down to producing a 0/1 result in ACC.
         # == / != : test whether (left - right) is zero.
@@ -1012,18 +1050,20 @@ class CodeGen:
             self.emit(f"{l_end}: nop")
             return
 
-        # relational: compute sign bit of a difference
+        # relational: bit 7 of _gen_cmp_sign(x, y) is set <=> x < y.
+        #   a <  b : x<y with (a,b);  a >  b : b<a with (b,a)
+        #   a >= b : NOT(a<b);        a <= b : NOT(b<a)
         if op == '<':
-            self._gen_diff(left, right)      # a - b ; bit7 set  <=> a < b
+            self._gen_cmp_sign(left, right)
             want_neg = True
         elif op == '>':
-            self._gen_diff(right, left)      # b - a ; bit7 set  <=> b < a  <=> a > b
+            self._gen_cmp_sign(right, left)
             want_neg = True
         elif op == '>=':
-            self._gen_diff(left, right)      # a - b ; bit7 clear <=> a >= b
+            self._gen_cmp_sign(left, right)
             want_neg = False
         elif op == '<=':
-            self._gen_diff(right, left)      # b - a ; bit7 clear <=> a <= b
+            self._gen_cmp_sign(right, left)
             want_neg = False
         else:
             raise CompileError(f"unknown comparison {op!r}")
@@ -1061,12 +1101,20 @@ class CodeGen:
         # matters on the 256-byte machine, and every if/while uses it).
         if cond[0] == 'binop' and cond[1] in ('<', '>', '<=', '>='):
             _, op, left, right = cond
-            # bit7 of (a-b) is set  <=>  a < b  (valid for the small values this
-            # compiler targets; same trick as gen_comparison / max.toys).
-            if op == '<':       self._gen_diff(left, right);  true_if_neg = True
-            elif op == '>':     self._gen_diff(right, left);  true_if_neg = True
-            elif op == '>=':    self._gen_diff(left, right);  true_if_neg = False
-            else:               self._gen_diff(right, left);  true_if_neg = False
+            # bit7 of _gen_cmp_sign(x, y) is set <=> x < y (bit-7 trick, or a
+            # full unsigned compare under safe_compare — same bit either way).
+            if op == '<':
+                self._gen_cmp_sign(left, right)
+                true_if_neg = True
+            elif op == '>':
+                self._gen_cmp_sign(right, left)
+                true_if_neg = True
+            elif op == '>=':
+                self._gen_cmp_sign(left, right)
+                true_if_neg = False
+            else:
+                self._gen_cmp_sign(right, left)
+                true_if_neg = False
             self.emit(f"        and   {self.const_label(0x80)}")
             if true_if_neg:
                 # true when bit7 set (ACC!=0); jump to false when ACC==0.
@@ -2196,11 +2244,15 @@ class Opts:
     `all_on()` turns everything on (the --optimize umbrella flag).
     """
     def __init__(self, fold=False, compact=False, save_restore=False,
-                 prefer_no_stack=False):
+                 prefer_no_stack=False, safe_compare=False):
         self.fold = fold
         self.compact = compact
         self.save_restore = save_restore
         self.prefer_no_stack = prefer_no_stack
+        # safe_compare swaps the compact-but-limited bit-7 comparison for a full
+        # unsigned 0..255 compare. It makes code BIGGER, so it is a correctness/
+        # size trade-off, not an optimization — deliberately NOT part of all_on().
+        self.safe_compare = safe_compare
 
     @classmethod
     def all_on(cls):
@@ -2257,7 +2309,7 @@ def compile_source(src, source_name, opts=None, optimize=None):
 
     main_block, bodies = lift_functions(funcs, recursive, opts.save_restore)
 
-    gen = CodeGen(compact=opts.compact)
+    gen = CodeGen(compact=opts.compact, safe_compare=opts.safe_compare)
     # Omit the stack byte only when nothing recurses (recursion needs it).
     no_stack = opts.prefer_no_stack and not recursive
     return gen.generate(main_block, bodies, source_name, no_stack=no_stack)

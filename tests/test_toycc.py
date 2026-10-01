@@ -615,6 +615,9 @@ def _fold(src):
 def _compact(src):
     return compile_source(wrap(src), "t", opts=Opts(compact=True))
 
+def _safecmp(src):
+    return compile_source(wrap(src), "t", opts=Opts(safe_compare=True))
+
 def test_fold_constant_arithmetic():
     """All-constant subexpressions fold at compile time (mod 256)."""
     cases = [("return 3 + 4;", 7), ("return 10 - 25;", (10 - 25) & 0xFF),
@@ -721,3 +724,49 @@ def test_optimizations_preserve_examples():
         assert run_c(src, name) == want, f"{name} (default)"
         assert run_asm(compile_source(src, name, opts=Opts.all_on())) == want, \
             f"{name} (-O)"
+
+
+# ── safe_compare: full unsigned comparison (opt-in, correctness/size trade) ───
+# The default bit-7 comparison is correct only for operands < 128 apart.
+# safe_compare makes all six relational ops correct over the full 0..255 range.
+
+def test_default_compare_wrong_for_far_operands():
+    """Documents the default limitation: bit-7 trick is wrong when |a-b|>=128."""
+    # 10 < 200 is truly 1, but the compact bit-7 compare returns 0.
+    assert run_c(wrap("int a=10; int b=200; if (a<b) return 1; return 0;")) == 0
+
+def test_safe_compare_correct_for_far_operands():
+    """safe_compare fixes every relational op for far-apart unsigned operands."""
+    cases = [("a < b", 10, 200, 1), ("a < b", 200, 10, 0),
+             ("a > b", 200, 10, 1), ("a > b", 10, 200, 0),
+             ("a <= b", 10, 200, 1), ("a <= b", 200, 10, 0),
+             ("a >= b", 200, 10, 1), ("a >= b", 10, 200, 0),
+             ("a == b", 150, 150, 1), ("a != b", 150, 150, 0)]
+    for expr, a, b, want in cases:
+        src = f"int a={a}; int b={b}; if ({expr}) return 1; return 0;"
+        got = run_asm(_safecmp(src))
+        assert got == want, f"{expr} with a={a},b={b}: got {got} want {want}"
+
+def test_safe_compare_value_context():
+    """safe_compare also fixes comparisons used as a 0/1 value, not just in if."""
+    assert run_asm(_safecmp("int a=10; int b=200; return a < b;")) == 1
+    assert run_asm(_safecmp("int a=200; int b=10; return a < b;")) == 0
+
+def test_safe_compare_agrees_for_small_operands():
+    """For close operands, safe and default compare agree (both correct)."""
+    for expr, want in [("3 < 5", 1), ("5 < 3", 0), ("4 == 4", 1),
+                       ("7 > 2", 1), ("2 >= 2", 1), ("1 <= 0", 0)]:
+        assert run_asm(_safecmp(f"return {expr};")) == want, expr
+        assert run_c(wrap(f"return {expr};")) == want, expr
+
+def test_safe_compare_not_in_optimize_all():
+    """safe_compare is a correctness/size trade, NOT part of -O (which must not
+    silently grow comparison code)."""
+    assert Opts.all_on().safe_compare is False
+
+def test_safe_compare_is_bigger():
+    """safe_compare produces larger code than the default compact compare."""
+    src = "int a=5; int b=9; return a < b;"
+    big = _program_size(_safecmp(src))
+    small = _program_size(compile_c(wrap(src)))
+    assert big > small
