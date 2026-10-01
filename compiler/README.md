@@ -337,3 +337,13 @@ checks each result against its `// expect:` header.
   possible. `return` moves the value into ACC and emits `stop`.
 
 The emitted `.toys` is commented and maps back to the source where helpful.
+
+## minicc — the minimal version for reading
+
+If you want to see the whole idea in one short, linear file, read
+[`pytoy/minicc.py`](../pytoy/minicc.py). It is a cut-down teaching compiler:
+`main()` only (so no call stack, no recursion, no function machinery) and no
+optimizations. It still compiles most single-function examples. Details in
+[`doc/design/minicc.md`](../doc/design/minicc.md).
+
+    python3 -m pytoy.minicc examples/c/sum_array.toyc --run
