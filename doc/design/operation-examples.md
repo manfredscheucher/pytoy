@@ -65,19 +65,12 @@ The self-modifying trick (patch an instruction's operand byte, then execute it)
 is exactly what the `03-programs/` array examples and the C compiler's arrays
 use — the extended demos just isolate it.
 
-## ktoy embedding
-
-Only `03-programs/` is embedded into the ktoy app (`gen_ktoy_examples.py` reads
-that folder). `01-basics/` and `02-extended/` stay out, so the app's example
-list stays lean.
-
 ## Verified
 
-All `01-basics/` (14) and `02-extended/` (5) assemble and run
+All `01-basics/` (14) and `02-extended/` assemble and run
 (`run.py sim … --cli --run`) with the expected ACC / memory result. The
-`03-programs/` move keeps `test_toyasm.py` green (paths updated) and the ktoy
-embedded list unchanged.
+`03-programs/` move keeps `test_toyasm.py` green (paths updated).
 
-`scripts/gen_golden.py` now recurses into the three tier folders, so the golden
-table (`tests/golden/asm_golden.json`, checked by `test_golden.py`) covers all
-29 examples, not just the 10 programs. Full suite: 242 passed.
+`scripts/gen_golden.py` recurses into the three tier folders, so the golden
+table (`tests/golden/asm_golden.json`, checked by `test_golden.py`) covers every
+example, not just the programs.
