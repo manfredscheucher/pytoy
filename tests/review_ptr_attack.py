@@ -13,7 +13,7 @@ from pytoy.compiler import compile_source, CompileError
 
 
 def run_c(src, optimize=False, max_steps=2_000_000):
-    asm = compile_source(src, "attack.toyc", optimize=optimize)
+    asm = compile_source(src, "attack.toyc")  # save/restore now automatic
     mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
     if errors:
         raise AssertionError(f"assembler errors: {errors}\n{asm}")

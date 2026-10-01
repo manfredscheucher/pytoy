@@ -19,7 +19,7 @@ from pytoy.compiler import compile_source, CompileError
 
 def run(src, optimize=False, max_steps=200000):
     """Compile+assemble+run. Return (acc_at_stop, mem, syms, toys)."""
-    toys = compile_source(src, 't', optimize=optimize)
+    toys = compile_source(src, 't')  # save/restore now automatic
     mem, listing, syms, data_addrs, errors, data_start = toyasm.assemble(toys)
     assert not errors, f"assemble errors: {errors}\n{toys}"
     acc, pc, steps = 0, 0, 0

@@ -39,7 +39,7 @@ def _run_capped(mem, syms, data_addrs, cap):
 
 
 def run(src, optimize, cap=2_000_000):
-    asm = compile_source(src, 't', optimize=optimize)
+    asm = compile_source(src, 't')  # save/restore now automatic
     mem, listing, syms, data_addrs, errors, data_start = toyasm.assemble(asm)
     hard = [e for e in errors if 'too big' in e or 'Bad value' in e]
     if hard:

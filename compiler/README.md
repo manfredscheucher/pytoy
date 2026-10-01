@@ -208,13 +208,28 @@ plus self-modifying indirect load/store (the same trick as `examples/asm/03-prog
 *down* from address 255. This is the same mechanism the hand-written
 `examples/asm/03-programs/fibonacci_rec.toys` uses, generated automatically.
 
-### The `-O` flag
+### Save/restore is automatic; `--stackfree`
 
 Save/restore around a call is only *needed* when the caller can be re-entered,
-i.e. when the caller is recursive. `-O` / `--optimize-save-restore` (default
-off) builds the call graph and *skips* save/restore at call sites whose caller
-is non-recursive. Same results, smaller code. Default off keeps the compiler
-uniform; `-O` makes it lean.
+i.e. when the caller is recursive. That is fully determined by the call graph,
+so the compiler does it **automatically**: save/restore is inserted only at call
+sites whose caller is recursive, and skipped everywhere else. A program with no
+recursion therefore emits no push/pop and no `sp` byte at all — nothing to
+configure.
+
+`--stackfree` makes that a hard requirement: compile with **no call stack**, all
+state in global slots. If any function recurses (a cycle in the call graph), it
+is an error, because recursion genuinely needs a stack. Use it to guarantee a
+stack-free, all-global translation (and to catch accidental recursion).
+
+### The `-O` flag
+
+`-O` / `--optimize` turns on the size optimizations: `--fold-constants`
+(constant folding + identity simplification) and `--compact-codegen` (smaller
+shift / `== 0` / unary-minus codegen). All are off by default so the plain
+output stays a direct, readable translation. `-O` does **not** enable
+`--safe-compare` or `--stackfree` (those are correctness/mode choices, not size
+wins).
 
 ### Recursion depth limit
 
@@ -232,6 +247,9 @@ recurses deep enough. So the warning catches "this program barely fits," not
 "this run will recurse too deep." Keep recursion shallow, use `-O` (smaller
 code) and small inputs. This is a real limit of the machine, not a bug — the same
 "code and data share 256 bytes" reality as everywhere else.
+
+(Non-recursive programs never hit this: save/restore is skipped automatically and
+there is no stack to overflow.)
 
 ## Memory model
 

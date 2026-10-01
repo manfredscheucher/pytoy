@@ -834,20 +834,9 @@ class CodeGen:
     def gen_unop(self, e):
         _, op, operand = e
         if op == '-':
-            # 0 - operand  (mod 256). Compact codegen: when the operand already
-            # lives in a fixed data byte (a constant or a plain variable) we
-            # subtract it directly from 0, skipping the spill temp.
-            if self.compact and operand[0] in ('num', 'var'):
-                slot = (self.const_label(operand[1]) if operand[0] == 'num'
-                        else self.var_label(operand[1]))
-                self.emit(f"        load  {self.const_label(0)}")
-                self.emit(f"        sub   {slot}")
-                return
-            self.gen_expr(operand)
-            t = self.new_temp()
-            self.emit(f"        store {t}")
-            self.emit(f"        load  {self.const_label(0)}")
-            self.emit(f"        sub   {t}")
+            # -x is exactly 0 - x; reuse the subtraction codegen (which already
+            # has the compact no-spill fast path for a num/var operand).
+            self._gen_diff(('num', 0), operand)
             return
         if op == '~':
             self.gen_expr(operand)
@@ -1521,10 +1510,9 @@ def find_recursive(graph):
 # first, then the sub-expression is replaced by ('var', capture-temp).
 
 class CallLifter:
-    def __init__(self, funcs, recursive, optimize=False):
+    def __init__(self, funcs, recursive):
         self.funcs = {f[1]: f for f in funcs}
         self.recursive = set(recursive)
-        self.optimize = optimize  # -O: skip save/restore when caller not recursive
         self.call_counts = {}     # fname -> number of call sites seen so far
         self.uid = 0              # unique suffix for local-variable renaming
         self.cur_caller = None    # name of the function currently being lifted
@@ -1773,9 +1761,12 @@ class CallLifter:
     # (The capture temp is a DEF at the node, so standard liveness drops it.)
 
     def insert_save_restore(self, caller, stmts):
-        # -O optimisation: a non-recursive caller can never be re-entered, so no
-        # call from it can clobber its slots — skip save/restore entirely.
-        skip = self.optimize and caller not in self.recursive
+        # Save/restore is CORRECTNESS, not an option: a non-recursive caller can
+        # never be re-entered, so none of its calls can clobber its slots — it
+        # needs no save/restore. A recursive caller does. So skip exactly when the
+        # caller is non-recursive. (This used to be gated behind an -O flag; it is
+        # now automatic, because the choice is fully determined by recursion.)
+        skip = caller not in self.recursive
         live_at_label = {}   # label name -> set of vars live just before it
         caller_slots = self._caller_slots(caller, stmts)
 
@@ -2108,11 +2099,11 @@ class CallLifter:
         return ('var', cap)
 
 
-def lift_functions(funcs, recursive, optimize=False):
+def lift_functions(funcs, recursive):
     """Return (main_block, bodies) with all calls rewritten to the global-slots
-    + marker-dispatch scheme, each call bracketed by save/restore of the
-    caller's live-across slots. See CallLifter for details."""
-    return CallLifter(funcs, recursive, optimize).run()
+    + marker-dispatch scheme. Save/restore is inserted automatically around calls
+    from recursive callers (and skipped for non-recursive ones). See CallLifter."""
+    return CallLifter(funcs, recursive).run()
 
 
 # ── Constant folding + algebraic simplification ─────────────────────────────
@@ -2237,34 +2228,33 @@ class Opts:
 
       fold          constant folding + identity simplification (3+4 -> 7, x*1 -> x)
       compact       smaller codegen (constant shifts, == 0 / != 0, unary minus)
-      save_restore  skip save/restore at non-recursive call sites
-      prefer_no_stack  omit the stack when no function recurses (drops the
-                       unused sp byte); recursion still gets a stack as needed
+      stackfree     compile with NO call stack — all state in global slots. Only
+                    valid when no function recurses (a cycle in the call graph is
+                    an error, since recursion needs a stack). Drops the sp byte.
+      safe_compare  full unsigned 0..255 comparison instead of the bit-7 trick.
 
-    `all_on()` turns everything on (the --optimize umbrella flag).
+    Save/restore of caller slots around calls is automatic (inserted exactly for
+    recursive callers), so there is no flag for it.
+
+    `all_on()` turns the real optimizations on (the --optimize umbrella). It does
+    NOT include stackfree (a mode/constraint, not a size optimization) nor
+    safe_compare (a correctness/size trade-off).
     """
-    def __init__(self, fold=False, compact=False, save_restore=False,
-                 prefer_no_stack=False, safe_compare=False):
+    def __init__(self, fold=False, compact=False, stackfree=False,
+                 safe_compare=False):
         self.fold = fold
         self.compact = compact
-        self.save_restore = save_restore
-        self.prefer_no_stack = prefer_no_stack
-        # safe_compare swaps the compact-but-limited bit-7 comparison for a full
-        # unsigned 0..255 compare. It makes code BIGGER, so it is a correctness/
-        # size trade-off, not an optimization — deliberately NOT part of all_on().
+        self.stackfree = stackfree
         self.safe_compare = safe_compare
 
     @classmethod
     def all_on(cls):
-        return cls(fold=True, compact=True, save_restore=True,
-                   prefer_no_stack=True)
+        return cls(fold=True, compact=True)
 
 
-def compile_source(src, source_name, opts=None, optimize=None):
-    # Back-compat: older callers pass optimize=True/False to mean just the
-    # save/restore optimization. New callers pass opts=Opts(...).
+def compile_source(src, source_name, opts=None):
     if opts is None:
-        opts = Opts(save_restore=bool(optimize)) if optimize is not None else Opts()
+        opts = Opts()
     toks = lex(src)
     funcs = Parser(toks).parse_program()[1]
 
@@ -2282,6 +2272,16 @@ def compile_source(src, source_name, opts=None, optimize=None):
 
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
+
+    # stackfree: compile with no call stack at all (everything in global slots).
+    # This is only possible without recursion — a cycle in the call graph needs a
+    # stack to keep each activation's slots apart. Reject instead of miscompiling.
+    if opts.stackfree and recursive:
+        names = ", ".join(sorted(recursive))
+        raise CompileError(
+            f"--stackfree cannot compile recursive functions ({names}); "
+            f"recursion needs a call stack. Remove the recursion or drop "
+            f"--stackfree.")
 
     # Arrays are fixed global bytes and are NOT saved/restored across calls, so
     # a recursive function that declares an array would silently clobber it on
@@ -2307,11 +2307,15 @@ def compile_source(src, source_name, opts=None, optimize=None):
                 f"follow the recursion save/restore stack (take the address in a "
                 f"non-recursive function, or pass the value instead)")
 
-    main_block, bodies = lift_functions(funcs, recursive, opts.save_restore)
+    main_block, bodies = lift_functions(funcs, recursive)
 
     gen = CodeGen(compact=opts.compact, safe_compare=opts.safe_compare)
-    # Omit the stack byte only when nothing recurses (recursion needs it).
-    no_stack = opts.prefer_no_stack and not recursive
+    # Save/restore is now automatic and emitted only for recursive callers. So
+    # when nothing recurses, no push/pop is ever generated and the sp byte is
+    # dead. --stackfree already guarantees no recursion (checked above), so it is
+    # safe to drop sp there. (Without --stackfree we keep sp whenever any
+    # recursion exists; a non-recursive program simply never touches it.)
+    no_stack = opts.stackfree or not recursive
     return gen.generate(main_block, bodies, source_name, no_stack=no_stack)
 
 
@@ -2338,14 +2342,15 @@ def compile_file(in_path, out_path=None, opts=None, run=False):
     except CompileError as e:
         sys.exit(f"compile error: {e}")
 
-    # Check the generated program actually fits the 256-byte machine, using
-    # the assembler as the single source of truth for sizing. Report the same
-    # kind of clean error the assembler would, instead of writing a .toys that
-    # only fails later.
+    # Assemble to validate the generated program, using the assembler as the
+    # single source of truth. Surface ANY assembler error (not just "too big"):
+    # a size overflow, but also e.g. an undefined label, which would otherwise be
+    # a silently-miscompiled .toys. Report "too big" first for a clean message.
     mem, listing, syms, data_addrs, errors, _ = assemble(asm)
-    size_errors = [e for e in errors if "too big" in e]
-    if size_errors:
-        sys.exit(f"compile error: {size_errors[0]}")
+    if errors:
+        size_errors = [e for e in errors if "too big" in e]
+        first = size_errors[0] if size_errors else errors[0]
+        sys.exit(f"compile error: {first}")
 
     # The recursion stack grows DOWN from address 255 into the free space above
     # the program. There is no hardware bounds check: if recursion goes deeper

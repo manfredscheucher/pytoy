@@ -1,36 +1,39 @@
-# Design: recursion via uniform save/restore (with an opt-out flag)
+# Design: recursion via save/restore (automatic, call-graph driven)
 
-Working design note (spec + derivation), written before the code. Establishes
-how `toycc` compiles function calls so that recursion works, using ONE uniform
-mechanism.
+Working design note (spec + derivation). Establishes how `toycc` compiles
+function calls so that recursion works.
+
+> **Update.** This originally used *uniform* save/restore (do it around every
+> call) with an `-O` flag to drop the unnecessary ones. That is now reversed:
+> save/restore is **automatic** — the compiler builds the call graph and inserts
+> it only around calls whose caller is recursive, skipping it everywhere else.
+> There is no flag, because the choice is fully determined by recursion (it is
+> correctness, not a tunable). The mechanism below is unchanged; only *when* it
+> is emitted changed.
 
 ## Decisions (from Manfred)
 
-- **Uniform save/restore, no call-graph needed for correctness.** Every function
-  keeps its fixed global slots (params, locals, return value, return marker),
-  exactly like the current non-recursive scheme. Recursion-safety comes from
-  *saving and restoring the caller's live slots around every call*. Because
-  save/restore is always correct (just sometimes unnecessary), we do it for
-  *every* call by default and drop the separate recursive/non-recursive code
-  paths. Recursion then works for free.
+- **Save/restore is automatic, driven by the call graph.** Every function keeps
+  its fixed global slots (params, locals, return value, return marker). A
+  recursive caller can be re-entered and clobber its own slots, so its calls are
+  bracketed by *saving and restoring the caller's live slots*. A non-recursive
+  caller cannot be re-entered, so it needs none — and gets none. Non-recursive
+  programs therefore emit no push/pop and no `sp` byte.
 - **Real stack, growing downward from the top.** Code+data occupy low memory
   from 0 up (PC starts at 0); the stack lives at the top and grows down. `sp`
   starts high and decreases on push. They meet in the middle; overflow = they
   collide (no hardware check).
-- **Optimisation flag `-O` / `--optimize-save-restore`, default OFF.** When set,
-  the compiler builds the call graph and *omits* save/restore around calls to
-  functions that are not recursive (directly or mutually) — those calls can't
-  re-enter the caller, so the caller's slots can't be clobbered. This is a pure
-  optimisation: it only removes provably-unnecessary save/restore, never changes
-  results. Default off keeps the compiler behaviour simple and uniform; the call
-  graph becomes an optimisation input, not a correctness prerequisite.
+- **`--stackfree` mode.** Compile with no stack at all (everything in global
+  slots). Only valid when nothing recurses; a cycle in the call graph is a
+  compile error, since recursion genuinely needs a stack.
 
 ## Trade-off (recorded honestly)
 
-Uniform save/restore makes the compiler simpler (one path, no recursion
-rejection) but the emitted assembly larger (push/pop brackets around every
-call, even where unnecessary). On a 256-byte machine that matters, which is why
-`-O` exists. Neither choice is strictly "better"; default = simple, `-O` = lean.
+Automatic save/restore means the call graph is a correctness input (we must know
+who is recursive). That is a simple reachability check (`find_recursive`) we run
+anyway. The payoff: non-recursive code pays nothing — no push/pop, no `sp` — so
+the common case is lean by default, and only genuine recursion carries the stack
+cost. `--stackfree` turns the "no recursion" case into an explicit guarantee.
 
 ## Stack primitives
 
@@ -71,16 +74,17 @@ and restoring after makes `C` immune to that, whoever it calls.
 on `f__mark` back to the right call site. `f__mark` is saved/restored around
 calls, so an outer activation's marker survives inner calls.
 
-## The `-O` optimisation
+## When save/restore is emitted (automatic)
 
-With `-O`, build the call graph and compute the set of recursive functions
-(functions on a cycle). At a call site in caller `C`:
-- if `C` is NOT recursive, the call can never re-enter `C`, so *skip the entire
-  save/restore*. (A non-recursive `C` has at most one activation live at a time.)
-- if `C` IS recursive, keep save/restore.
+Build the call graph and compute the set of recursive functions (functions on a
+cycle). At a call site in caller `C`:
+- if `C` is NOT recursive, the call can never re-enter `C`, so *no save/restore*.
+  (A non-recursive `C` has at most one activation live at a time.)
+- if `C` IS recursive, emit save/restore.
 
-That's the whole optimisation: recursive callers keep their brackets,
-non-recursive callers lose them. Provably safe; only removes dead save/restore.
+This is automatic — no flag. Recursive callers get brackets, non-recursive ones
+don't. `--stackfree` additionally *requires* the no-recursion case and drops the
+`sp` byte, erroring if any cycle exists.
 
 ## What must be saved — the live-across set (LIVENESS IS REQUIRED)
 

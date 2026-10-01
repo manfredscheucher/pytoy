@@ -572,34 +572,39 @@ def _program_size(asm):
     assert errors == [], errors
     return max(a for a, *_ in listing if a is not None) + 1
 
-def test_optimize_flag_shrinks_nonrecursive_program():
-    """With -O, save/restore is dropped around calls whose caller is not
-    recursive — so a program of only non-recursive functions must get SMALLER,
-    with the SAME result."""
+def test_nonrecursive_has_no_save_restore_and_no_sp():
+    """Save/restore is automatic and skipped for non-recursive callers, so a
+    program of only non-recursive functions emits no push/pop and no sp byte."""
     src = ("int sq(int x){return x*x;}"
            " int main(void){return sq(2)+sq(3)+sq(4);}")
-    plain = compile_source(src, "t", optimize=False)
-    opt = compile_source(src, "t", optimize=True)
-    assert run_asm(plain) == 29
-    assert run_asm(opt) == 29
-    assert _program_size(opt) < _program_size(plain)
+    asm = compile_source(src, "t")
+    assert run_asm(asm) == 29
+    assert "sp:" not in asm        # no stack byte when nothing recurses
+    assert "push" not in asm and "pop" not in asm
 
-def test_optimize_flag_keeps_recursive_results():
-    """-O must never change results: recursive callers keep their save/restore."""
+def test_recursion_keeps_results_and_stack():
+    """Recursive callers automatically get save/restore and a stack; correct."""
     src = ("int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }"
            " int main(void){ return fib(6); }")
-    assert run_asm(compile_source(src, "t", optimize=True)) == 8
+    asm = compile_source(src, "t")
+    assert run_asm(asm) == 8
+    assert "sp:" in asm           # recursion needs the stack
 
-def test_deep_recursion_fits_with_optimize():
-    """A program that overflows the stack without -O (data ends too high,
-    little stack room) fits and is correct WITH -O, because -O drops the
-    unnecessary save/restore in the non-recursive caller (main), leaving more
-    room. This documents the 256-byte stack limit and the -O workaround.
-    Without -O this same program silently overflows — see the compiler README's
-    'recursion depth' note; the CLI warns about low stack space."""
+def test_stackfree_compiles_nonrecursive():
+    """--stackfree compiles a non-recursive program (all global slots, no sp)."""
+    src = ("int f(int n){ if(n==0) return 0; return f(n-1)+1; }")  # not called -> not recursive? it is self-recursive
+    ok = ("int sq(int x){return x*x;}"
+          " int main(void){return sq(2)+sq(3)+sq(4);}")
+    asm = compile_source(ok, "t", opts=Opts(stackfree=True))
+    assert run_asm(asm) == 29
+    assert "sp:" not in asm
+
+def test_stackfree_rejects_recursion():
+    """--stackfree must error on a recursive program (recursion needs a stack)."""
     src = ("int f(int n){ if(n==0) return 0; return f(n-1)+1; }"
-           " int main(void){ return f(2)+f(3)+f(4); }")   # = 9
-    assert run_asm(compile_source(src, "t", optimize=True)) == 9
+           " int main(void){ return f(3); }")
+    with pytest.raises(CompileError, match="stackfree"):
+        compile_source(src, "t", opts=Opts(stackfree=True))
 
 
 # ── Optimizations (all opt-in via Opts; off by default) ──────────────────────
@@ -688,19 +693,22 @@ def test_compact_off_by_default():
     """Without the compact flag, -x still spills (unoptimized but correct)."""
     assert run_c(wrap("int x=5; return -x;")) == 251
 
-def test_prefer_no_stack_drops_sp_when_no_recursion():
-    """--prefer-no-stack omits the sp byte for a non-recursive program, but
-    keeps it (and stays correct) when a function recurses."""
+def test_no_sp_byte_when_nothing_recurses():
+    """The sp byte is dropped automatically for any non-recursive program (with
+    or without --stackfree), and a recursive program keeps it."""
     flat = compile_source("int add(int a,int b){return a+b;}"
-                          " int main(void){return add(2,3);}", "t",
-                          opts=Opts(prefer_no_stack=True))
+                          " int main(void){return add(2,3);}", "t")
     assert run_asm(flat) == 5
     assert "sp:" not in flat, flat
     rec = compile_source("int f(int n){if(n==0)return 0;return f(n-1)+1;}"
-                         " int main(void){return f(3);}", "t",
-                         opts=Opts(prefer_no_stack=True))
+                         " int main(void){return f(3);}", "t")
     assert run_asm(rec) == 3
     assert "sp:" in rec        # recursion still gets its stack
+
+def test_stackfree_add_matches_default():
+    """--stackfree gives the same result as default for non-recursive code."""
+    src = "int add(int a,int b){return a+b;} int main(void){return add(2,3);}"
+    assert run_asm(compile_source(src, "t", opts=Opts(stackfree=True))) == 5
 
 def test_optimize_all_on_preserves_results():
     """-O (everything on) must not change any result."""

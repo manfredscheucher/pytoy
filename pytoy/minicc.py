@@ -582,10 +582,13 @@ class Gen:
         for value, label in sorted(self.consts.items()):
             lines.append(f"{label}: {value}")
         # arrays last: a base byte holding the array address, then its elements.
+        # The element block uses a prefixed label (adata_<name>), not the bare
+        # user name, so an array named like a temp/const (t1, c_5) can't collide.
         for name, (base, size, inits) in self.arrays.items():
-            lines.append(f"{base}: {name}")
+            data = f"adata_{name}"
+            lines.append(f"{base}: {data}")
             cells = list(inits) + [0] * (size - len(inits))
-            lines.append(f"{name}: {cells[0]}")
+            lines.append(f"{data}: {cells[0]}")
             for v in cells[1:]:
                 lines.append(f"        {v}")
         return "\n".join(lines) + "\n"

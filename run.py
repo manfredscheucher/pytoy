@@ -158,11 +158,10 @@ def cmd_cc(args):
         opts = Opts.all_on()
     else:
         opts = Opts(fold=args.fold_constants,
-                    compact=args.compact_codegen,
-                    save_restore=args.optimize_save_restore,
-                    prefer_no_stack=args.prefer_no_stack)
-    # safe_compare is a correctness/size trade-off, not an optimization, so it
-    # is independent of -O (which never enables it).
+                    compact=args.compact_codegen)
+    # stackfree and safe_compare are modes/trade-offs, not size optimizations,
+    # so they are independent of -O (which never enables them).
+    opts.stackfree = args.stackfree
     opts.safe_compare = args.safe_compare
     compile_file(args.file, out_path=args.output, opts=opts, run=args.run)
 
@@ -217,12 +216,11 @@ def build_parser():
     p_cc.add_argument('--compact-codegen', action='store_true',
                       help='smaller codegen: constant shifts, == 0 / != 0, '
                            'unary minus (same results)')
-    p_cc.add_argument('--optimize-save-restore', action='store_true',
-                      help='skip save/restore at call sites whose caller is '
-                           'not recursive (smaller code, same results)')
-    p_cc.add_argument('--prefer-no-stack', action='store_true',
-                      help='omit the stack when no function recurses; '
-                           'recursion still gets a stack as needed')
+    p_cc.add_argument('--stackfree', action='store_true',
+                      help='compile with no call stack (all state in global '
+                           'slots); errors if any function recurses. Not '
+                           'enabled by -O. (Save/restore for recursion is '
+                           'automatic otherwise.)')
     p_cc.add_argument('--safe-compare', action='store_true',
                       help='full unsigned 0..255 comparison instead of the '
                            'compact bit-7 trick (correct for operands >=128 '

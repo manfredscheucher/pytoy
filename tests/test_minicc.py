@@ -120,3 +120,10 @@ def test_rejects_compound_assignment_clearly():
     """`x += 3` explains that compound assignment is unsupported."""
     with pytest.raises(MiniError, match="compound assignment"):
         compile_source(wrap("int x=5; x += 3; return x;"), "t")
+
+def test_array_named_like_temp_no_collision():
+    """An array named t1 / c_5 must not collide with generated temp/const labels
+    (array data uses an adata_ prefix, not the bare name)."""
+    # t1 would clash with the multiply temp; c_5 with the constant 5.
+    assert run(wrap("int t1[2]; t1[0]=99; int r = 2*3; return t1[0];")) == 99
+    assert run(wrap("int c_5[2]; c_5[0]=7; int x = 5; return c_5[0] + x;")) == 12

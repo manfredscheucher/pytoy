@@ -78,14 +78,15 @@ chapter) --- a self-modifying-code stack --- though the compiler's stack grows
 *down* from 255 while the hand-written one grows up; the direction is a free
 choice, the principle is identical.
 
-The `-O` / `--optimize-save-restore` flag (default off) skips the save/restore
-around calls whose caller is not recursive --- a pure size win with identical
-results. The stack has no bounds check and shares the 256 bytes with code and
+Save/restore is inserted automatically, and only around calls whose caller is
+recursive; non-recursive code gets none (and no stack byte at all). The
+`--stackfree` flag enforces that no stack is used, erroring if any function
+recurses. The stack has no bounds check and shares the 256 bytes with code and
 data, so deep recursion can overflow into data and corrupt it. toycc warns when
 the *compiled program itself* leaves little room for the stack --- but note this
 is a static size check, not a depth guard: a program that fits with plenty of
 headroom can still overflow at run time if it recurses deep enough, silently.
-Keep recursion shallow, or use `-O` and small inputs.
+Keep recursion shallow and inputs small.
 
 === Arrays
 
