@@ -153,9 +153,15 @@ def cmd_asm(args):
 # ── cc ───────────────────────────────────────────────────────────────────────
 
 def cmd_cc(args):
-    from pytoy.compiler import compile_file
-    compile_file(args.file, out_path=args.output, optimize=args.optimize,
-                 run=args.run)
+    from pytoy.compiler import compile_file, Opts
+    if args.optimize:
+        opts = Opts.all_on()
+    else:
+        opts = Opts(fold=args.fold_constants,
+                    compact=args.compact_codegen,
+                    save_restore=args.optimize_save_restore,
+                    prefer_no_stack=args.prefer_no_stack)
+    compile_file(args.file, out_path=args.output, opts=opts, run=args.run)
 
 
 # ── argument parsing ──────────────────────────────────────────────────────────
@@ -198,10 +204,22 @@ def build_parser():
     p_cc.add_argument('-o', '--output', help='output .toys path')
     p_cc.add_argument('-r', '--run', action='store_true',
                       help='after compiling, run the program (in-process)')
-    p_cc.add_argument('-O', '--optimize-save-restore', action='store_true',
-                      dest='optimize',
+    # Optimizations — all OFF by default, so the plain output stays a direct,
+    # readable translation of the C. Opt in individually, or -O for everything.
+    p_cc.add_argument('-O', '--optimize', action='store_true',
+                      help='enable all optimizations below')
+    p_cc.add_argument('--fold-constants', action='store_true',
+                      help='fold constant expressions (3+4 -> 7) and drop '
+                           'identity ops (x*1 -> x, x&255 -> x, ~~x -> x)')
+    p_cc.add_argument('--compact-codegen', action='store_true',
+                      help='smaller codegen: constant shifts, == 0 / != 0, '
+                           'unary minus (same results)')
+    p_cc.add_argument('--optimize-save-restore', action='store_true',
                       help='skip save/restore at call sites whose caller is '
                            'not recursive (smaller code, same results)')
+    p_cc.add_argument('--prefer-no-stack', action='store_true',
+                      help='omit the stack when no function recurses; '
+                           'recursion still gets a stack as needed')
     p_cc.set_defaults(func=cmd_cc)
 
     return ap

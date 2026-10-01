@@ -583,7 +583,8 @@ class Parser:
 # temporary is a named data byte placed after the code.
 
 class CodeGen:
-    def __init__(self):
+    def __init__(self, compact=False):
+        self.compact = compact  # enable smaller codegen fast paths (opt-in)
         self.code = []          # list of instruction/comment lines (strings)
         self.vars = {}          # C variable name -> data label
         self.consts = {}        # constant value -> data label (dedup)
@@ -832,7 +833,15 @@ class CodeGen:
     def gen_unop(self, e):
         _, op, operand = e
         if op == '-':
-            # 0 - operand  (mod 256)
+            # 0 - operand  (mod 256). Compact codegen: when the operand already
+            # lives in a fixed data byte (a constant or a plain variable) we
+            # subtract it directly from 0, skipping the spill temp.
+            if self.compact and operand[0] in ('num', 'var'):
+                slot = (self.const_label(operand[1]) if operand[0] == 'num'
+                        else self.var_label(operand[1]))
+                self.emit(f"        load  {self.const_label(0)}")
+                self.emit(f"        sub   {slot}")
+                return
             self.gen_expr(operand)
             t = self.new_temp()
             self.emit(f"        store {t}")
@@ -880,6 +889,15 @@ class CodeGen:
             slot = (self.const_label(right[1]) if right[0] == 'num'
                     else self.var_label(right[1]))
             self.emit(f"        {mem_op[op]:<5} {slot}")
+            return
+
+        # Constant shift (compact codegen): the amount is known at compile time,
+        # so we just unroll that many left/right instructions on the left
+        # operand — no spill of the (unused) shift count, which would waste a
+        # load/store plus two data bytes.
+        if self.compact and op in ('<<', '>>') and right[0] == 'num':
+            self.gen_expr(left)
+            self.gen_shift(op, right, None)
             return
 
         # Arithmetic / bitwise: evaluate right first, spill it, then left,
@@ -954,6 +972,12 @@ class CodeGen:
 
     # Produce (left - right) in ACC, used by comparisons. Leaves difference.
     def _gen_diff(self, left, right):
+        # Subtracting 0 is a no-op: the difference is just the left value, and
+        # its sign/zero-ness (all _gen_diff callers test only that) is unchanged.
+        # Skip the dead `sub c_0` that `x == 0` / `x != 0` would otherwise emit.
+        if self.compact and right == ('num', 0):
+            self.gen_expr(left)
+            return
         # If right is already a fixed data byte (constant or variable), subtract
         # it directly — no spill temp (same saving as gen_binop's fast path).
         if right[0] in ('num', 'var'):
@@ -1273,7 +1297,7 @@ class CodeGen:
         return out
 
     # -- assemble the whole .toys file --
-    def generate(self, main_body, bodies, source_name):
+    def generate(self, main_body, bodies, source_name, no_stack=False):
         # `main_body` is main's ('block', [...]); `bodies` is the list of
         # (name, params, body_block, n_sites) for every called non-main function
         # (from CallLifter). Recursion works: each call is bracketed by
@@ -1288,7 +1312,10 @@ class CodeGen:
         # unused; the first push writes to 254). Overflow into the data region
         # is unchecked — depth is bounded by the free bytes between end-of-data
         # and the stack top (see doc/design/recursion-codegen.md).
-        self.add_global_slot("sp", 255)
+        # When no_stack is set (no function recurses, so nothing ever pushes),
+        # the sp byte is dead weight — skip it.
+        if not no_stack:
+            self.add_global_slot("sp", 255)
 
         self.gen_stmt(main_body)
         # Safety net: if control falls off the end of main without a return,
@@ -2040,16 +2067,166 @@ def lift_functions(funcs, recursive, optimize=False):
     return CallLifter(funcs, recursive, optimize).run()
 
 
-def compile_source(src, source_name, optimize=False):
+# ── Constant folding + algebraic simplification ─────────────────────────────
+# A small AST pass run right after parsing. It folds all-constant subexpressions
+# (e.g. 3+4 -> 7, 1<<3 -> 8) and removes identity operations (x+0, x*1, ~~x,
+# x&255, …) so the code generator emits less. Everything is done mod 256 and
+# with the exact shift/bitwise semantics of the Toy CPU core, so a folded value
+# never differs from what the generated code would have computed at runtime.
+
+def _fold_binop(op, a, b):
+    """Fold a binary op on two 8-bit constants, matching the machine's mod-256
+    arithmetic. Returns the 0..255 result, or None if op isn't foldable here."""
+    if op == '+':  return (a + b) & 0xFF
+    if op == '-':  return (a - b) & 0xFF
+    if op == '*':  return (a * b) & 0xFF
+    if op == '&':  return a & b
+    if op == '|':  return a | b
+    if op == '^':  return a ^ b
+    if op == '<<': return (a << (b & 0xFF)) & 0xFF
+    if op == '>>': return (a & 0xFF) >> (b & 0xFF)
+    # comparisons fold to 0/1 (unsigned 8-bit, matching gen_comparison)
+    if op == '==': return 1 if a == b else 0
+    if op == '!=': return 1 if a != b else 0
+    if op == '<':  return 1 if a < b else 0
+    if op == '>':  return 1 if a > b else 0
+    if op == '<=': return 1 if a <= b else 0
+    if op == '>=': return 1 if a >= b else 0
+    return None
+
+
+def fold_expr(e):
+    """Recursively fold constants and strip identity ops in an expression."""
+    kind = e[0]
+    if kind == 'unop':
+        _, op, operand = e
+        operand = fold_expr(operand)
+        if operand[0] == 'num':
+            v = operand[1]
+            if op == '-':  return ('num', (-v) & 0xFF)
+            if op == '~':  return ('num', (~v) & 0xFF)
+            if op == '!':  return ('num', 1 if v == 0 else 0)
+        # ~~x -> x,  --x -> x  (double involution)
+        if operand[0] == 'unop' and operand[1] == op and op in ('~', '-'):
+            return operand[2]
+        return ('unop', op, operand)
+
+    if kind == 'binop':
+        _, op, left, right = e
+        left = fold_expr(left)
+        right = fold_expr(right)
+        if left[0] == 'num' and right[0] == 'num':
+            folded = _fold_binop(op, left[1], right[1])
+            if folded is not None:
+                return ('num', folded)
+        # identity simplifications (operand kept as-is on the other side)
+        ln = left[1] if left[0] == 'num' else None
+        rn = right[1] if right[0] == 'num' else None
+        if op in ('+', '-', '|', '^', '<<', '>>') and rn == 0:
+            return left                      # x+0, x-0, x|0, x^0, x<<0, x>>0
+        if op in ('+', '|') and ln == 0:
+            return right                     # 0+x, 0|x
+        if op == '*':
+            if rn == 1: return left          # x*1
+            if ln == 1: return right         # 1*x
+            if rn == 0 or ln == 0:
+                return ('num', 0)            # x*0, 0*x
+        if op == '&' and rn == 0xFF:
+            return left                      # x & 255
+        if op == '&' and ln == 0xFF:
+            return right                     # 255 & x
+        if op == '&' and (rn == 0 or ln == 0):
+            return ('num', 0)                # x & 0
+        return ('binop', op, left, right)
+
+    if kind == 'index':
+        return ('index', e[1], fold_expr(e[2]))
+    if kind == 'addrof_index':
+        return ('addrof_index', e[1], fold_expr(e[2]))
+    if kind == 'deref':
+        return ('deref', fold_expr(e[1]))
+    if kind == 'call':
+        return ('call', e[1], [fold_expr(a) for a in e[2]])
+    # num, var, addrof: nothing to fold
+    return e
+
+
+def fold_stmt(s):
+    """Fold every expression inside a statement (recursively)."""
+    kind = s[0]
+    if kind == 'decl':
+        return ('decl', s[1], fold_expr(s[2]) if s[2] is not None else None)
+    if kind == 'assign':
+        return ('assign', s[1], fold_expr(s[2]))
+    if kind == 'idxassign':
+        return ('idxassign', s[1], fold_expr(s[2]), fold_expr(s[3]))
+    if kind == 'deref_assign':
+        return ('deref_assign', fold_expr(s[1]), fold_expr(s[2]))
+    if kind == 'return':
+        return ('return', fold_expr(s[1]) if s[1] is not None else None)
+    if kind == 'exprstmt':
+        return ('exprstmt', fold_expr(s[1]))
+    if kind == 'if':
+        return ('if', fold_expr(s[1]), fold_stmt(s[2]),
+                fold_stmt(s[3]) if s[3] is not None else None)
+    if kind == 'while':
+        return ('while', fold_expr(s[1]), fold_stmt(s[2]))
+    if kind == 'block':
+        return ('block', [fold_stmt(x) for x in s[1]])
+    return s
+
+
+def fold_program(funcs):
+    """Apply constant folding to every function body."""
+    return [(ret, name, params, fold_stmt(body))
+            for (ret, name, params, body) in funcs]
+
+
+class Opts:
+    """Compiler options. Everything is OFF by default: the plain output stays
+    a direct, readable translation of the C so you can see how it maps to
+    assembly. Optimizations are opt-in via flags.
+
+      fold          constant folding + identity simplification (3+4 -> 7, x*1 -> x)
+      compact       smaller codegen (constant shifts, == 0 / != 0, unary minus)
+      save_restore  skip save/restore at non-recursive call sites
+      prefer_no_stack  omit the stack when no function recurses (drops the
+                       unused sp byte); recursion still gets a stack as needed
+
+    `all_on()` turns everything on (the --optimize umbrella flag).
+    """
+    def __init__(self, fold=False, compact=False, save_restore=False,
+                 prefer_no_stack=False):
+        self.fold = fold
+        self.compact = compact
+        self.save_restore = save_restore
+        self.prefer_no_stack = prefer_no_stack
+
+    @classmethod
+    def all_on(cls):
+        return cls(fold=True, compact=True, save_restore=True,
+                   prefer_no_stack=True)
+
+
+def compile_source(src, source_name, opts=None, optimize=None):
+    # Back-compat: older callers pass optimize=True/False to mean just the
+    # save/restore optimization. New callers pass opts=Opts(...).
+    if opts is None:
+        opts = Opts(save_restore=bool(optimize)) if optimize is not None else Opts()
     toks = lex(src)
     funcs = Parser(toks).parse_program()[1]
 
-    # Validate calls: every callee must be a defined function.
+    # Validate calls BEFORE folding: folding can drop a subexpression (x*0 -> 0),
+    # which would otherwise swallow a call to an undefined function and hide the
+    # error. Check on the raw parsed AST so the diagnostic is never lost.
     defined = {f[1] for f in funcs}
     for _, name, _params, body in funcs:
         for callee in _calls_in(body):
             if callee not in defined:
                 raise CompileError(f"call to undefined function {callee!r}")
+
+    if opts.fold:
+        funcs = fold_program(funcs)
 
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
@@ -2078,20 +2255,23 @@ def compile_source(src, source_name, optimize=False):
                 f"follow the recursion save/restore stack (take the address in a "
                 f"non-recursive function, or pass the value instead)")
 
-    main_block, bodies = lift_functions(funcs, recursive, optimize)
+    main_block, bodies = lift_functions(funcs, recursive, opts.save_restore)
 
-    gen = CodeGen()
-    return gen.generate(main_block, bodies, source_name)
+    gen = CodeGen(compact=opts.compact)
+    # Omit the stack byte only when nothing recurses (recursion needs it).
+    no_stack = opts.prefer_no_stack and not recursive
+    return gen.generate(main_block, bodies, source_name, no_stack=no_stack)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────
 
-def compile_file(in_path, out_path=None, optimize=False, run=False):
+def compile_file(in_path, out_path=None, opts=None, run=False):
     """Compile a .toyc file to a .toys file (the old `toycc` CLI behaviour).
 
     Writes the assembly to out_path (default: input with .toys extension). If
     run is True, assembles and simulates the result in-process and prints the
     ACC, matching the old `--run` output. Calls sys.exit on user-facing errors.
+    `opts` is an Opts() controlling optimizations (default: none).
     """
     import os
 
@@ -2102,7 +2282,7 @@ def compile_file(in_path, out_path=None, optimize=False, run=False):
         sys.exit(f"cannot read {in_path}: {e}")
 
     try:
-        asm = compile_source(src, os.path.basename(in_path), optimize)
+        asm = compile_source(src, os.path.basename(in_path), opts=opts)
     except CompileError as e:
         sys.exit(f"compile error: {e}")
 

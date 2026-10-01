@@ -600,3 +600,124 @@ def test_deep_recursion_fits_with_optimize():
     src = ("int f(int n){ if(n==0) return 0; return f(n-1)+1; }"
            " int main(void){ return f(2)+f(3)+f(4); }")   # = 9
     assert run_asm(compile_source(src, "t", optimize=True)) == 9
+
+
+# ── Optimizations (all opt-in via Opts; off by default) ──────────────────────
+# These pin correctness (results unchanged, mod-256 exact) AND the size win,
+# so a future refactor can't silently undo them. They also check that the
+# DEFAULT (no flags) output stays unoptimized — the readable translation.
+
+from pytoy.compiler import Opts
+
+def _fold(src):
+    return compile_source(wrap(src), "t", opts=Opts(fold=True))
+
+def _compact(src):
+    return compile_source(wrap(src), "t", opts=Opts(compact=True))
+
+def test_fold_constant_arithmetic():
+    """All-constant subexpressions fold at compile time (mod 256)."""
+    cases = [("return 3 + 4;", 7), ("return 10 - 25;", (10 - 25) & 0xFF),
+             ("return 200 + 100;", 300 & 0xFF), ("return 6 * 7;", 42),
+             ("return 1 << 3;", 8), ("return 200 >> 7;", 1),
+             ("return 12 & 10;", 8), ("return 5 | 2;", 7),
+             ("return 6 ^ 3;", 5), ("return ~15;", 240)]
+    for src, want in cases:
+        assert run_asm(_fold(src)) == want, src
+
+def test_fold_shrinks_constant_expr():
+    """3 + 4 folds to a single load, not load+add of two constants."""
+    folded = _fold("return 3 + 4;")
+    unfolded_size = _program_size(_fold("int x=3; return x + 4;"))
+    assert run_asm(folded) == 7
+    assert _program_size(folded) < unfolded_size
+
+def test_fold_identity_ops():
+    """Identity operations simplify away; results unchanged."""
+    for expr, want in [("x + 0", 42), ("x - 0", 42), ("x | 0", 42),
+                       ("x ^ 0", 42), ("x & 255", 42), ("x << 0", 42),
+                       ("x >> 0", 42), ("x * 1", 42), ("~~x", 42),
+                       ("- -x", 42)]:
+        assert run_asm(_fold(f"int x=42; return {expr};")) == want, expr
+
+def test_fold_multiply_by_zero_and_one():
+    """x*1 -> x and x*0 -> 0 drop the whole repeated-add loop."""
+    mul1 = _fold("int x=42; return x * 1;")
+    mul_real = _fold("int x=42; int y=3; return x * y;")
+    assert run_asm(mul1) == 42
+    assert run_asm(_fold("int x=42; return x * 0;")) == 0
+    assert _program_size(mul1) < _program_size(mul_real)
+
+def test_fold_off_by_default():
+    """Without the fold flag, constant expressions are NOT folded."""
+    asm = compile_c(wrap("return 3 + 4;"))
+    assert run_asm(asm) == 7
+    assert "add" in asm        # still emits a runtime add, not a folded load
+
+def test_constant_shift_no_count_spill():
+    """With compact codegen, a constant shift unrolls to right/left only; it
+    must not load/store the (unused) shift count into a temp."""
+    asm = _compact("int x=200; return x >> 7;")
+    assert run_asm(asm) == 1
+    assert "store t" not in asm, asm
+
+def test_variable_shift_still_works():
+    """The runtime (variable) shift path is unchanged, with and without compact."""
+    assert run_asm(_compact("int x=200; int n=3; return x >> n;")) == 25
+    assert run_c(wrap("int x=200; int n=3; return x >> n;")) == 25
+    assert run_c(wrap("int x=1; int n=5; return x << n;")) == 32
+
+def test_compare_zero_no_dead_sub():
+    """With compact codegen, `x != 0` / `x == 0` drop the dead `sub c_0`."""
+    ne = _compact("int x=5; if (x != 0) return 1; return 0;")
+    assert run_asm(ne) == 1
+    assert "sub   c_0" not in ne and "sub c_0" not in ne, ne
+    assert run_asm(_compact("int x=0; if (x == 0) return 7; return 0;")) == 7
+    assert run_asm(_compact("int x=3; if (x == 0) return 7; return 9;")) == 9
+
+def test_unary_minus_no_spill_for_var():
+    """With compact codegen, -x on a plain var subtracts from 0, no spill temp."""
+    asm = _compact("int x=5; return -x;")
+    assert run_asm(asm) == 251        # -5 mod 256
+    assert "store t" not in asm, asm
+
+def test_compact_off_by_default():
+    """Without the compact flag, -x still spills (unoptimized but correct)."""
+    assert run_c(wrap("int x=5; return -x;")) == 251
+
+def test_prefer_no_stack_drops_sp_when_no_recursion():
+    """--prefer-no-stack omits the sp byte for a non-recursive program, but
+    keeps it (and stays correct) when a function recurses."""
+    flat = compile_source("int add(int a,int b){return a+b;}"
+                          " int main(void){return add(2,3);}", "t",
+                          opts=Opts(prefer_no_stack=True))
+    assert run_asm(flat) == 5
+    assert "sp:" not in flat, flat
+    rec = compile_source("int f(int n){if(n==0)return 0;return f(n-1)+1;}"
+                         " int main(void){return f(3);}", "t",
+                         opts=Opts(prefer_no_stack=True))
+    assert run_asm(rec) == 3
+    assert "sp:" in rec        # recursion still gets its stack
+
+def test_optimize_all_on_preserves_results():
+    """-O (everything on) must not change any result."""
+    for src, want in [("int x=42; return x*1 + 0;", 42),
+                      ("int x=5; return -x;", 251),
+                      ("return 3 + 4;", 7),
+                      ("int x=0; if (x==0) return 7; return 9;", 7)]:
+        got = run_asm(compile_source(wrap(src), "t", opts=Opts.all_on()))
+        assert got == want, src
+
+def test_optimizations_preserve_examples():
+    """Every committed C example still produces its // expect: value, both at
+    default (no opts) and with everything on."""
+    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, "*.toyc"))):
+        src = open(path).read()
+        m = re.search(r"//\s*expect:\s*(\d+)", src, re.IGNORECASE)
+        if not m:
+            continue
+        want = int(m.group(1))
+        name = os.path.basename(path)
+        assert run_c(src, name) == want, f"{name} (default)"
+        assert run_asm(compile_source(src, name, opts=Opts.all_on())) == want, \
+            f"{name} (-O)"
