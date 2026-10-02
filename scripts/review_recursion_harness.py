@@ -38,8 +38,10 @@ def _run_capped(mem, syms, data_addrs, cap):
             raise StepCap(f"exceeded {cap} steps (likely infinite loop)")
 
 
-def run(src, optimize, cap=2_000_000):
-    asm = compile_source(src, 't')  # save/restore now automatic
+def run(src, cap=2_000_000):
+    # Save/restore is automatic now (only for recursive callers), so there is a
+    # single compile path — the old optimize on/off comparison no longer applies.
+    asm = compile_source(src, 't')
     mem, listing, syms, data_addrs, errors, data_start = toyasm.assemble(asm)
     hard = [e for e in errors if 'too big' in e or 'Bad value' in e]
     if hard:
@@ -48,28 +50,16 @@ def run(src, optimize, cap=2_000_000):
     return acc, steps, asm
 
 
-def both(src, cap=2_000_000):
-    """Return dict with acc for optimize False/True (or exception repr)."""
-    res = {}
-    for opt in (False, True):
-        try:
-            acc, steps, _ = run(src, opt, cap)
-            res[opt] = ('ok', acc, steps)
-        except Exception as e:
-            res[opt] = ('err', type(e).__name__, str(e))
-    return res
-
-
 def check(name, src, expected, cap=2_000_000):
-    r = both(src, cap)
-    o0, o1 = r[False], r[True]
-    ok = (o0[0] == 'ok' and o1[0] == 'ok'
-          and o0[1] == expected and o1[1] == expected)
-    inv = (o0[0] == 'ok' and o1[0] == 'ok' and o0[1] == o1[1])
-    status = 'PASS' if ok else ('INVAR-OK' if inv else 'FAIL')
-    print(f"[{status}] {name}: expected={expected} "
-          f"O0={o0[1:]} O1={o1[1:]}")
-    return ok, r
+    try:
+        acc, steps, _ = run(src, cap)
+    except Exception as e:
+        print(f"[FAIL] {name}: expected={expected} err={type(e).__name__}: {e}")
+        return False, None
+    ok = acc == expected
+    print(f"[{'PASS' if ok else 'FAIL'}] {name}: expected={expected} "
+          f"got={acc} steps={steps}")
+    return ok, acc
 
 
 if __name__ == '__main__':

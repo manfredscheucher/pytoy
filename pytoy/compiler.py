@@ -1497,8 +1497,9 @@ def find_recursive(graph):
 # (CodeGen.gen_push/gen_pop). The save set is the caller's slots LIVE ACROSS the
 # call, computed by a live-variable analysis (CallLifter.insert_save_restore);
 # "save everything" would be wrong (it re-saves the temp holding THIS call's
-# result and miscompiles fib(4) to 2). The `-O` flag skips save/restore around
-# calls whose caller is provably non-recursive — a pure size optimisation.
+# result and miscompiles fib(4) to 2). Save/restore is inserted automatically
+# and ONLY around calls whose caller is recursive — a non-recursive caller can't
+# be re-entered, so it needs none. This is correctness, not an optional pass.
 #
 # A pure AST-to-AST pass (CallLifter) does the rewrite. It turns each function
 # body into a call-free block using ('label',n)/('goto',n) plus small new
@@ -2365,7 +2366,8 @@ def compile_file(in_path, out_path=None, opts=None, run=False):
             print(f"WARNING: only {free} bytes of stack space (data ends at "
                   f"{top}, stack grows down from 255). Deep recursion will "
                   f"overflow into data and give wrong results — reduce the "
-                  f"input, or pass -O to shrink the code.", file=sys.stderr)
+                  f"input, or pass -O to shrink the code (fold/compact).",
+                  file=sys.stderr)
 
     if out_path is None:
         base = in_path

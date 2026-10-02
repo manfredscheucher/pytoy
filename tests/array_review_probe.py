@@ -138,8 +138,10 @@ def main():
         else:
             print(f"ok   {name}: acc={acc}" + ("" if expected is not None else " (behavior-only)"))
 
-    # 9. -O consistency: run every case both ways, compare
-    print("\n-- optimize on/off consistency --")
+    # 9. consistency sweep (historical): this used to compare optimize on/off,
+    # but save/restore is automatic now and there is a single compile path, so
+    # both runs are identical. Kept as a plain re-run smoke check.
+    print("\n-- consistency re-run (optimize flag is a no-op now) --")
     for name, src, expected, _o, check in CASES:
         try:
             a0, *_ = run(src, optimize=False)

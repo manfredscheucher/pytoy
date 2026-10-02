@@ -242,9 +242,11 @@ def run_all(optimize):
 
 
 def main():
+    # The optimize on/off loop is historical: save/restore is automatic now and
+    # both values compile identically, so the two passes are the same run.
     fails = []
     for opt in (False, True):
-        print(f"\n=== optimize={opt} ===")
+        print(f"\n=== pass {opt} (optimize flag is a no-op now) ===")
         fails += run_all(opt)
     run_rejects()
     print(f"\n{2*len(CASES)-len(fails)}/{2*len(CASES)} runs passed")

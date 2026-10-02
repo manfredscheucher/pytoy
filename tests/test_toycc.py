@@ -592,7 +592,6 @@ def test_recursion_keeps_results_and_stack():
 
 def test_stackfree_compiles_nonrecursive():
     """--stackfree compiles a non-recursive program (all global slots, no sp)."""
-    src = ("int f(int n){ if(n==0) return 0; return f(n-1)+1; }")  # not called -> not recursive? it is self-recursive
     ok = ("int sq(int x){return x*x;}"
           " int main(void){return sq(2)+sq(3)+sq(4);}")
     asm = compile_source(ok, "t", opts=Opts(stackfree=True))
@@ -605,6 +604,18 @@ def test_stackfree_rejects_recursion():
            " int main(void){ return f(3); }")
     with pytest.raises(CompileError, match="stackfree"):
         compile_source(src, "t", opts=Opts(stackfree=True))
+
+def test_nonrecursive_caller_of_recursion_gives_right_value():
+    """A non-recursive main calling a recursive helper several times: main gets
+    no save/restore (it can't be re-entered), the helper keeps its own. This
+    pins the numeric result — regression guard for the automatic save/restore,
+    which replaced the old -O flag. (If main ever wrongly got save/restore it
+    would bloat the stack; if the helper lost it, recursion would miscompile.)"""
+    src = ("int f(int n){ if(n==0) return 0; return f(n-1)+1; }"
+           " int main(void){ return f(2)+f(3)+f(4); }")   # 2+3+4 = 9
+    asm = compile_source(src, "t")
+    assert run_asm(asm) == 9
+    assert "sp:" in asm           # the recursive helper still has its stack
 
 
 # ── Optimizations (all opt-in via Opts; off by default) ──────────────────────
