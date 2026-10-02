@@ -6,8 +6,8 @@ This is the stripped-down sibling of pytoy/compiler.py (toycc). It deliberately
 leaves out everything optional so the whole pipeline fits in one short, linear
 file you can read top to bottom:
 
-    - only `int main(void) { ... }` -- no other functions, so NO call stack,
-      no save/restore, no recursion, no function-call machinery at all.
+    - multiple NON-RECURSIVE functions (main plus helpers), but NO call stack
+      and NO save/restore -- so recursion is impossible and is rejected.
     - no optimizations (no constant folding, no peepholes).
     - scalars, one-dimensional int arrays, if/else, while, return.
     - operators + - * & | ^ ~ << >> and == != < > <= >= .
@@ -21,7 +21,7 @@ declared inside a `{ }` block stays visible afterwards, unlike real C), and the
 bit-7 comparison above is silently wrong for operands 128 or more apart.
 
 It still compiles most of the single-function examples in examples/c/ correctly.
-For functions, recursion, pointers and optimizations, use the full toycc
+For recursion, pointers and optimizations, use the full toycc
 (pytoy/compiler.py).
 
 Pipeline: source text -> tokens (lex) -> AST (Parser) -> assembly (Gen).
@@ -96,8 +96,9 @@ def lex(src):
 # ── 2. Parser: tokens -> AST ─────────────────────────────────────────────────
 # AST node shapes (plain tuples):
 #   expressions: ('num', v) ('var', name) ('index', name, idx)
-#                ('unop', op, e) ('binop', op, a, b)
-#   statements:  ('decl', name, init_or_None)          int x = e;
+#                ('unop', op, e) ('binop', op, a, b) ('call', name, [args])
+#   statements:  ('callstmt', call)                    f(args);  (value discarded)
+#                ('decl', name, init_or_None)          int x = e;
 #                ('arraydecl', name, size, [inits])     int a[10] = {...};
 #                ('assign', name, e)                    x = e;
 #                ('store', name, idx, e)                a[i] = e;
@@ -132,26 +133,33 @@ class Parser:
             return self.next()
         return None
 
-    # program ::= 'int' 'main' '(' 'void' ')' block
+    # program ::= function+        (exactly one of them must be `main`)
+    # function ::= 'int' name '(' params ')' block
+    # params   ::= 'void' | 'int' name (',' 'int' name)*
     def parse_program(self):
+        funcs = []
+        while self.peek()[0] != 'eof':
+            funcs.append(self.parse_func())
+        names = [f[1] for f in funcs]
+        if 'main' not in names:
+            raise MiniError("no `int main(void)` function found")
+        return funcs
+
+    def parse_func(self):
         self.eat('kw', 'int')
         name = self.eat('id')[1]
-        if name != 'main':
-            raise MiniError(
-                f"minicc compiles only `int main(void)` — found a function "
-                f"{name!r}. For multiple functions use the full toycc.")
         self.eat('punct', '(')
-        self.accept('kw', 'void')
+        params = []
+        if not self.accept('kw', 'void'):
+            if self.peek() != ('punct', ')'):
+                self.eat('kw', 'int')
+                params.append(self.eat('id')[1])
+                while self.accept('punct', ','):
+                    self.eat('kw', 'int')
+                    params.append(self.eat('id')[1])
         self.eat('punct', ')')
         body = self.parse_block()
-        # Anything after main's body means a second function (or stray code),
-        # which minicc does not support.
-        if self.peek()[0] != 'eof':
-            raise MiniError(
-                "minicc compiles only a single `int main(void)` — extra "
-                "code after main (another function?) is not supported; "
-                "use the full toycc.")
-        return body
+        return ('func', name, params, body)
 
     def parse_block(self):
         self.eat('punct', '{')
@@ -212,6 +220,10 @@ class Parser:
 
     def parse_assign(self):
         name = self.eat('id')[1]
+        if self.peek() == ('punct', '('):      # a bare call statement: f(args);
+            call = self.parse_call(name)
+            self.eat('punct', ';')
+            return ('callstmt', call)
         if self.accept('punct', '['):
             idx = self.parse_expr()
             self.eat('punct', ']')
@@ -287,12 +299,24 @@ class Parser:
             self.eat('punct', ')')
             return e
         if t[0] == 'id':
+            if self.peek() == ('punct', '('):
+                return self.parse_call(t[1])
             if self.accept('punct', '['):
                 idx = self.parse_expr()
                 self.eat('punct', ']')
                 return ('index', t[1], idx)
             return ('var', t[1])
         raise MiniError(f"unexpected {t[1]!r} in expression")
+
+    def parse_call(self, name):
+        self.eat('punct', '(')
+        args = []
+        if self.peek() != ('punct', ')'):
+            args.append(self.parse_expr())
+            while self.accept('punct', ','):
+                args.append(self.parse_expr())
+        self.eat('punct', ')')
+        return ('call', name, args)
 
 
 # ── 3. Code generator: AST -> Toy assembly text ──────────────────────────────
@@ -301,14 +325,21 @@ class Parser:
 # only the accumulator, so intermediate values are spilled to memory).
 
 class Gen:
-    def __init__(self):
+    def __init__(self, funcs=None):
         self.code = []
         self.vars = {}          # name -> data label
         self.consts = {}        # value -> data label (deduplicated)
         self.arrays = {}        # name -> (base_label, size, inits)
         self.temps = []         # temp labels, all initialised to 0
+        self.all_vars = []      # every scalar's data label (across all functions)
+        self.all_arrays = []    # every array's (base_label, data_label, size, inits)
         self.n_label = 0
         self.n_temp = 0
+        # function support (see the marker-dispatch comment block below)
+        self.funcs = {f[1]: f for f in (funcs or [])}   # name -> ('func',...)
+        self.slots = []         # extra data bytes for f__p_*, f__ret, f__mark
+        self.cur_func = None    # name of the function body being generated
+        self.sites = {name: 0 for name in self.funcs}   # fname -> next site idx
 
     def emit(self, line):
         self.code.append(line)
@@ -349,6 +380,9 @@ class Gen:
             self.gen_unop(e)
         elif kind == 'binop':
             self.gen_binop(e)
+        elif kind == 'call':
+            self.gen_call(e)
+            self.emit(f"        load  {e[1]}__ret")
         else:
             raise MiniError(f"cannot compile expression {e!r}")
 
@@ -506,26 +540,37 @@ class Gen:
             _, name, init = s
             if name in self.vars or name in self.arrays:
                 raise MiniError(f"{name!r} already declared")
-            self.vars[name] = f"v_{name}"
+            label = f"v_{self.cur_func}__{name}"   # per-function: no collisions
+            self.vars[name] = label
+            self.all_vars.append(label)
             if init is not None:
                 self.gen_expr(init)
-                self.emit(f"        store {self.vars[name]}")
+                self.emit(f"        store {label}")
         elif kind == 'arraydecl':
             _, name, size, inits = s
             if name in self.vars or name in self.arrays:
                 raise MiniError(f"{name!r} already declared")
             if len(inits) > size:
                 raise MiniError(f"too many initialisers for {name!r}")
-            self.arrays[name] = (f"abase_{name}", size, inits)
+            tag = f"{self.cur_func}__{name}"        # per-function: no collisions
+            base, data = f"abase_{tag}", f"adata_{tag}"
+            self.arrays[name] = (base, size, inits)
+            self.all_arrays.append((base, data, size, inits))
         elif kind == 'assign':
             _, name, e = s
             self.gen_expr(e)
             self.emit(f"        store {self.var(name)}")
         elif kind == 'store':
             self.gen_store_index(s[1], s[2], s[3])
+        elif kind == 'callstmt':
+            self.gen_call(s[1])          # evaluate for effect; discard f__ret
         elif kind == 'return':
             self.gen_expr(s[1])
-            self.emit("        stop")
+            if self.cur_func == 'main':
+                self.emit("        stop")
+            else:
+                self.emit(f"        store {self.cur_func}__ret")
+                self.emit(f"        goto  {self.cur_func}__dispatch")
         elif kind == 'if':
             self.gen_if(s)
         elif kind == 'while':
@@ -565,6 +610,83 @@ class Gen:
         self.emit(f"        goto  {top}")
         self.emit(f"{end}: nop")
 
+    # -- functions: global slots + marker-dispatch --------------------------
+    # The Toy CPU has no call/return and no stack, so a call cannot push a
+    # return address. Instead every function f gets FIXED data bytes and its
+    # body is emitted ONCE:
+    #     f__p_<param>  one byte per parameter (caller writes the argument here)
+    #     f__ret        one byte              (body writes the return value here)
+    #     f__mark       one byte              (caller writes which call site called)
+    #     f__body:      the single copy of f's body
+    #     f__dispatch:  a compare-chain over f__mark that jumps back to the caller
+    # A call f(args) at site k: store each arg into f__p_<param>; store k into
+    # f__mark; `goto f__body`; f__cont_k: nop. The body's `return e` becomes
+    # `eval e; store f__ret; goto f__dispatch`, and the dispatch chain reads
+    # f__mark to jump back to f__cont_k. After the call the value is in f__ret.
+    # These slots are shared across all activations, so a second (recursive)
+    # entry would clobber the caller's — that is why recursion is rejected up
+    # front (compile_source builds the call graph and refuses any cycle).
+
+    def gen_call(self, e):
+        _, name, args = e
+        f = self.funcs[name]            # existence + arg count checked earlier
+        params = f[2]
+        # Evaluate every argument into a fresh temp FIRST, then copy the temps
+        # into the parameter slots. Doing it in one pass would be wrong for a
+        # call like f(y, f(x)): evaluating the second argument re-enters f and
+        # overwrites f__p_<first> before the jump.
+        temps = []
+        for arg in args:
+            self.gen_expr(arg)
+            t = self.new_temp()
+            self.emit(f"        store {t}")
+            temps.append(t)
+        for t, p in zip(temps, params):
+            self.emit(f"        load  {t}")
+            self.emit(f"        store {name}__p_{p}")
+        # Mark which call site we are, so f__dispatch can return here.
+        k = self.sites[name]
+        self.sites[name] += 1
+        self.emit(f"        load  {self.const(k)}")
+        self.emit(f"        store {name}__mark")
+        self.emit(f"        goto  {name}__body")
+        self.emit(f"{name}__cont_{k}: nop        # return lands here; value in {name}__ret")
+
+    def gen_function_body(self, f):
+        """Emit one function body. Its dispatch chain is added later, once every
+        call site in the whole program has been counted (gen_dispatch)."""
+        _, name, params, body = f
+        self.cur_func = name
+        # Parameters are addressed as the ordinary variable slots f__p_<param>.
+        self.vars = {p: f"{name}__p_{p}" for p in params}
+        self.arrays = {}
+        if name != 'main':      # main is never called, so it needs no slots
+            for p in params:
+                self.slots.append(f"{name}__p_{p}")
+            self.slots.append(f"{name}__ret")
+            self.slots.append(f"{name}__mark")
+        self.emit("")
+        self.emit(f"# function {name}(...) — single body, marker-dispatch return")
+        self.emit(f"{name}__body: nop")
+        self.gen_stmt(body)
+        # main has no dispatch chain (its caller added a stop guard). For a helper,
+        # a fall-through with no explicit return still goes to dispatch (f__ret
+        # keeps its last value). Skip it if the body already ends that way.
+        if name != 'main' and self.code[-1].strip() != f"goto  {name}__dispatch":
+            self.emit(f"        goto  {name}__dispatch")
+        self.cur_func = None
+
+    def gen_dispatch(self, name):
+        """A compare-chain over f__mark: for each call site k, jump back to its
+        continuation. Emitted after all bodies, so n_sites is final."""
+        self.emit("")
+        self.emit(f"{name}__dispatch: nop")
+        for k in range(self.sites.get(name, 0)):
+            self.emit(f"        load  {name}__mark")
+            self.emit(f"        sub   {self.const(k)}")
+            self.emit(f"        ifzero {name}__cont_{k}")
+        self.emit(f"        stop            # unreachable: bad {name} marker")
+
     # -- assemble the final .toys text --------------------------------------
     def finish(self, source_name):
         lines = [f"# Generated by minicc from {source_name}",
@@ -572,20 +694,21 @@ class Gen:
                  "# Result ends up in the accumulator at STOP.",
                  ""]
         lines += self.code
-        lines.append("        stop            # halt if control falls through")
         lines.append("")
         lines.append("# data")
-        for name, label in self.vars.items():
+        for label in self.all_vars:
             lines.append(f"{label}: 0")
+        for slot in self.slots:          # f__p_*, f__ret, f__mark
+            lines.append(f"{slot}: 0")
         for t in self.temps:
             lines.append(f"{t}: 0")
         for value, label in sorted(self.consts.items()):
             lines.append(f"{label}: {value}")
         # arrays last: a base byte holding the array address, then its elements.
-        # The element block uses a prefixed label (adata_<name>), not the bare
-        # user name, so an array named like a temp/const (t1, c_5) can't collide.
-        for name, (base, size, inits) in self.arrays.items():
-            data = f"adata_{name}"
+        # The element block uses a prefixed label (adata_<fn>__<name>), not the
+        # bare user name, so an array named like a temp/const (t1, c_5) can't
+        # collide, and two functions can each have an array of the same name.
+        for base, data, size, inits in self.all_arrays:
             lines.append(f"{base}: {data}")
             cells = list(inits) + [0] * (size - len(inits))
             lines.append(f"{data}: {cells[0]}")
@@ -594,11 +717,78 @@ class Gen:
         return "\n".join(lines) + "\n"
 
 
+# ── 4. Whole-program checks and driver ───────────────────────────────────────
+
+def _calls(node):
+    """Yield every ('call', name, args) tuple anywhere inside an AST node."""
+    if not isinstance(node, tuple):
+        return
+    if node[0] == 'call':
+        yield node
+    for part in node[1:]:
+        if isinstance(part, tuple):
+            yield from _calls(part)
+        elif isinstance(part, list):
+            for item in part:
+                yield from _calls(item)
+
+
+def check_calls(funcs):
+    """Reject undefined calls and wrong argument counts."""
+    defined = {f[1]: f[2] for f in funcs}       # name -> params
+    for _, _name, _params, body in funcs:
+        for _, callee, args in _calls(body):
+            if callee not in defined:
+                raise MiniError(f"call to undefined function {callee!r}")
+            if len(args) != len(defined[callee]):
+                raise MiniError(
+                    f"{callee}() takes {len(defined[callee])} argument(s), "
+                    f"got {len(args)}")
+
+
+def check_no_recursion(funcs):
+    """Build the call graph and reject any cycle: minicc is stackfree, so a
+    function cannot call itself directly or indirectly (there is nowhere to save
+    the caller's slots). DFS from each function looking for a path back to it."""
+    graph = {f[1]: {c[1] for c in _calls(f[3])} for f in funcs}
+
+    def reaches_self(start):
+        seen, stack = set(), list(graph.get(start, ()))
+        while stack:
+            n = stack.pop()
+            if n == start:
+                return True
+            if n not in seen:
+                seen.add(n)
+                stack.extend(graph.get(n, ()))
+        return False
+
+    bad = sorted(name for name in graph if reaches_self(name))
+    if bad:
+        raise MiniError(
+            f"recursion is not supported by minicc (stackfree): "
+            f"function(s) {', '.join(bad)} call themselves directly or "
+            f"indirectly. Use the full toycc for recursion.")
+
+
 def compile_source(src, source_name="minicc"):
     """Compile C source text to Toy CPU assembly text."""
-    ast = Parser(lex(src)).parse_program()
-    gen = Gen()
-    gen.gen_stmt(ast)
+    funcs = Parser(lex(src)).parse_program()
+    check_calls(funcs)
+    check_no_recursion(funcs)
+    gen = Gen(funcs)
+    # main first (its `return` halts); then each helper body; then every
+    # helper's dispatch chain, by which time all call sites have been counted.
+    main = next(f for f in funcs if f[1] == 'main')
+    if main[2]:                 # main(void) only: main is never called, has no slots
+        raise MiniError("main must take no parameters: `int main(void)`")
+    helpers = [f for f in funcs if f[1] != 'main']
+    gen.gen_function_body(main)
+    gen.emit("        stop            # end of main (halt if it falls through)")
+    for f in helpers:
+        gen.gen_function_body(f)
+    for f in helpers:
+        gen.gen_dispatch(f[1])
     return gen.finish(source_name)
 
 
