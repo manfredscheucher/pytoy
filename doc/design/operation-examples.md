@@ -71,6 +71,6 @@ All `01-basics/` (14) and `02-extended/` assemble and run
 (`run.py sim … --cli --run`) with the expected ACC / memory result. The
 `03-programs/` move keeps `test_toyasm.py` green (paths updated).
 
-`scripts/gen_golden.py` recurses into the three tier folders, so the golden
-table (`tests/golden/asm_golden.json`, checked by `test_golden.py`) covers every
+`scripts/gen_snapshot.py` recurses into the three tier folders, so the snapshot
+table (`tests/snapshot/asm_snapshot.json`, checked by `test_snapshot.py`) covers every
 example, not just the programs.

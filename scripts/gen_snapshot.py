@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate a "golden" behaviour table for pytoy's example assembly programs.
+Generate a "snapshot" behaviour table for pytoy's example assembly programs.
 
 For every examples/asm/**/*.toys this assembles the source in-process (same
 pytoy.assembler.assemble the CLI uses), runs it on the same CPU core
@@ -9,12 +9,12 @@ final ACC, the number of steps executed, whether a max-step cap was hit, and the
 final values of every data/touched memory address.
 
 The result is written as deterministic, sorted JSON to
-tests/golden/asm_golden.json so it diffs cleanly and can be committed. A later
+tests/snapshot/asm_snapshot.json so it diffs cleanly and can be committed. A later
 Kotlin port (ktoy) can be checked against the exact same numbers.
 
 Run it as:
-    python3 scripts/gen_golden.py
-    .venv/bin/python scripts/gen_golden.py
+    python3 scripts/gen_snapshot.py
+    .venv/bin/python scripts/gen_snapshot.py
 
 stdlib + pytoy only, no PySide6.
 """
@@ -32,7 +32,7 @@ from pytoy.assembler import assemble  # noqa: E402
 from pytoy.core import decode, execute_one  # noqa: E402
 
 ASM_DIR = os.path.join(REPO_ROOT, "examples", "asm")
-OUT_PATH = os.path.join(REPO_ROOT, "tests", "golden", "asm_golden.json")
+OUT_PATH = os.path.join(REPO_ROOT, "tests", "snapshot", "asm_snapshot.json")
 
 # Guard against non-terminating programs. These examples are tiny (256-byte
 # programs), so anything past this cap is a runaway loop, not real work.
@@ -49,7 +49,7 @@ def run_program(mem_in, data_addrs, max_steps=MAX_STEPS):
 
     Memory-mapped I/O is a GUI-only feature, so this headless runner treats
     240..255 as ordinary memory. Input-driven I/O examples (which poll for a
-    value that never arrives here) are excluded from the golden table instead.
+    value that never arrives here) are excluded from the snapshot table instead.
 
     Returns (final_acc, steps, touched_addrs, final_mem, hit_cap).
     """
@@ -74,8 +74,8 @@ def run_program(mem_in, data_addrs, max_steps=MAX_STEPS):
     return acc, steps, touched, mem, hit_cap
 
 
-def golden_for_file(path):
-    """Assemble and run one .toys file. Returns the golden dict entry."""
+def snapshot_for_file(path):
+    """Assemble and run one .toys file. Returns the snapshot dict entry."""
     with open(path) as f:
         src = f.read()
 
@@ -106,8 +106,8 @@ def golden_for_file(path):
     }
 
 
-def build_golden():
-    """Build the full golden table for every examples/asm/**/*.toys (sorted).
+def build_snapshot():
+    """Build the full snapshot table for every examples/asm/**/*.toys (sorted).
 
     Keyed by the path RELATIVE to examples/asm/ without the .toys extension
     (e.g. "03-programs/fibonacci"), so two files with the same basename in
@@ -125,11 +125,11 @@ def build_golden():
         key = os.path.splitext(rel)[0]               # e.g. "03-programs/fibonacci"
         if os.path.basename(key) in SKIP:
             continue
-        table[key] = golden_for_file(path)
+        table[key] = snapshot_for_file(path)
     return table
 
 
-def write_golden(table, out_path=OUT_PATH):
+def write_snapshot(table, out_path=OUT_PATH):
     """Write the table as deterministic JSON (sorted keys, indent=2)."""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
@@ -148,8 +148,8 @@ def print_summary(table):
 
 
 def main():
-    table = build_golden()
-    write_golden(table)
+    table = build_snapshot()
+    write_snapshot(table)
     print_summary(table)
     print(f"\nWrote {OUT_PATH}")
 

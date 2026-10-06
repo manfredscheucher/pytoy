@@ -93,7 +93,7 @@ pressed into service as a sixteenth output cell.
 `io0`..`io11`.
 
 All four `numbers*` and `hello_world` are deterministic headless, so they are in
-the golden table (`tests/golden/asm_golden.json`); the busy-poll demos
+the snapshot table (`tests/snapshot/asm_snapshot.json`); the busy-poll demos
 (`poll_demo`, `greet_name`, `sort`) are excluded because they spin without a GUI
 to feed `ready`.
 

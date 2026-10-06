@@ -43,7 +43,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
     # max_steps: safety cap so a runaway loop can't hang the terminal forever.
     #
     # NOTE: memory-mapped I/O is a GUI-only feature. This headless runner (used
-    # by --run and by the test suite / golden table) treats addresses 240..255
+    # by --run and by the test suite / snapshot table) treats addresses 240..255
     # as ordinary memory — it does not prompt for input or echo output.
     mem  = list(mem_in)
     rsym = {v: k for k, v in syms.items()}

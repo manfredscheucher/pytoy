@@ -13,7 +13,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
 from pytoy.assembler import assemble            # noqa: E402
-from scripts.gen_golden import run_program      # noqa: E402
+from scripts.gen_snapshot import run_program      # noqa: E402
 
 IO_DIR = os.path.join(REPO_ROOT, "examples", "asm", "04-io")
 
