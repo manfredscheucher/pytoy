@@ -1,12 +1,10 @@
-# IFZERO (00011001) — jump only if the accumulator is zero
-# acc is 0 here, so the jump is taken and acc ends up 42.
+# IFZERO (00011001) — jump to an address only if the accumulator is zero
+# x is 0, so the jump to `done` is taken and `LOAD y` is skipped; acc stays 0.
 
-        load  z         # acc = 0
-        ifzero skip     # acc == 0 -> jump
-        load  y         # skipped
-skip:   load  x         # acc = 42
-        stop
+        load  x         # acc = x
+        ifzero done     # x == 0 -> jump to done
+        load  y         # x != 0: acc = y
+done:   stop
 
-x:      42
+x:      0
 y:      99
-z:      0

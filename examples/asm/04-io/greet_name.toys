@@ -1,0 +1,149 @@
+# greet_name.toys — read a name via busy-poll, then write a greeting.
+#
+# GUI usage:
+#   1. type the name into io0, io1, io2, ... — one ASCII character per cell.
+#   2. set `ready` (255) to the NUMBER of characters typed, via Edit.
+# The program busy-polls `ready`; once non-zero it reads `ready` as the length
+# N, copies io0..io(N-1) (the name) into a scratch area, then overwrites the io
+# cells with the greeting  "hallo " + NAME + "!"  starting at io0.
+#
+#   output layout:  io0..io5 = 'h','a','l','l','o',' '
+#                   io6..     = the N name characters
+#                   then      = '!'
+#
+# The name is copied to scratch FIRST, because writing "hallo " clobbers
+# io0..io5 (which may still hold name characters when N > 6).
+#
+# (A '.'-terminated variant is possible — read until a '.' appears — but passing
+#  the length in `ready` is cleaner and needs no sentinel, so we use that.)
+#
+# Example: user types "Max" -> io0='M'(77), io1='a'(97), io2='x'(120), ready=3.
+# Result: io0..io9 = h,a,l,l,o,space,M,a,x,!  i.e. "hallo Max!".
+#
+# Self-modifying code (patched LOAD/STORE address bytes) indexes the io cells by
+# the runtime count N, same technique as sort.toys / sum_array.toys.
+#
+# pytoy: output=ascii
+
+# ── 1. busy-poll until ready != 0, then n = ready ─────────────────
+wait:   load  ready
+        ifzero wait
+        load  ready
+        store n              # n = number of name characters
+
+# ── 2. copy io0..io(n-1) into scratch[] ───────────────────────────
+        load  iobase
+        store rdarg          # read pointer over the io cells (starts at io0=240)
+        load  scraddr
+        store wrarg          # write pointer over scratch[]
+        load  n
+        store cnt            # cnt = how many chars still to copy
+
+cploop: load  cnt
+        ifzero cpdone
+
+        20                   # LOAD opcode
+rdarg:  240                  # ← io cell, patched each pass (io0, io1, ...)
+        21                   # STORE opcode
+wrarg:  scratch              # ← scratch slot, patched each pass
+
+        load  rdarg          # advance io read pointer
+        add   one
+        store rdarg
+        load  wrarg          # advance scratch write pointer
+        add   one
+        store wrarg
+        load  cnt
+        sub   one
+        store cnt
+        goto  cploop
+
+cpdone:
+
+# ── 3. write "hallo " to io0..io5 ─────────────────────────────────
+        load  gh
+        store io0
+        load  ga
+        store io1
+        load  gl
+        store io2
+        load  gl2
+        store io3
+        load  go
+        store io4
+        load  gsp
+        store io5
+
+# ── 4. append the name: scratch[0..n-1] -> io6.. ──────────────────
+        load  scraddr
+        store r2arg          # read pointer over scratch[]
+        load  nameout        # io6 = 246 = first name slot in the output
+        store w2arg          # write pointer over the io cells
+        load  n
+        store cnt            # reuse cnt as the remaining-name counter
+
+wrloop: load  cnt
+        ifzero wrdone
+
+        20                   # LOAD opcode
+r2arg:  scratch              # ← scratch slot, patched each pass
+        21                   # STORE opcode
+w2arg:  246                  # ← io cell (io6..), patched each pass
+
+        load  r2arg          # advance scratch read pointer
+        add   one
+        store r2arg
+        load  w2arg          # advance io write pointer
+        add   one
+        store w2arg
+        load  cnt
+        sub   one
+        store cnt
+        goto  wrloop
+
+wrdone:
+
+# ── 5. append "!" right after the name (at io(6+n)) ───────────────
+#   w2arg was advanced once per name char, so it now points one past the last
+#   name cell, i.e. io(6+n) — exactly where '!' goes. Copy it into the STORE.
+        load  w2arg
+        store bangarg        # patch the '!' STORE address
+        load  gbang
+        21                   # STORE opcode
+bangarg: 0                   # ← io(6+n), patched above
+        stop
+
+# data
+zero:    0
+one:     1
+n:       0
+cnt:     0
+iobase:  240          # io0 (numeric init for a self-modifying pointer)
+nameout: 246          # io6
+scraddr: scratch      # address constant: start of scratch[]
+
+# greeting "hallo " codes
+gh:   104             # 'h'
+ga:    97             # 'a'
+gl:   108             # 'l'
+gl2:  108             # 'l'
+go:   111             # 'o'
+gsp:   32             # ' '
+gbang: 33             # '!'
+
+# scratch area for the typed name (up to 15 chars)
+scratch: 0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0
+         0

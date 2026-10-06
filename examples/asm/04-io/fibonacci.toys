@@ -1,0 +1,50 @@
+# fibonacci.toys — compute fib(0..13) and write them to io0..io13 (decimal).
+# fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2).  fib(13)=233 is the largest that
+# still fits in one byte (fib(14)=377 would overflow).
+#
+# The output index is advanced by self-modifying code: the STORE below has its
+# address byte patched each iteration to point at the next out cell.
+#
+# pytoy: output=decimal
+
+        load  a
+wloop:  load  count
+        ifzero done
+
+        # write the current fib value (in `a`) to out[i] via a patched STORE
+        load  a
+        store ival        # stash the value to write
+iop:    21                # STORE opcode (raw byte)
+iarg:   240               # <- address, starts at io0 (240), patched each pass
+        # (the STORE above wrote ival into out[i])
+
+        # advance the output pointer
+        load  iarg
+        add   one
+        store iarg
+
+        # fib step: next = a + b ; a = b ; b = next
+        load  a
+        add   b
+        store next
+        load  b
+        store a
+        load  next
+        store b
+
+        # count down
+        load  count
+        sub   one
+        store count
+        goto  wloop
+
+done:   load  a
+        stop
+
+# data
+a:     0            # fib(i)
+b:     1            # fib(i+1)
+next:  0
+count: 14           # write 14 values: fib(0)..fib(13)
+one:   1
+ival:  0

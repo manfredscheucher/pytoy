@@ -1,0 +1,17 @@
+// hello_world — write "Hello world!" out to the io cells.
+//
+// Each character is stored into a buffer, then write(data, 12) sends all 12
+// bytes out to io0..io11. Pick ascii in the GUI (View -> I/O format) to read
+// them as letters; it is the default for compiled I/O programs.
+//
+// pytoy: output=ascii
+
+int main(void) {
+    // A constant initializer list: these become the array's initial data bytes
+    // at compile time, far smaller than twelve runtime stores (which overflow
+    // the 256-byte machine).
+    int data[12] = {'H', 'e', 'l', 'l', 'o', ' ',
+                    'w', 'o', 'r', 'l', 'd', '!'};
+    write(data, 12);
+    return 0;
+}

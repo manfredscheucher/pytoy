@@ -33,28 +33,18 @@ real Altair opcodes.
 
 == Why pytoy exists
 
-The Toy CPU itself is wonderful because it is _small_ --- the whole machine fits
-in your head. But driving it through LEDs and switches gets tiring fast: entering
-a program bit by bit is slow, you can't see much of what's going on, and you tend
-to give up experimenting before you've really explored. That switch-and-light
-workflow has its own charm --- it's honest about how bare a computer really is
---- but it's a narrow doorway.
+I started pytoy because I find the Toy CPU very elegant. It shows clearly how a
+CPU works, with few enough parts that the whole machine fits in your head.
+Working at the assembly level makes it far more accessible than entering bits by
+hand, and the Toy CPU is really just bytecode, so the assembly maps straight onto
+what the machine runs.
 
-The sharpest difference is what you can _see at once_. On the original front
-panel you look at one value at a time --- one register, one address --- and step
-or click through the rest; the machine only ever shows you a single 8-bit box.
-pytoy shows everything simultaneously: the whole program, every byte of memory,
-the accumulator, and the program counter, all on screen together, updating as you
-step. Watching the PC move and the bytes change in one view is what makes a bug
-obvious instead of invisible.
-
-So pytoy keeps the tiny, comprehensible machine and widens the doorway. With a
-graphical view of all of memory and the accumulator, an assembly layer, and a C
-layer on top, you spot your mistakes almost immediately (instead of staring at
-LEDs that tell you nothing) and you can keep experimenting far longer. The limits
-are still real and instructive: 256 addresses means both the assembly and the C
-you can write stay small, and it's easy to run out of room --- which is itself
-part of the lesson (see the note on memory limits below).
+On top of that, pytoy adds a small C (minicc) and a fuller C with a real stack,
+so you can follow the whole transition: what happens when you write C, how it is
+translated down to bytecode, and how input/output works. (I/O for C is still
+being added.) The 256-address limit stays real and instructive throughout:
+programs have to stay small, and it is easy to run out of room (see the note on
+memory limits below).
 
 == The machine
 
@@ -95,7 +85,7 @@ FreeDOS/OpenWatcom-only.
   ADD/SUB (`>255 #sym.arrow #sym.minus 256`, `<0 #sym.arrow #sym.plus 256`).
 
 This is unavoidable: matching the instruction set _means_ matching these numbers
-and their behaviour. It is the specification, not copied code.
+and their behaviour.
 
 *Written from scratch for pytoy (not present in toycpu):*
 
@@ -110,18 +100,11 @@ and their behaviour. It is the specification, not copied code.
 pytoy's Python is deliberately *simple, standard-library + PySide6 code* ---
 readability is a feature, since the point is to _see_ how the machine works.
 
-== Licensing
+== Credits and license
 
-Both projects are MIT-licensed, so the provenance is clean.
+The Toy CPU instruction set and design are by Jim Hall (FreeDOS Project). pytoy's
+own code (assembler, GUI, compiler) is independent.
 
-- toycpu is MIT, Copyright (c) 2022 Jim Hall (FreeDOS Project).
-- pytoy is MIT, Copyright (c) 2026 Manfred Scheucher, for its own code
-  (assembler, GUI, CLI).
-
-Strictly, an instruction set on its own (a list of opcodes and what they do) is
-likely not copyrightable --- interfaces generally are not. So reusing only the
-opcode numbers and semantics, with everything else rewritten, probably carries
-no attribution obligation at all. But since toycpu is MIT anyway, pytoy
-reproduces Jim Hall's original MIT notice in the repository's `NOTICE` file,
-which makes the question moot: MIT-on-MIT, both copyright holders credited side
-by side.
+Both projects are MIT-licensed: toycpu Copyright (c) 2022 Jim Hall (FreeDOS
+Project), pytoy Copyright (c) 2026 Manfred Scheucher. Jim Hall's original notice
+is reproduced in the repository's `NOTICE` file.

@@ -328,8 +328,8 @@ the expected accumulator result.
 | `fibonacci_iter.toyc` | fib(10), iterative                           | 55  |
 | `fibonacci_rec.toyc`  | fib(10), recursive                           | 55  |
 | `fibonacci_array.toyc`| first 10 Fibonacci numbers in an array; a[9] | 34  |
-| `factorial_iter.toyc` | 5!, iterative (`for` loop)                   | 120 |
-| `factorial_rec.toyc`  | 5!, recursive                                | 120 |
+| `count_iter.toyc`  | count up to 10, iterative (`while` loop)        | 10  |
+| `count_rec.toyc`   | count up to 10, recursive                       | 10  |
 | `gcd_iter.toyc`    | gcd(48,36) by subtraction, iterative            | 12  |
 | `gcd_rec.toyc`     | gcd(48,36) by subtraction, recursive            | 12  |
 | `sum_array.toyc`   | sum of an array of the 10 pi digits             | 39  |

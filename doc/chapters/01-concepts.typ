@@ -83,6 +83,11 @@ flags. Values simply wrap around modulo 256. This is a feature --- with so few
 parts you can understand _the entire machine_, and build up multiplication,
 comparison, and loops yourself from the primitives.
 
+Modern CPUs are built specifically around a stack plus a base/frame pointer. The
+Toy CPU has none of that in hardware, but you can simulate one in software: the C
+compiler builds a stack itself, which is what makes recursion work (see the
+stack-and-recursion chapter).
+
 == The ladder: from C down to the lights
 
 On the original Toy CPU you enter a program the hard way: one byte at a time, in

@@ -12,6 +12,7 @@ import re
 import difflib
 
 from .core import OPCODES, has_operand, parse_val, _describe
+from .format import IO_SYMBOLS, IO_BASE
 
 
 def _did_you_mean(word):
@@ -74,21 +75,28 @@ def assemble(src):
     """
     parsed = parse_source(src)
 
-    # pass 1 – addresses + symbols, and total size check
-    syms, addr = {}, 0
+    # pass 1 – addresses + symbols, and total size check. Pre-seed the reserved
+    # memory-mapped I/O labels (io0..io14 = 240..254, ready = 255) so programs
+    # can write `STORE io0` / `LOAD ready`. A user label of the same name
+    # overrides the seed (the assignment below runs after), which is fine.
+    syms, addr = dict(IO_SYMBOLS), 0
     for label, mn, _, _, _ in parsed:
         if label is not None:
             syms[label] = addr
         if mn is None: continue
         addr += (2 if (mn in OPCODES and has_operand(OPCODES[mn])) else 1)
 
-    # The Toy CPU has exactly 256 bytes. Report an overflow as a normal error
-    # instead of letting pass 2 crash with an IndexError.
-    if addr > 256:
-        errors = [f"Program is too big: it needs {addr} bytes, but the Toy CPU "
-                  f"has only 256 ({addr - 256} too many). Instructions with an "
-                  f"operand (load/store/add/sub/and/or/xor/goto/ifzero) take 2 "
-                  f"bytes; the rest take 1. Remove some instructions or data."]
+    # The Toy CPU has 256 bytes, but 240..255 are reserved for memory-mapped I/O
+    # (io0..io14 and ready — see doc/chapters/09-io.typ). Program code and data
+    # must stay below IO_BASE (240); a byte placed at 240+ would alias an io cell
+    # and get clobbered at runtime. So the usable program space is 0..239.
+    if addr > IO_BASE:
+        over = addr - IO_BASE
+        errors = [f"Program is too big: it needs {addr} bytes, but only the "
+                  f"{IO_BASE} bytes below the I/O region (240..255) are usable "
+                  f"({over} too many). Instructions with an operand "
+                  f"(load/store/add/sub/and/or/xor/goto/ifzero) take 2 bytes; "
+                  f"the rest take 1. Remove some instructions or data."]
         return [0]*256, [], syms, set(), errors, None
 
     # pass 2 – emit
@@ -146,6 +154,20 @@ def _resolve(op, syms, ctx, errors, lineno, orig):
         return 0
     k = op.lower()
     if k in syms: return syms[k]
+    # label arithmetic: `label+N` / `label-N` resolves to the label's address
+    # plus/minus a constant offset. The compiler uses this for a[const] so a
+    # constant array index becomes a direct `load arr+3` (2 bytes) instead of
+    # self-modifying address patching (~18 bytes).
+    m = re.fullmatch(r'\s*([A-Za-z_][\w]*)\s*([+-])\s*(\w+)\s*', op)
+    if m:
+        base, sign, off = m.group(1).lower(), m.group(2), m.group(3)
+        if base in syms:
+            try:
+                delta = parse_val(off)
+            except Exception:
+                delta = None
+            if delta is not None:
+                return (syms[base] + (delta if sign == '+' else -delta)) & 0xFF
     try:    return parse_val(op)
     except:
         errors.append(_err(lineno, orig,

@@ -1,0 +1,32 @@
+// pin_check — read a 4-digit PIN and check it against 1337.
+//
+// GUI usage (ascii input): type the four digits into io0..io3 (e.g. '1','3',
+// '3','7'), then set `ready` to a non-zero value to submit. The program reads
+// the digits, compares them to "1337", and writes back "succ" or "fail".
+//
+// The digits are checked one at a time; the first mismatch falls through to
+// "fail". Only when all four match does it reach "succ". (Nested ifs rather
+// than one && chain keep the program inside the 240 usable bytes.)
+//
+// pytoy: output=ascii
+
+int main(void) {
+    int data[4];
+    int succ[4] = {'s', 'u', 'c', 'c'};
+    int fail[4] = {'f', 'a', 'i', 'l'};
+
+    read(data);
+
+    if (data[0] == '1') {
+        if (data[1] == '3') {
+            if (data[2] == '3') {
+                if (data[3] == '7') {
+                    write(succ, 4);
+                    return 1;
+                }
+            }
+        }
+    }
+    write(fail, 4);
+    return 0;
+}

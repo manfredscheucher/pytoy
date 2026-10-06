@@ -1,0 +1,31 @@
+# countdown.toys — count down from 10 to 1, writing each step to an out cell.
+# io0=10, io1=9, ... io9=1  (decimal).
+# Same self-modifying output-pointer trick as fibonacci.toys.
+#
+# pytoy: output=decimal
+
+wloop:  load  n
+        ifzero done       # n == 0 -> done
+
+        # write n to out[i] via a patched STORE
+        load  n
+iop:    21                # STORE opcode
+iarg:   240               # <- address, patched each pass (starts at io0)
+
+        # advance the output pointer
+        load  iarg
+        add   one
+        store iarg
+
+        # n = n - 1
+        load  n
+        sub   one
+        store n
+        goto  wloop
+
+done:   load  n
+        stop
+
+# data
+n:    10
+one:   1

@@ -88,7 +88,11 @@ The full manual is a PDF built from Typst sources in
 **[`doc/`](doc/)** — written for newcomers with no assembly
 background. It covers: how a CPU works (memory, accumulator, program counter,
 the fetch–execute cycle), the full instruction set, assembly syntax, worked
-example programs, using the GUI and CLI, and the C → assembly pipeline.
+example programs, using the GUI and CLI, memory-mapped I/O, and the C → assembly
+pipeline.
+
+For the full opcode table and the bytecode/assembly/C explanations, see the
+manual's **"Instruction set"** chapter (it's not duplicated here).
 
 Grab the prebuilt [`doc/pytoy.pdf`](doc/pytoy.pdf), or rebuild it
 with [Typst](https://typst.app):

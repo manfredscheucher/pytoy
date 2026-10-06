@@ -1,0 +1,25 @@
+// expect: 10
+/*
+ * count_rec.c - count up to 10 RECURSIVELY.
+ *
+ * f(n) = 0            if n == 0
+ *      = f(n - 1) + 1 otherwise
+ * so f(10) = 10.
+ *
+ * The iterative version is in count_iter.toyc; both return 10.
+ * toycc compiles the recursion with a self-modifying-code stack (see the
+ * manual).
+ *
+ * Expected result: ACC = 10
+ */
+
+int f(int n) {
+    if (n == 0) {
+        return 0;
+    }
+    return f(n - 1) + 1;
+}
+
+int main(void) {
+    return f(10);
+}

@@ -1,0 +1,187 @@
+# sort.toys — read up to 15 numbers, sort them ascending, write them back.
+#
+# GUI usage:
+#   1. type the array values into io0, io1, io2, ... — one number per cell.
+#   2. set `ready` (255) to the COUNT N of values typed, via Edit.
+# The program busy-polls `ready`; once non-zero it reads `ready` as N, copies
+# io0..io(N-1) into a scratch array, bubble-sorts it ascending, then writes the
+# sorted values back to io0..io(N-1).
+#
+# Example: user types io0..io3 = 5,3,8,1 and ready=4.
+# Result: io0..io3 = 1,3,5,8.
+#
+# Compare trick (same as 03-programs/sort_array.toys): (b - a) mod 256, bit 7
+# set  =>  b < a  =>  swap. Unambiguous as long as any two values differ by
+# less than 128 (true for the small inputs here).
+#
+# Self-modifying code (patched LOAD/STORE address bytes) indexes the io cells
+# and the scratch array by the runtime count N.
+#
+# pytoy: output=decimal
+
+# ── 1. busy-poll until ready != 0, then n = ready ──────────────────────────
+wait:   load  ready
+        ifzero wait
+        load  ready
+        store n              # n = how many values the user supplied
+
+# ── 2. copy io0..io(n-1) into arr[] ────────────────────────────────────────
+        load  iobase
+        store rdarg          # read pointer over the io cells (io0=240..)
+        load  arrptr
+        store wrarg          # write pointer over arr[]
+        load  n
+        store cnt
+
+cploop: load  cnt
+        ifzero cpdone
+
+        20                   # LOAD opcode
+rdarg:  240                  # ← io cell, patched each pass
+        21                   # STORE opcode
+wrarg:  0                    # ← arr slot, patched each pass
+
+        load  rdarg
+        add   one
+        store rdarg
+        load  wrarg
+        add   one
+        store wrarg
+        load  cnt
+        sub   one
+        store cnt
+        goto  cploop
+
+cpdone:
+
+# ── 3. bubble sort arr[0..n-1] ascending ───────────────────────────────────
+# outer runs n-1 passes; inner compares adjacent pairs, n-1 of them per pass.
+        load  n
+        sub   one
+        store npass          # npass = n - 1 outer passes
+
+outer:  load  npass
+        ifzero sorted        # all passes done
+
+        load  arrptr
+        store jptr           # reset inner pointer j to arr[0]
+
+        load  npass
+        store ninner         # ninner = npass comparisons this pass
+
+inner:  load  ninner
+        ifzero next_pass
+
+        # patch the four indirect instructions from jptr (a[j]) and jptr+1
+        load  jptr
+        store ldj_arg
+        store stj_arg
+        add   one
+        store ldj1_arg
+        store stj1_arg
+
+        20                   # LOAD opcode
+ldj_arg:  0                  # ← arr[j]
+        store a
+
+        20                   # LOAD opcode
+ldj1_arg: 0                  # ← arr[j+1]
+        store b
+
+        sub   a              # acc = b - a
+        and   mask           # isolate bit 7
+        ifzero no_swap       # bit clear -> b >= a -> ordered, skip swap
+
+        load  b              # swap: arr[j] = b
+        21                   # STORE opcode
+stj_arg:  0                  # ← arr[j]
+        load  a              # arr[j+1] = a
+        21                   # STORE opcode
+stj1_arg: 0                  # ← arr[j+1]
+
+no_swap:
+        load  jptr
+        add   one
+        store jptr           # j++
+
+        load  ninner
+        sub   one
+        store ninner
+        goto  inner
+
+next_pass:
+        load  npass
+        sub   one
+        store npass
+        goto  outer
+
+# ── 4. write arr[0..n-1] back to io0.. in order ────────────────────────────
+sorted:
+        load  arrptr
+        store rptr           # read pointer over arr
+        load  outbase
+        store optr           # out pointer, starts at io0 (240)
+        load  n
+        store left           # how many still to write
+
+wloop:  load  left
+        ifzero done
+
+        load  rptr           # patch the LOAD/STORE addresses
+        store rd_arg
+        load  optr
+        store ot_arg
+
+        20                   # LOAD opcode
+rd_arg:  0                   # ← arr[i]
+        21                   # STORE opcode
+ot_arg:  240                 # ← io[i]
+
+        load  rptr
+        add   one
+        store rptr           # i++
+        load  optr
+        add   one
+        store optr           # out pointer++
+        load  left
+        sub   one
+        store left
+        goto  wloop
+
+done:   load  arr            # arr[0] = smallest, left in ACC
+        stop
+
+# data
+zero:     0
+one:      1
+mask:     128
+iobase:   240          # io0 (numeric init for a self-modifying pointer)
+outbase:  240          # io0
+n:        0
+cnt:      0
+npass:    0
+ninner:   0
+jptr:     0
+a:        0
+b:        0
+rptr:     0
+optr:     0
+left:     0
+arrptr:   arr          # address constant: start of the array
+
+# scratch array (contiguous), up to 15 values
+arr:    0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0
+        0

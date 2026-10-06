@@ -1,0 +1,45 @@
+# hello_world.toys — write "Hello world!" to the output cells as ASCII.
+# Each output cell holds one character code; the I/O widget (ascii mode) shows
+# them as letters.
+#
+# pytoy: output=ascii
+
+        load  H
+        store io0
+        load  e
+        store io1
+        load  l
+        store io2
+        load  l2
+        store io3
+        load  o
+        store io4
+        load  sp
+        store io5
+        load  w
+        store io6
+        load  o2
+        store io7
+        load  r
+        store io8
+        load  l3
+        store io9
+        load  d
+        store io10
+        load  ex
+        store io11
+        stop
+
+# data: ASCII codes for "Hello world!"
+H:   72
+e:  101
+l:  108
+l2: 108
+o:  111
+sp:  32
+w:  119
+o2: 111
+r:  114
+l3: 108
+d:  100
+ex:  33

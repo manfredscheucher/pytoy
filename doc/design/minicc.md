@@ -54,16 +54,17 @@ Local variables and arrays are prefixed per function (`v_<fn>__<name>`,
 ## Scope vs. the examples
 
 Main-only examples it compiles correctly: `ifelse`, `sum_array`, `max_array`,
-`multiply`, `sevenfold`, `bitops`, `fibonacci_array`, `msb_shift_vs_mask`.
+`multiply`, `sevenfold`, `bitops`, `fibonacci_array`, `msb_shift_vs_mask`,
+`count_iter`.
 
 Non-recursive function examples it compiles correctly: `sum3`, `max3`,
 `gcd_iter`, `functions`. `fibonacci_iter` and `popcount` also work but land at
 exactly 256 bytes (they just fit, since minicc does not optimize).
 
 Known, intended non-fits (not bugs):
-- `countdown`, `factorial_iter` use `+=` / `for` (syntax sugar minicc omits).
+- `countdown` uses `+=` / `for` (syntax sugar minicc omits).
 - `sort_array_function` uses array parameters (`int a[]`), unsupported.
-- the recursive `factorial_rec`, `fibonacci_rec`, `gcd_rec` are rejected with a
+- the recursive `count_rec`, `fibonacci_rec`, `gcd_rec` are rejected with a
   clear "recursion is not supported (stackfree)" error — use toycc.
 - `sort_array_inline` (259 bytes) and `bigint_add` (373) overflow the 256-byte
   machine because minicc does not optimize. toycc with `-O` fits them.

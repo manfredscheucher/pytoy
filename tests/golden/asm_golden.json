@@ -1,5 +1,5 @@
 {
-  "00_stop": {
+  "01-basics/00_stop": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -9,7 +9,7 @@
     },
     "steps": 1
   },
-  "01_right": {
+  "01-basics/01_right": {
     "assembled": true,
     "final_acc": 2,
     "hit_cap": false,
@@ -18,7 +18,7 @@
     },
     "steps": 2
   },
-  "02_left": {
+  "01-basics/02_left": {
     "assembled": true,
     "final_acc": 8,
     "hit_cap": false,
@@ -27,7 +27,7 @@
     },
     "steps": 2
   },
-  "03_not": {
+  "01-basics/03_not": {
     "assembled": true,
     "final_acc": 240,
     "hit_cap": false,
@@ -36,7 +36,7 @@
     },
     "steps": 2
   },
-  "04_and": {
+  "01-basics/04_and": {
     "assembled": true,
     "final_acc": 136,
     "hit_cap": false,
@@ -46,7 +46,7 @@
     },
     "steps": 2
   },
-  "05_or": {
+  "01-basics/05_or": {
     "assembled": true,
     "final_acc": 238,
     "hit_cap": false,
@@ -56,7 +56,7 @@
     },
     "steps": 2
   },
-  "06_xor": {
+  "01-basics/06_xor": {
     "assembled": true,
     "final_acc": 102,
     "hit_cap": false,
@@ -66,7 +66,7 @@
     },
     "steps": 2
   },
-  "07_load": {
+  "01-basics/07_load": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -75,7 +75,7 @@
     },
     "steps": 1
   },
-  "08_store": {
+  "01-basics/08_store": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -85,7 +85,7 @@
     },
     "steps": 2
   },
-  "09_add": {
+  "01-basics/09_add": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -95,7 +95,7 @@
     },
     "steps": 2
   },
-  "10_sub": {
+  "01-basics/10_sub": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -105,7 +105,7 @@
     },
     "steps": 2
   },
-  "11_goto": {
+  "01-basics/11_goto": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -115,18 +115,17 @@
     },
     "steps": 2
   },
-  "12_ifzero": {
+  "01-basics/12_ifzero": {
     "assembled": true,
-    "final_acc": 42,
+    "final_acc": 0,
     "hit_cap": false,
     "memory": {
-      "x": 42,
-      "y": 99,
-      "z": 0
+      "x": 0,
+      "y": 99
     },
-    "steps": 3
+    "steps": 2
   },
-  "13_nop": {
+  "01-basics/13_nop": {
     "assembled": true,
     "final_acc": 42,
     "hit_cap": false,
@@ -135,7 +134,7 @@
     },
     "steps": 2
   },
-  "bit_set_clear_toggle": {
+  "02-extended/bit_set_clear_toggle": {
     "assembled": true,
     "final_acc": 1,
     "hit_cap": false,
@@ -149,7 +148,7 @@
     },
     "steps": 9
   },
-  "compare": {
+  "02-extended/compare": {
     "assembled": true,
     "final_acc": 1,
     "hit_cap": false,
@@ -162,7 +161,7 @@
     },
     "steps": 5
   },
-  "divide": {
+  "02-extended/divide": {
     "assembled": true,
     "final_acc": 3,
     "hit_cap": false,
@@ -175,7 +174,119 @@
     },
     "steps": 38
   },
-  "fibonacci": {
+  "02-extended/load_indirect": {
+    "assembled": true,
+    "final_acc": 9,
+    "hit_cap": false,
+    "memory": {
+      "12": 1,
+      "13": 4,
+      "14": 1,
+      "15": 5,
+      "16": 9,
+      "17": 2,
+      "18": 6,
+      "19": 5,
+      "20": 3,
+      "base": 11,
+      "data": 3,
+      "i": 5,
+      "load": 20,
+      "patch": 16
+    },
+    "steps": 4
+  },
+  "02-extended/modulo": {
+    "assembled": true,
+    "final_acc": 2,
+    "hit_cap": false,
+    "memory": {
+      "a": 2,
+      "b": 6,
+      "sign": 128
+    },
+    "steps": 29
+  },
+  "02-extended/msb_shift_vs_mask": {
+    "assembled": true,
+    "final_acc": 0,
+    "hit_cap": false,
+    "memory": {
+      "m1": 1,
+      "m2": 1,
+      "mask": 128,
+      "one": 1,
+      "x": 200,
+      "zero_v": 0
+    },
+    "steps": 17
+  },
+  "02-extended/multiply": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "a": 6,
+      "b": 0,
+      "one": 1,
+      "res": 42
+    },
+    "steps": 59
+  },
+  "02-extended/multiply_fast": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "a": 48,
+      "b": 0,
+      "one": 1,
+      "res": 42
+    },
+    "steps": 42
+  },
+  "02-extended/negate": {
+    "assembled": true,
+    "final_acc": 251,
+    "hit_cap": false,
+    "memory": {
+      "x": 5,
+      "zero": 0
+    },
+    "steps": 2
+  },
+  "02-extended/store_indirect": {
+    "assembled": true,
+    "final_acc": 42,
+    "hit_cap": false,
+    "memory": {
+      "15": 0,
+      "16": 0,
+      "17": 42,
+      "18": 0,
+      "base": 14,
+      "data": 0,
+      "i": 3,
+      "patch": 17,
+      "store": 21,
+      "val": 42
+    },
+    "steps": 5
+  },
+  "02-extended/switch": {
+    "assembled": true,
+    "final_acc": 2,
+    "hit_cap": false,
+    "memory": {
+      "one": 1,
+      "three": 3,
+      "two": 2,
+      "x": 2,
+      "zero": 0
+    },
+    "steps": 9
+  },
+  "03-programs/fibonacci": {
     "assembled": true,
     "final_acc": 13,
     "hit_cap": false,
@@ -187,7 +298,7 @@
     },
     "steps": 80
   },
-  "fibonacci_rec": {
+  "03-programs/fibonacci_rec": {
     "assembled": true,
     "final_acc": 3,
     "hit_cap": false,
@@ -248,7 +359,7 @@
     },
     "steps": 446
   },
-  "gcd": {
+  "03-programs/gcd": {
     "assembled": true,
     "final_acc": 12,
     "hit_cap": false,
@@ -259,29 +370,7 @@
     },
     "steps": 31
   },
-  "load_indirect": {
-    "assembled": true,
-    "final_acc": 9,
-    "hit_cap": false,
-    "memory": {
-      "12": 1,
-      "13": 4,
-      "14": 1,
-      "15": 5,
-      "16": 9,
-      "17": 2,
-      "18": 6,
-      "19": 5,
-      "20": 3,
-      "base": 11,
-      "data": 3,
-      "i": 5,
-      "load": 20,
-      "patch": 16
-    },
-    "steps": 4
-  },
-  "max3": {
+  "03-programs/max3": {
     "assembled": true,
     "final_acc": 4,
     "hit_cap": false,
@@ -294,7 +383,7 @@
     },
     "steps": 14
   },
-  "max_array": {
+  "03-programs/max_array": {
     "assembled": true,
     "final_acc": 9,
     "hit_cap": false,
@@ -317,66 +406,7 @@
     },
     "steps": 114
   },
-  "modulo": {
-    "assembled": true,
-    "final_acc": 2,
-    "hit_cap": false,
-    "memory": {
-      "a": 2,
-      "b": 6,
-      "sign": 128
-    },
-    "steps": 29
-  },
-  "msb_shift_vs_mask": {
-    "assembled": true,
-    "final_acc": 0,
-    "hit_cap": false,
-    "memory": {
-      "m1": 1,
-      "m2": 1,
-      "mask": 128,
-      "one": 1,
-      "x": 200,
-      "zero_v": 0
-    },
-    "steps": 17
-  },
-  "multiply": {
-    "assembled": true,
-    "final_acc": 42,
-    "hit_cap": false,
-    "memory": {
-      "a": 6,
-      "b": 0,
-      "one": 1,
-      "res": 42
-    },
-    "steps": 59
-  },
-  "multiply_fast": {
-    "assembled": true,
-    "final_acc": 42,
-    "hit_cap": false,
-    "memory": {
-      "a": 48,
-      "b": 0,
-      "one": 1,
-      "res": 42
-    },
-    "steps": 42
-  },
-  "negate": {
-    "assembled": true,
-    "final_acc": 251,
-    "hit_cap": false,
-    "memory": {
-      "x": 5,
-      "zero": 0
-    },
-    "steps": 2
-  },
-  "sevenfold": {
+  "03-programs/sevenfold": {
     "assembled": true,
     "final_acc": 28,
     "hit_cap": false,
@@ -387,7 +417,7 @@
     },
     "steps": 9
   },
-  "sort3": {
+  "03-programs/sort3": {
     "assembled": true,
     "final_acc": 1,
     "hit_cap": false,
@@ -400,7 +430,7 @@
     },
     "steps": 19
   },
-  "sort_array": {
+  "03-programs/sort_array": {
     "assembled": true,
     "final_acc": 1,
     "hit_cap": false,
@@ -436,25 +466,7 @@
     },
     "steps": 1955
   },
-  "store_indirect": {
-    "assembled": true,
-    "final_acc": 42,
-    "hit_cap": false,
-    "memory": {
-      "15": 0,
-      "16": 0,
-      "17": 42,
-      "18": 0,
-      "base": 14,
-      "data": 0,
-      "i": 3,
-      "patch": 17,
-      "store": 21,
-      "val": 42
-    },
-    "steps": 5
-  },
-  "sum3": {
+  "03-programs/sum3": {
     "assembled": true,
     "final_acc": 8,
     "hit_cap": false,
@@ -465,7 +477,7 @@
     },
     "steps": 3
   },
-  "sum_array": {
+  "03-programs/sum_array": {
     "assembled": true,
     "final_acc": 25,
     "hit_cap": false,
@@ -486,17 +498,202 @@
     },
     "steps": 89
   },
-  "switch": {
+  "04-io/countdown": {
     "assembled": true,
-    "final_acc": 2,
+    "final_acc": 0,
     "hit_cap": false,
     "memory": {
-      "one": 1,
-      "three": 3,
-      "two": 2,
-      "x": 2,
-      "zero": 0
+      "iarg": 250,
+      "io0": 10,
+      "io1": 9,
+      "io2": 8,
+      "io3": 7,
+      "io4": 6,
+      "io5": 5,
+      "io6": 4,
+      "io7": 3,
+      "io8": 2,
+      "io9": 1,
+      "iop": 21,
+      "n": 0,
+      "one": 1
     },
-    "steps": 9
+    "steps": 113
+  },
+  "04-io/fibonacci": {
+    "assembled": true,
+    "final_acc": 121,
+    "hit_cap": false,
+    "memory": {
+      "a": 121,
+      "b": 98,
+      "count": 0,
+      "iarg": 254,
+      "io0": 0,
+      "io1": 1,
+      "io10": 55,
+      "io11": 89,
+      "io12": 144,
+      "io13": 233,
+      "io2": 1,
+      "io3": 2,
+      "io4": 3,
+      "io5": 5,
+      "io6": 8,
+      "io7": 13,
+      "io8": 21,
+      "io9": 34,
+      "iop": 21,
+      "ival": 233,
+      "next": 98,
+      "one": 1
+    },
+    "steps": 270
+  },
+  "04-io/hello_world": {
+    "assembled": true,
+    "final_acc": 33,
+    "hit_cap": false,
+    "memory": {
+      "d": 100,
+      "e": 101,
+      "ex": 33,
+      "h": 72,
+      "io0": 72,
+      "io1": 101,
+      "io10": 100,
+      "io11": 33,
+      "io2": 108,
+      "io3": 108,
+      "io4": 111,
+      "io5": 32,
+      "io6": 119,
+      "io7": 111,
+      "io8": 114,
+      "io9": 108,
+      "l": 108,
+      "l2": 108,
+      "l3": 108,
+      "o": 111,
+      "o2": 111,
+      "r": 114,
+      "sp": 32,
+      "w": 119
+    },
+    "steps": 24
+  },
+  "04-io/numbers": {
+    "assembled": true,
+    "final_acc": 14,
+    "hit_cap": false,
+    "memory": {
+      "c0": 0,
+      "c1": 1,
+      "c10": 10,
+      "c11": 11,
+      "c12": 12,
+      "c13": 13,
+      "c14": 14,
+      "c2": 2,
+      "c3": 3,
+      "c4": 4,
+      "c5": 5,
+      "c6": 6,
+      "c7": 7,
+      "c8": 8,
+      "c9": 9,
+      "io0": 0,
+      "io1": 1,
+      "io10": 10,
+      "io11": 11,
+      "io12": 12,
+      "io13": 13,
+      "io14": 14,
+      "io2": 2,
+      "io3": 3,
+      "io4": 4,
+      "io5": 5,
+      "io6": 6,
+      "io7": 7,
+      "io8": 8,
+      "io9": 9
+    },
+    "steps": 30
+  },
+  "04-io/numbers_ascii": {
+    "assembled": true,
+    "final_acc": 14,
+    "hit_cap": false,
+    "memory": {
+      "c0": 0,
+      "c1": 1,
+      "c10": 10,
+      "c11": 11,
+      "c12": 12,
+      "c13": 13,
+      "c14": 14,
+      "c2": 2,
+      "c3": 3,
+      "c4": 4,
+      "c5": 5,
+      "c6": 6,
+      "c7": 7,
+      "c8": 8,
+      "c9": 9,
+      "io0": 0,
+      "io1": 1,
+      "io10": 10,
+      "io11": 11,
+      "io12": 12,
+      "io13": 13,
+      "io14": 14,
+      "io2": 2,
+      "io3": 3,
+      "io4": 4,
+      "io5": 5,
+      "io6": 6,
+      "io7": 7,
+      "io8": 8,
+      "io9": 9
+    },
+    "steps": 30
+  },
+  "04-io/numbers_hex": {
+    "assembled": true,
+    "final_acc": 14,
+    "hit_cap": false,
+    "memory": {
+      "c0": 0,
+      "c1": 1,
+      "c10": 10,
+      "c11": 11,
+      "c12": 12,
+      "c13": 13,
+      "c14": 14,
+      "c2": 2,
+      "c3": 3,
+      "c4": 4,
+      "c5": 5,
+      "c6": 6,
+      "c7": 7,
+      "c8": 8,
+      "c9": 9,
+      "io0": 0,
+      "io1": 1,
+      "io10": 10,
+      "io11": 11,
+      "io12": 12,
+      "io13": 13,
+      "io14": 14,
+      "io2": 2,
+      "io3": 3,
+      "io4": 4,
+      "io5": 5,
+      "io6": 6,
+      "io7": 7,
+      "io8": 8,
+      "io9": 9
+    },
+    "steps": 30
   }
 }

@@ -44,6 +44,12 @@ def cmd_sim(args):
 
     is_toyo = args.file.lower().endswith('.toyo')
 
+    # Parse any `# pytoy:` I/O directive (the output display format).
+    # Compiled .toys carry these through from the C source, so a plain `#` scan
+    # on the loaded text covers both. Only used by the GUI (I/O is GUI-only).
+    from pytoy import format as iofmt
+    io_config = iofmt.parse_directives(src, "#")
+
     # The GUI is the default. --cli forces the terminal; --run/--quiet also
     # imply the terminal (you asked to run it, not to open a window). Decide
     # this from what the USER passed, before any .toyo-specific tweaks below.
@@ -93,10 +99,10 @@ def cmd_sim(args):
     if use_gui:
         if is_toyo:
             gui_main(mem, listing, syms, data_addrs, guard, has_source=False,
-                     source_path=args.file)
+                     source_path=args.file, io_config=io_config)
         else:
             gui_main(mem, listing, syms, data_addrs, guard,
-                     source_path=args.file)
+                     source_path=args.file, io_config=io_config)
         return
 
     if args.export:
@@ -117,6 +123,8 @@ def cmd_sim(args):
     print("─" * 62)
     if args.export:
         print("execution:\n")
+    # Memory-mapped I/O is GUI-only; the headless runner treats 240..255 as
+    # ordinary memory (no io_config).
     acc = simulate(mem, syms, data_addrs, step=not args.run,
                    show_mem=not args.quiet, verbose=not args.quiet,
                    addr_orig=addr_orig, code_guard=guard)

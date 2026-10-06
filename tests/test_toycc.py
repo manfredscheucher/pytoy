@@ -164,6 +164,46 @@ def test_shift_left():
 def test_shift_right():
     assert run_c(wrap("int a = 40; return a >> 2;")) == 10
 
+def test_logical_and_truth_table():
+    for a in (0, 1):
+        for b in (0, 1):
+            src = wrap(f"int x = {a}; int y = {b}; return x && y;")
+            assert run_c(src) == (a and b), (a, b)
+
+def test_logical_or_truth_table():
+    for a in (0, 1):
+        for b in (0, 1):
+            src = wrap(f"int x = {a}; int y = {b}; return x || y;")
+            assert run_c(src) == (a or b), (a, b)
+
+def test_logical_and_nonzero_operands_yield_01():
+    # non-boolean operands still produce a 0/1 result
+    assert run_c(wrap("int a = 7; int b = 42; return a && b;")) == 1
+    assert run_c(wrap("int a = 7; int b = 0;  return a && b;")) == 0
+
+def test_logical_chain_and_mix_with_comparisons():
+    assert run_c(wrap("return 1 && 1 && 1;")) == 1
+    assert run_c(wrap("return 1 && 0 && 1;")) == 0
+    assert run_c(wrap("int a=3; int b=2; int c=5; return a>b && c==5;")) == 1
+
+def test_logical_and_short_circuits():
+    # The right operand reads d[5] on a 2-element array; it must NOT be evaluated
+    # when the left side is 0. If it were, the index read would still return some
+    # byte but the point is the branch: 0 && anything is 0, so flag stays 1.
+    assert run_c(wrap("int flag = 1; if (0 && flag) { flag = 7; } return flag;")) == 1
+    # And a true left side DOES evaluate the right:
+    assert run_c(wrap("int flag = 1; if (1 && flag) { flag = 7; } return flag;")) == 7
+
+def test_logical_or_short_circuits():
+    assert run_c(wrap("int flag = 1; if (1 || flag) { flag = 7; } return flag;")) == 7
+    assert run_c(wrap("int flag = 0; if (flag || 0) { return 7; } return 3;")) == 3
+
+def test_calls_inside_logical_rejected():
+    src = ("int f(void){return 1;}"
+           "int main(void){ return 1 && f(); }")
+    with pytest.raises(CompileError):
+        compile_c(src)
+
 def test_if_taken():
     assert run_c(wrap("int x = 0; if (x == 0) { x = 5; } return x;")) == 5
 
@@ -223,6 +263,45 @@ def test_array_index_by_expression():
 
 def test_array_compound_index_assign():
     assert run_c(wrap("int a[3]={1,2,3}; a[2]+=10; return a[2];")) == 13
+
+def test_constant_index_compiles_to_direct_address():
+    # A real array indexed by a constant resolves to a fixed address, so the
+    # generated code uses `load arr+N` / `store arr+N` instead of the raw-opcode
+    # self-modifying patch (the `20`/`21` + patched-byte sequence). This keeps
+    # programs like the pin_check I/O example inside the 240-byte limit.
+    asm = compile_c(wrap("int a[4]={1,2,3,4}; a[2]=9; return a[2];"))
+    assert "arr_a+2" in asm                      # direct addressing used
+    # the self-modifying "patch LOAD/STORE address" comments must NOT appear for
+    # these constant-index accesses
+    assert "patch LOAD address" not in asm
+    assert "patch STORE address" not in asm
+
+def test_constant_and_variable_index_agree():
+    # both index forms must produce identical results
+    assert run_c(wrap("int a[4]={10,20,30,40}; return a[3];")) == 40
+    assert run_c(wrap("int a[4]={10,20,30,40}; int i=3; return a[i];")) == 40
+
+def test_variable_index_still_uses_self_modifying():
+    # a variable index can't be a fixed address, so it keeps the patch sequence
+    asm = compile_c(wrap("int a[4]={1,2,3,4}; int i=2; return a[i];"))
+    assert "patch LOAD address" in asm
+
+def test_char_constants_get_readable_ascii_labels():
+    asm = compile_c(wrap("int d[2]; d[0] = 'H'; d[1] = ' '; return 0;"))
+    assert "ascii_H_72: 72" in asm         # letter -> ascii_<char>_<value>
+    assert "ascii_space_32: 32" in asm     # space -> named
+
+def test_ascii_labels_distinguish_case():
+    # the assembler lowercases labels, so the value suffix is required to keep
+    # 'H' (72) and 'h' (104) from colliding into one byte.
+    asm = compile_c(wrap("int d[2]; d[0] = 'H'; d[1] = 'h'; return 0;"))
+    assert "ascii_H_72: 72" in asm
+    assert "ascii_h_104: 104" in asm
+
+def test_equal_char_constants_dedup_to_one_byte():
+    # both 'l' share a single data byte (dedup by value, as for any constant)
+    asm = compile_c(wrap("int d[3]; d[0]='l'; d[1]='l'; d[2]='l'; return 0;"))
+    assert asm.count("ascii_l_108: 108") == 1
 
 def test_array_size_must_be_constant():
     with pytest.raises(CompileError):
@@ -394,9 +473,9 @@ def test_syntax_error_raises_compile_error():
         compile_c("int main(void) { return }")
 
 def test_oversized_program_overflows_assembler():
-    """A C program that generates more than 256 bytes must be caught (the
-    toycc CLI reports the assembler's 'too big' error instead of writing a
-    .toys that only fails later)."""
+    """A C program that overflows the usable space (0..239; 240..255 are the
+    reserved I/O region) must be caught — the toycc CLI reports the assembler's
+    'too big' error instead of writing a .toys that only fails later."""
     body = "int a = 0;\n" + "\n".join(f"a = a + {i % 7};" for i in range(150))
     body += "\nreturn a;"
     asm = compile_c(wrap(body))

@@ -367,23 +367,41 @@ one:    1
 # ── Memory limits & code-overwrite detection ──────────────────────────────
 
 def test_assemble_overflow_reports_error():
-    """A program larger than 256 bytes yields a clean error, not an
-    IndexError."""
+    """A program larger than the usable space yields a clean error, not an
+    IndexError. The error names the required size."""
     src = "\n".join(["add x"] * 200) + "\nstop\nx: 1\n"  # 200*2 + 1 + 1 = 402
     mem, listing, syms, data_addrs, errors, data_start = assemble(src)
     assert errors, "oversized program should report an error"
-    assert "256" in errors[0] and "402" in errors[0]
+    assert "402" in errors[0]
 
-def test_assemble_exactly_256_is_ok():
-    """256 one-byte instructions fill memory exactly; no overflow."""
-    src = "\n".join(["right"] * 256)  # 256 * 1 = 256, no operands needed
+def test_assemble_exactly_240_is_ok():
+    """Addresses 240..255 are reserved for memory-mapped I/O, so the usable
+    program space is 0..239: 240 one-byte instructions fill it exactly."""
+    src = "\n".join(["right"] * 240)  # 240 * 1 = 240, no operands needed
     mem, listing, syms, data_addrs, errors, data_start = assemble(src)
     assert errors == []
 
-def test_assemble_257_overflows():
-    src = "\n".join(["right"] * 257)  # 257 bytes
+def test_assemble_241_overflows_into_io_region():
+    """One byte past 240 would alias io0 (240), so it must be rejected."""
+    src = "\n".join(["right"] * 241)  # 241 bytes
     _, _, _, _, errors, _ = assemble(src)
-    assert errors and "257" in errors[0]
+    assert errors and "241" in errors[0]
+
+def test_label_plus_offset_resolves():
+    """`load label+N` resolves to the label's address plus N (used by the
+    compiler for constant array indices: `load arr+3`)."""
+    mem, _, syms, _, errors, _ = assemble("load foo+2\nstop\n# data\nfoo: 7\na: 8\nb: 9\n")
+    assert errors == []
+    assert mem[1] == (syms['foo'] + 2) & 0xFF
+
+def test_label_minus_offset_resolves():
+    mem, _, syms, _, errors, _ = assemble("load foo-1\nstop\n# data\nx: 1\nfoo: 7\n")
+    assert errors == []
+    assert mem[1] == (syms['foo'] - 1) & 0xFF
+
+def test_label_plus_unknown_base_is_error():
+    _, _, _, _, errors, _ = assemble("load nope+1\nstop\n")
+    assert errors and "nope+1" in errors[0]
 
 def test_data_marker_sets_data_start():
     """The '# data' marker line records where data begins."""

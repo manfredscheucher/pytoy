@@ -93,8 +93,8 @@ def test_too_big_explains_two_byte_cost_and_overage():
     assert len(errors) == 1
     msg = errors[0]
     assert "260 bytes" in msg
-    assert "4 too many" in msg
-    assert "2 bytes" in msg   # explains operand instructions cost 2
+    assert "20 too many" in msg   # 260 - 240 usable (240..255 reserved for I/O)
+    assert "2 bytes" in msg       # explains operand instructions cost 2
 
 
 # ── multiple errors collected ───────────────────────────────────────────────

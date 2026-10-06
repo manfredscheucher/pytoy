@@ -1,0 +1,32 @@
+# poll_demo.toys — the canonical BUSY-POLL input demo.
+#
+# The Toy CPU has no interrupts and no blocking read — the only test it has is
+# `ifzero`. So to wait for input the program busy-polls the `ready` register
+# (address 255): it loads `ready` and, while it is 0, jumps back and loads it
+# again. This tight loop is the busy-poll:
+#
+#   wait: load ready; ifzero wait   # spin while ready == 0
+#
+# In the GUI the user drives it: type a value into the io0 cell, then set
+# `ready` (e.g. to 1) via the Edit mechanism. On its next poll the program sees
+# ready != 0, reads io0, echoes it to io1 (just to show the byte moved), clears
+# `ready` back to 0 (so a next round could start), and stops.
+#
+# Note on the NATURE of polling: because the CPU just loops checking a flag, it
+# could equally well do OTHER work between polls, give up after a while (time
+# out), or take a different branch if input never arrives. Here it does none of
+# that — it waits forever. If the user never sets `ready` in the GUI, this
+# program spins indefinitely (and a headless `--run` hits the step cap). That is
+# expected: polling trades CPU cycles for simplicity.
+#
+# pytoy: output=decimal
+
+wait:   load  ready       # poll the ready register (255)
+        ifzero wait        # spin while 0  (GUI: user sets ready to proceed)
+        load  io0          # ready != 0 -> read the input value from io0
+        store io1          # echo it to io1 (just to show it moved)
+        load  zero
+        store ready        # clear ready, ready for next
+        stop
+
+zero:   0

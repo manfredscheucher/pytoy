@@ -44,8 +44,12 @@ def run_program(mem_in, data_addrs, max_steps=MAX_STEPS):
 
     A thin re-implementation of the run loop in simulator.simulate() that also
     returns the step count and final memory. It uses core.decode / execute_one
-    directly, so the semantics are identical to the CLI and GUI. STORE writes
-    (opcode 21) mark their target address as touched, matching simulate().
+    directly, so the semantics are identical. STORE writes (opcode 21) mark their
+    target address as touched, matching simulate().
+
+    Memory-mapped I/O is a GUI-only feature, so this headless runner treats
+    240..255 as ordinary memory. Input-driven I/O examples (which poll for a
+    value that never arrives here) are excluded from the golden table instead.
 
     Returns (final_acc, steps, touched_addrs, final_mem, hit_cap).
     """
@@ -55,7 +59,7 @@ def run_program(mem_in, data_addrs, max_steps=MAX_STEPS):
     hit_cap = False
 
     while True:
-        instr, _arg, _ = decode(mem, pc)
+        instr, arg_addr, _ = decode(mem, pc)
         if instr == 0:  # STOP
             break
         if steps >= max_steps:
@@ -79,6 +83,8 @@ def golden_for_file(path):
     if errors:
         return {"assembled": False, "errors": list(errors)}
 
+    # Memory-mapped I/O is GUI-only; this headless runner treats 240..255 as
+    # ordinary memory, so no directives/input injection are needed here.
     acc, steps, touched, final_mem, hit_cap = run_program(mem, data_addrs)
 
     # Build a readable memory map. Prefer the symbol name for an address; fall
@@ -103,14 +109,23 @@ def golden_for_file(path):
 def build_golden():
     """Build the full golden table for every examples/asm/**/*.toys (sorted).
 
-    Recurses into the tier subfolders (01-basics/, 02-extended/, 03-programs/).
-    Keyed by the file's basename (without .toys); basenames are unique across
-    the folders."""
+    Keyed by the path RELATIVE to examples/asm/ without the .toys extension
+    (e.g. "03-programs/fibonacci"), so two files with the same basename in
+    different tier folders (03-programs/fibonacci vs 04-io/fibonacci) each get
+    their own entry instead of one silently overwriting the other."""
+    # These are GUI-only busy-wait demos: they poll `ready` and, with no input
+    # (ready stays 0 headless), spin to the step cap by design, so they have no
+    # meaningful headless result. Exclude them — the GUI drives them live by
+    # letting the user set `ready`.
+    SKIP = {"poll_demo", "greet_name", "sort", "pin_check"}
     table = {}
     for path in sorted(glob.glob(os.path.join(ASM_DIR, "**", "*.toys"),
                                  recursive=True)):
-        name = os.path.splitext(os.path.basename(path))[0]
-        table[name] = golden_for_file(path)
+        rel = os.path.relpath(path, ASM_DIR)
+        key = os.path.splitext(rel)[0]               # e.g. "03-programs/fibonacci"
+        if os.path.basename(key) in SKIP:
+            continue
+        table[key] = golden_for_file(path)
     return table
 
 

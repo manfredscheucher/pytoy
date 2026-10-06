@@ -7,11 +7,23 @@ This module is the runnable front end: the terminal simulator and the PySide6
 debugger GUI. The command-line entry point lives in run.py at the repo root.
 """
 
+import os
 import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
-                   _describe, _esc, WRITES_ACC, parse_val)
+                   _describe, _esc, WRITES_ACC)
 from .assembler import assemble, show_assembly, export
+from . import format as iofmt
+
+
+def polling_input(mem, pc):
+    """True when the instruction at pc is a LOAD of the ready register (255) —
+    i.e. the program is polling for input. The GUI uses this to flag the ready
+    cell red ("the CPU is waiting for input"). Decoded without mutating state;
+    the CPU core stays unaware of I/O. (I/O is GUI-only; the headless CLI runner
+    treats 240..255 as ordinary memory.)"""
+    instr, arg_addr, _ = decode(mem, pc)
+    return instr == 20 and arg_addr == iofmt.IO_READY
 
 # ── Simulator ──────────────────────────────────────────────────────────────
 
@@ -25,9 +37,14 @@ def _warn_continue(msg):
         return False
 
 def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False,
-             addr_orig=None, code_guard=None):
+             addr_orig=None, code_guard=None, max_steps=1_000_000):
     # code_guard: if set (an address), warn when a STORE writes below it, i.e.
     # into the code region. None disables the check.
+    # max_steps: safety cap so a runaway loop can't hang the terminal forever.
+    #
+    # NOTE: memory-mapped I/O is a GUI-only feature. This headless runner (used
+    # by --run and by the test suite / golden table) treats addresses 240..255
+    # as ordinary memory — it does not prompt for input or echo output.
     mem  = list(mem_in)
     rsym = {v: k for k, v in syms.items()}
     acc, pc, step_num = 0, 0, 0
@@ -49,9 +66,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
     def vertical_mem(cur_pc, cur_acc, step_num=0, cmd_desc="", cmd_bytes="", cur_arg=None, stopped=False, dump=False):
         lines = []
         if stopped:
-            lines.append(f"Stopped after {step_num} steps "
-                         f"with result ACC={cur_acc} "
-                         f"(b{cur_acc:08b}, 0x{cur_acc:02x}).")
+            lines.append(f"Stopped after {step_num} steps.")
         else:
             lines.append(f"Step #{step_num}:")
         lines.append(f"  ACC={cur_acc}=b{cur_acc:08b}")
@@ -116,6 +131,13 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
                 except EOFError: pass
 
         if instr == 0:  # STOP
+            break
+
+        # safety cap: a runaway loop (e.g. a GUI I/O example's busy-poll run
+        # headless with no input) must not hang the terminal forever.
+        if step_num >= max_steps:
+            print(f"\nStep cap ({max_steps}) hit — possible infinite loop.",
+                  file=sys.stderr)
             break
 
         # guard: ask before a STORE overwrites code
@@ -311,7 +333,7 @@ class History:
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
 def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
-             source_path=None):
+             source_path=None, io_config=None):
     """Launch PySide6 graphical debugger. has_source=False (a .toyo) hides the
     source panel and shows only memory, matching the Load button's .toyo path.
     source_path is the file this program was loaded from (e.g. the CLI argument)
@@ -320,16 +342,300 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
                                    QLabel, QDoubleSpinBox, QFileDialog,
-                                   QInputDialog, QGroupBox)
-    from PySide6.QtCore import Qt, QTimer
-    from PySide6.QtGui import QFont, QTextCursor, QShortcut, QKeySequence
+                                   QGroupBox, QComboBox,
+                                   QDialog, QLineEdit, QDialogButtonBox,
+                                   QGridLayout)
+    from PySide6.QtCore import Qt, QTimer, QPointF
+    from PySide6.QtGui import (QFont, QTextCursor, QShortcut, QKeySequence,
+                               QPainter, QColor, QPolygonF, QAction,
+                               QActionGroup)
+
+    FORMATS = iofmt.FORMATS   # ('decimal','binary','hex','ascii','7segment')
+
+    class ValueDialog(QDialog):
+        """Ask the user for a byte value in a chosen format. A format combo
+        (decimal default) + a line edit + OK/Cancel. On accept the text is
+        parsed via iofmt.parse_input(); a parse error keeps the dialog open with
+        a small warning. exec_value() returns the 0..255 byte, or None if the
+        user cancelled."""
+
+        def __init__(self, parent=None, title="Enter value", prompt="Value:",
+                     default_fmt="decimal", initial_text=""):
+            super().__init__(parent)
+            self.setWindowTitle(title)
+            self._value = None
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel(prompt))
+
+            row = QHBoxLayout()
+            self.fmt_combo = QComboBox()
+            self.fmt_combo.addItems(FORMATS)
+            if default_fmt in FORMATS:
+                self.fmt_combo.setCurrentText(default_fmt)
+            row.addWidget(self.fmt_combo)
+            self.edit = QLineEdit(initial_text)
+            row.addWidget(self.edit, stretch=1)
+            layout.addLayout(row)
+
+            self.hint = QLabel("")
+            layout.addWidget(self.hint)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(self._on_accept)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+            self.edit.returnPressed.connect(self._on_accept)
+            self.edit.setFocus()
+
+        def _on_accept(self):
+            fmt = self.fmt_combo.currentText()
+            try:
+                self._value = iofmt.parse_input(self.edit.text(), fmt) & 0xFF
+            except ValueError as e:
+                self.hint.setText(f"Could not parse that as {fmt}: {e}")
+                self._value = None
+                return   # keep the dialog open
+            self.accept()
+
+        def exec_value(self):
+            """Run the dialog modally; return the parsed byte or None if
+            cancelled."""
+            return self._value if self.exec() == QDialog.Accepted else None
+
+    class ClickLabel(QLabel):
+        """A QLabel that calls on_click(addr) when clicked — used for I/O cells
+        so clicking one opens the same edit dialog as the memory panel."""
+
+        def __init__(self, addr, on_click, parent=None):
+            super().__init__("0", parent)
+            self._addr = addr
+            self._on_click = on_click
+            self.setCursor(Qt.PointingHandCursor)
+
+        def mouseReleaseEvent(self, event):
+            if event.button() == Qt.LeftButton:
+                self._on_click(self._addr)
+            super().mouseReleaseEvent(event)
+
+    class SevenSegDisplay(QWidget):
+        """DISABLED / parked — not instantiated anywhere right now (see
+        format.FORMATS). It also renders the OLD, wrong model (low nibble -> hex
+        digit via iofmt.seven_segment, which is commented out); the intended
+        model is one bit per segment + bit 7 = dot. Kept as a starting point for
+        a future redo. Until then nothing calls it, so it is effectively dead.
+
+        A tiny seven-segment display widget. Renders the 7 segments (a..g) plus a
+        decimal point for a byte, lit/unlit from iofmt.seven_segment()."""
+
+        ON  = QColor("#ff3030")
+        OFF = QColor("#3a2020")
+        BG  = QColor("#101010")
+
+        def __init__(self, value=0, parent=None):
+            super().__init__(parent)
+            self._value = value & 0xFF
+            self.setFixedSize(34, 54)
+
+        def set_value(self, value):
+            self._value = value & 0xFF
+            self.update()
+
+        def paintEvent(self, event):
+            segs, dot = iofmt.seven_segment(self._value)
+            p = QPainter(self)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.fillRect(self.rect(), self.BG)
+
+            w, h = self.width(), self.height()
+            m = 5            # outer margin
+            t = 4            # segment thickness
+            x0, x1 = m, w - m
+            y0, ymid, y1 = m, h / 2.0, h - m
+
+            def horiz(cx0, cx1, cy):
+                return QPolygonF([
+                    QPointF(cx0 + t, cy - t / 2.0),
+                    QPointF(cx1 - t, cy - t / 2.0),
+                    QPointF(cx1,     cy),
+                    QPointF(cx1 - t, cy + t / 2.0),
+                    QPointF(cx0 + t, cy + t / 2.0),
+                    QPointF(cx0,     cy),
+                ])
+
+            def vert(cx, cy0, cy1):
+                return QPolygonF([
+                    QPointF(cx - t / 2.0, cy0 + t),
+                    QPointF(cx,           cy0),
+                    QPointF(cx + t / 2.0, cy0 + t),
+                    QPointF(cx + t / 2.0, cy1 - t),
+                    QPointF(cx,           cy1),
+                    QPointF(cx - t / 2.0, cy1 - t),
+                ])
+
+            polys = {
+                "a": horiz(x0, x1, y0),
+                "b": vert(x1, y0, ymid),
+                "c": vert(x1, ymid, y1),
+                "d": horiz(x0, x1, y1),
+                "e": vert(x0, ymid, y1),
+                "f": vert(x0, y0, ymid),
+                "g": horiz(x0, x1, ymid),
+            }
+            p.setPen(Qt.NoPen)
+            for name, poly in polys.items():
+                p.setBrush(self.ON if segs[name] else self.OFF)
+                p.drawPolygon(poly)
+            # decimal point bottom-right
+            p.setBrush(self.ON if dot else self.OFF)
+            p.drawEllipse(QPointF(x1 + 1, y1), t / 2.0, t / 2.0)
+            p.end()
+
+    class IOPanel(QWidget):
+        """The friendly memory-mapped I/O view: the 15 I/O cells io0..io14
+        (addresses 240..254) plus the ready register (255) as a 16th cell, laid
+        out in a single row (two rows under binary, where each value is 8 chars
+        wide). Clicking a cell edits it exactly like the memory panel's Edit.
+        The display format and the optional 'set ready' input row are driven from
+        the View menu, not from controls in this widget."""
+
+        def __init__(self, debugger, default_output="decimal", parent=None):
+            super().__init__(parent)
+            self._debugger = debugger
+            self._fmt = default_output if default_output in FORMATS else "decimal"
+
+            self._mono = QFont("Menlo, Courier New, monospace")
+            self._mono.setStyleHint(QFont.Monospace)
+
+            outer = QVBoxLayout(self)
+            outer.setContentsMargins(4, 4, 4, 4)
+
+            # All 16 cells (io0..io14 + ready). Each gets a name label, a text
+            # value label and a 7-seg widget; they are (re)placed into the grid by
+            # _relayout(), which picks 1 or 2 rows based on the format width.
+            self._grid = QGridLayout()
+            self._grid.setHorizontalSpacing(10)
+            self._cells = []
+            cell_addrs = [iofmt.IO_BASE + i for i in range(iofmt.IO_COUNT)]
+            cell_addrs.append(iofmt.IO_READY)   # ready (255) as the 16th cell
+            for addr in cell_addrs:
+                is_ready = (addr == iofmt.IO_READY)
+                label = "ready" if is_ready else iofmt.IO_CELL_LABELS[addr]
+                name_lbl = QLabel(label)
+                name_lbl.setAlignment(Qt.AlignHCenter)
+                name_lbl.setFont(self._mono)
+
+                text_lbl = ClickLabel(addr, self._edit_cell)
+                text_lbl.setAlignment(Qt.AlignHCenter)
+                text_lbl.setFont(self._mono)
+                text_lbl.setAutoFillBackground(True)
+                text_lbl.setToolTip(f"Click to edit {label} "
+                                    f"(address {addr})")
+                # (7-segment display widget disabled for now — see FORMATS.)
+
+                self._cells.append({"addr": addr, "ready": is_ready,
+                                    "name": name_lbl, "text": text_lbl})
+            outer.addLayout(self._grid)
+
+            self._ready_style_normal = ""
+            self._ready_style_polling = "background-color: red; color: white;"
+
+            # Optional 'set ready' input row — hidden by default (toggled from the
+            # View menu). The io cells themselves are edited by clicking them.
+            self.in_row_widget = QWidget()
+            in_row = QHBoxLayout(self.in_row_widget)
+            in_row.setContentsMargins(0, 0, 0, 0)
+            in_row.addWidget(QLabel("set ready (255):"))
+            self.in_edit = QLineEdit()
+            self.in_edit.setFont(self._mono)
+            self.in_edit.setToolTip("Decimal value to write into mem[255]")
+            in_row.addWidget(self.in_edit, stretch=1)
+            self.btn_set_in = QPushButton("Set")
+            self.btn_set_in.setToolTip("Write the decimal value into mem[255]")
+            self.btn_set_in.clicked.connect(self._set_input)
+            self.in_edit.returnPressed.connect(self._set_input)
+            in_row.addWidget(self.btn_set_in)
+            outer.addWidget(self.in_row_widget)
+            self.in_row_widget.setVisible(False)
+
+            self._relayout()
+
+        def _edit_cell(self, addr):
+            """A cell was clicked: edit it exactly like the memory panel does."""
+            self._debugger._edit_cell(addr)
+
+        def set_input_row_visible(self, visible):
+            self.in_row_widget.setVisible(bool(visible))
+
+        def set_output_format(self, fmt):
+            if fmt not in FORMATS:
+                return
+            self._fmt = fmt
+            self._relayout()
+            self.update_from_mem(self._debugger.mem)
+
+        def _relayout(self):
+            """Place the 16 cells into the grid: one row normally, two rows under
+            binary (8-char values are too wide for 16 in a line)."""
+            # Detach everything, then re-add with the current row split.
+            while self._grid.count():
+                item = self._grid.takeAt(0)
+                w = item.widget()
+                if w is not None:
+                    w.setParent(None)
+
+            two_rows = (self._fmt == "binary")
+            per_row = 8 if two_rows else 16
+
+            for i, c in enumerate(self._cells):
+                col = i % per_row
+                base_row = (i // per_row) * 2
+                self._grid.addWidget(c["name"], base_row, col, Qt.AlignHCenter)
+                self._grid.addWidget(c["text"], base_row + 1, col,
+                                     Qt.AlignHCenter)
+
+        def apply_font(self, font):
+            """Re-apply a (possibly scaled) font to the cell labels."""
+            self._mono = font
+            for c in self._cells:
+                c["name"].setFont(font)
+                c["text"].setFont(font)
+
+        def update_from_mem(self, mem):
+            """Refresh the 16 cells from memory. The io cells follow the current
+            format; the ready cell stays decimal under ascii (its value is a
+            flag, not a character) and turns red while the CPU is polling it
+            (current instruction is a LOAD of 255)."""
+            polling = polling_input(mem, self._debugger.pc)
+            for c in self._cells:
+                v = mem[c["addr"]] & 0xFF
+                if c["ready"]:
+                    fmt = "decimal" if self._fmt == "ascii" else self._fmt
+                    c["text"].setText(iofmt.format_byte(v, fmt))
+                    c["text"].setStyleSheet(
+                        self._ready_style_polling if polling
+                        else self._ready_style_normal)
+                else:
+                    c["text"].setText(iofmt.format_byte(v, self._fmt))
+
+        def _set_input(self):
+            try:
+                val = iofmt.parse_input(self.in_edit.text(), "decimal") & 0xFF
+            except ValueError as e:
+                QMessageBox.warning(self, "Invalid input",
+                                    f"Could not parse that as decimal: {e}")
+                return
+            self._debugger.set_input_byte(val)
 
     class ToyDebugger(QMainWindow):
         def __init__(self, mem_original, listing, syms, data_addrs, code_guard,
-                     has_source=True, source_path=None):
+                     has_source=True, source_path=None, io_config=None):
             super().__init__()
             self.setWindowTitle("pytoy")
             self.resize(1000, 700)
+
+            # memory-mapped I/O config (just the output display format)
+            self.io_config = io_config or {}
 
             # path of the last file loaded (CLI arg or Load button), for Reload
             self._current_path = source_path
@@ -339,6 +645,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                               has_source=has_source)
             # a CLI-loaded file means Reload has something to re-read right away
             self.btn_reload.setEnabled(self._current_path is not None)
+            self._update_title()
+
+        def _update_title(self):
+            """Window title shows the loaded program's filename, if any."""
+            if self._current_path:
+                name = os.path.basename(self._current_path)
+                self.setWindowTitle(f"pytoy — {name}")
+            else:
+                self.setWindowTitle("pytoy")
 
         def load_program(self, mem_original, listing, syms, data_addrs,
                          code_guard=None, has_source=True):
@@ -373,9 +688,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.reset()
 
         def _build_ui(self):
+            self._base_point_size = 13
+            self._font_scale = 1
             mono = QFont("Menlo, Courier New, monospace")
-            mono.setPointSize(13)
+            mono.setPointSize(self._base_point_size)
             mono.setStyleHint(QFont.Monospace)
+            self._mono = mono
 
             central = QWidget()
             self.setCentralWidget(central)
@@ -416,6 +734,17 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.mem_view.mouseReleaseEvent = self._mem_clicked
 
             splitter.setSizes([500, 500])
+
+            # memory-mapped I/O panel: the friendly view of io0..io14 plus the
+            # ready register. Sits between the two-panel splitter and the buttons.
+            self.io_box = QGroupBox("I/O")
+            _io_layout = QVBoxLayout(self.io_box)
+            _io_layout.setContentsMargins(4, 4, 4, 4)
+            self.io_widget = IOPanel(
+                self, default_output=self.io_config.get("output", "decimal"))
+            _io_layout.addWidget(self.io_widget)
+            main_layout.addWidget(self.io_box)
+            # The I/O box is always visible in the memory-mapped I/O model.
 
             # bottom bar
             bottom = QHBoxLayout()
@@ -490,6 +819,79 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.timer = QTimer()
             self.timer.timeout.connect(self._run_tick)
 
+            # widgets whose mono font follows the View → Font size setting
+            self._fonted = [
+                self.source_view, self.mem_view,
+                self.btn_load, self.btn_reload, spd_label, self.spin_speed,
+                self.btn_edit, self.btn_back, self.btn_step, self.btn_run,
+                self.btn_reset,
+            ]
+            self._build_menu()
+
+        def _build_menu(self):
+            """A single View menu: panel visibility, font size, and the I/O
+            display format (which also drives how clicking a cell is read back)."""
+            view = self.menuBar().addMenu("&View")
+
+            # — panel visibility —
+            def toggle_action(label, widget, checked=True):
+                act = QAction(label, self, checkable=True)
+                act.setChecked(checked)
+                act.toggled.connect(widget.setVisible)
+                view.addAction(act)
+                return act
+
+            self.act_show_asm = toggle_action("Assembly panel", self.source_box)
+            self.act_show_mem = toggle_action("CPU & memory panel", self.mem_box)
+            self.act_show_io = toggle_action("I/O panel", self.io_box)
+            act_show_ready = QAction("'set ready' input", self, checkable=True)
+            act_show_ready.setChecked(False)
+            act_show_ready.toggled.connect(self.io_widget.set_input_row_visible)
+            view.addAction(act_show_ready)
+
+            view.addSeparator()
+
+            # — font size —
+            font_menu = view.addMenu("Font size")
+            font_group = QActionGroup(self)
+            font_group.setExclusive(True)
+            for label, scale in (("Normal", 1), ("Large (1.5×)", 1.5),
+                                 ("Double (2×)", 2), ("Triple (3×)", 3)):
+                act = QAction(label, self, checkable=True)
+                act.setChecked(scale == 1)
+                act.triggered.connect(
+                    lambda _checked, s=scale: self._apply_font_scale(s))
+                font_group.addAction(act)
+                font_menu.addAction(act)
+
+            view.addSeparator()
+
+            # — I/O display format — same set the old dropdown had; picking one
+            # also changes how a clicked cell's current value is shown for editing.
+            fmt_menu = view.addMenu("I/O format")
+            fmt_group = QActionGroup(self)
+            fmt_group.setExclusive(True)
+            current = self.io_config.get("output", "decimal")
+            for fmt in FORMATS:
+                act = QAction(fmt, self, checkable=True)
+                act.setChecked(fmt == current)
+                act.triggered.connect(
+                    lambda _checked, f=fmt: self.io_widget.set_output_format(f))
+                fmt_group.addAction(act)
+                fmt_menu.addAction(act)
+
+        def _apply_font_scale(self, scale):
+            """Scale every mono-font widget (both panels, buttons, I/O cells)."""
+            self._font_scale = scale
+            size = max(6, round(self._base_point_size * scale))
+            f = QFont(self._mono)
+            f.setPointSize(size)
+            self._mono = f
+            for w in self._fonted:
+                w.setFont(f)
+            self.io_widget.apply_font(f)
+            self.refresh()
+
         def _setup_shortcuts(self):
             QShortcut(QKeySequence(Qt.Key_Space), self, self.step)
             QShortcut(QKeySequence(Qt.Key_Return), self, self.step)
@@ -508,6 +910,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.selected_addr = None
             self.mem_selected_addr = None   # cell picked in the memory panel (Edit)
             self.changed_cell = None    # cell written in the last step (blue)
+            self.changed_cell_prev = None # that cell's value before the write
             self.acc_written = False     # did the last step write ACC?
             self.overwrite_ok = False   # re-arm the code-overwrite prompt
             self._has_live_edits = False # any right-click edits since load/reset?
@@ -557,6 +960,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             instr, arg_addr, _ = decode(self.mem, self.pc)
 
             if instr == 0:  # STOP
+                # STOP is an executed instruction, so it counts: without this the
+                # "Stopped after N steps" line would be short by one (the halt
+                # itself). The code-overwrite abort path below does NOT run an
+                # instruction, so it correctly leaves the counter unchanged.
+                self.step_count += 1
                 self._halt()
                 return
 
@@ -584,10 +992,19 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 if was_running:
                     self._start_timer()           # resume auto-run
 
+            # Memory-mapped I/O is pure busy-polling now: the program just reads
+            # the io cells / ready register (255) as ordinary memory. The user
+            # provides input by editing those cells via the memory panel's Edit
+            # mechanism (or the IOPanel's "set ready" field). No dialog hook here.
+            # remember the cell's value before a STORE overwrites it, so the
+            # memory panel can show "# old: N" for this one step (decode above
+            # already resolved arg_addr; execute_one re-resolves it identically).
+            old_val = self.mem[arg_addr] if instr == 21 else None
             self.pc, self.acc, arg_addr, _ = execute_one(self.mem, self.pc, self.acc)
             if instr == 21:  # STORE wrote memory
                 self.touched.add(arg_addr)
             self.changed_cell, self.acc_written = step_change(instr, arg_addr)
+            self.changed_cell_prev = old_val  # prev value of changed_cell, this step only
             self.step_count += 1
             self.selected_addr = None
             self.mem_selected_addr = None   # selection no longer current
@@ -600,7 +1017,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         # visible are mutable containers (History copies them); the rest scalars.
         _SNAPSHOT_FIELDS = ("mem", "touched", "visible", "acc", "pc", "stopped",
                             "step_count", "arg_addr", "selected_addr",
-                            "changed_cell", "acc_written", "overwrite_ok",
+                            "changed_cell", "changed_cell_prev",
+                            "acc_written", "overwrite_ok",
                             "_has_live_edits")
 
         def _push_history(self):
@@ -659,8 +1077,13 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             load it into the debugger."""
             if not self._confirm_discard():
                 return
+            # Start the dialog in the folder of the last-loaded file, so loading
+            # several programs from the same directory doesn't mean re-navigating
+            # each time. Empty string -> Qt's default (cwd) when nothing loaded yet.
+            start_dir = (os.path.dirname(self._current_path)
+                         if self._current_path else "")
             path, _ = QFileDialog.getOpenFileName(
-                self, "Load program", "",
+                self, "Load program", start_dir,
                 "Toy programs (*.toys *.toyo);;All files (*)")
             if path:
                 self._load_path(path)
@@ -710,6 +1133,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             self._current_path = path
             self.btn_reload.setEnabled(True)
+            self._update_title()
 
         def _run_tick(self):
             if self.stopped:
@@ -751,27 +1175,44 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             if self.mem_selected_addr is not None:
                 self._edit_cell(self.mem_selected_addr)
 
+        def _edit_default_fmt(self, addr):
+            """Which format the edit dialog opens in for `addr`: an I/O cell
+            (240..254) follows the format the I/O panel is currently showing, so
+            typing matches what you see; `ready` (255) is always decimal (its
+            value is a flag/count, never a character or a lit digit); ordinary
+            memory is decimal."""
+            if iofmt.IO_BASE <= addr < iofmt.IO_BASE + iofmt.IO_COUNT:
+                return self.io_widget._fmt
+            return "decimal"
+
         def _edit_cell(self, addr):
             """Live-edit the value of the clicked memory cell. Asks only for the
-            value (the address comes from the right-clicked row). The value takes
-            the same forms as the assembler (decimal, 0x…, 0b…, 8-bit binary) and
-            wraps mod 256, which we point out. The edit is undoable (snapshotted
-            like a step) and Reset restores the file."""
+            value (the address comes from the right-clicked row) via a
+            ValueDialog with a format selector. The entered value wraps mod 256,
+            which we point out. The edit is undoable (snapshotted like a step)
+            and Reset restores the file."""
             a = addr
-            text, ok = QInputDialog.getText(
-                self, f"Enter new value for address {a}",
-                f"Value (decimal, 0x.., 0b.., or 8-bit binary; "
-                f"0–255, wraps mod 256):",
-                text=str(self.mem[a]))
-            if not ok:
+            dlg = ValueDialog(
+                self, title=f"Enter new value for address {a}",
+                prompt="Value (0–255, wraps mod 256):",
+                default_fmt=self._edit_default_fmt(a),
+                initial_text=str(self.mem[a]))
+            # ValueDialog already parses+masks to a byte; to keep the explicit
+            # wrap message, re-parse the raw text in the chosen format too.
+            value = dlg.exec_value()
+            if value is None:
                 return
-            try:
-                raw = parse_val(text)
-            except Exception:
-                QMessageBox.warning(self, "Invalid value",
-                                    f"Could not parse '{text}' as a number.")
-                return
-            value = raw & 0xFF
+            # iofmt.parse_input already masks to a byte; to keep the explicit
+            # wrap message, recover the unmasked number for the numeric formats
+            # (decimal/hex/binary) via parse_val. ascii/7segment can't overflow.
+            fmt = dlg.fmt_combo.currentText()
+            raw = value
+            if fmt in ("decimal", "hex", "binary"):
+                base = {"decimal": 10, "hex": 16, "binary": 2}[fmt]
+                try:
+                    raw = int(dlg.edit.text().strip(), base)
+                except Exception:
+                    raw = value
             # the whole point of an 8-bit machine: make the wraparound explicit
             if raw != value:
                 QMessageBox.information(
@@ -791,9 +1232,25 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self._mark_dirty()
             self.refresh()
 
+        def set_input_byte(self, value):
+            """Write a byte into mem[255] (the ready register), undoably. Used by
+            the IOPanel's 'Set' button."""
+            value &= 0xFF
+            self._push_history()
+            self.mem[iofmt.IO_READY] = value
+            self.touched.add(iofmt.IO_READY)
+            self.visible.add(iofmt.IO_READY)
+            self.changed_cell = iofmt.IO_READY
+            self.acc_written = False
+            self._has_live_edits = True
+            self._mark_dirty()
+            self.refresh()
+
         def refresh(self):
             self._refresh_source()
             self._refresh_memory()
+            # keep the friendly I/O output cells in sync with execution
+            self.io_widget.update_from_mem(self.mem)
             # Edit is available only when a cell is selected in the memory panel
             self.btn_edit.setEnabled(self.mem_selected_addr is not None)
 
@@ -873,9 +1330,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 pc_bytes.add((self.pc + 1) % 256)
             n = len(bs.split())
             if self.stopped:
-                lines.append(f'<b>Stopped after {self.step_count} steps '
-                             f'with result ACC={self.acc} '
-                             f'(b{self.acc:08b}, 0x{self.acc:02x}).</b>')
+                lines.append(f'<b>Stopped after {self.step_count} steps.</b>')
             else:
                 lines.append(f'<b>Step #{self.step_count}:</b>')
             acc_text = f"  ACC={self.acc}=b{self.acc:08b}"
@@ -898,8 +1353,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # header. The arrow makes the addr→value lookup explicit.
             self._mem_line_addrs = {}
             lines.append(f'<b>memory:</b>')
-            # header, aligned to the same column widths as the rows below
-            hdr = f"     {'address (binary)':>19}  ->  {'value (binary)':>19}"
+            # header, aligned over the row columns below. A row is
+            #   "  >> 240 (11110000)  ->    7 (00000111)"; the addr column starts
+            #   at offset 5 and the val column after "  ->  ". Keep it tight.
+            hdr = "     addr (bin)          val"
             lines.append(_esc(hdr))
             # Blue (change) only lingers while running, never once stopped.
             changed = self.changed_cell if not self.stopped else None
@@ -912,7 +1369,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 v = self.mem[a]
                 addr_cell = f"{a:3d} ({a:08b})"
                 val_cell = f"{v:3d} ({v:08b})"
-                text = f"  {marker} {addr_cell:>19}  ->  {val_cell:>19}"
+                text = f"  {marker} {addr_cell}  ->  {val_cell}"
+                # the cell a STORE just overwrote: show its previous value as a
+                # comment, for this one step only (changed/prev clear next step).
+                if a == changed and self.changed_cell_prev is not None:
+                    text += f"  # old: {self.changed_cell_prev}"
                 # A cell can hold several roles at once; collect all active
                 # colours (fixed stripe order) instead of letting one win.
                 colours = []
@@ -931,7 +1392,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
     app = QApplication.instance() or QApplication(sys.argv)
     win = ToyDebugger(mem, listing, syms, data_addrs, code_guard, has_source,
-                      source_path=source_path)
+                      source_path=source_path, io_config=io_config)
     win.show()
     app.exec()
 

@@ -1,0 +1,17 @@
+// expect: 10
+/*
+ * count_iter.c - count up to 10 ITERATIVELY.
+ *
+ * Start at 1 and increment while x < 10, so x ends at 10.
+ * The recursive version is in count_rec.toyc; both return 10.
+ *
+ * Expected result: ACC = 10
+ */
+
+int main(void) {
+    int x = 1;
+    while (x < 10) {
+        x = x + 1;
+    }
+    return x;
+}

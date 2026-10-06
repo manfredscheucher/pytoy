@@ -1,0 +1,24 @@
+// greet_name — read a name, write back "Hallo NAME!".
+//
+// The greeting "Hallo " (6 characters) is placed at the front of the buffer.
+// read(data + 6) busy-polls `ready`, then reads the name into data[6..] and
+// returns its length k. We write k + 6 bytes out, so the greeting and the name
+// (plus whatever trailing character the user supplied) go to the io cells.
+//
+// In the GUI: type one character per cell (io0, io1, ...), set `ready` to the
+// number of characters, and the program greets you. ascii view by default.
+//
+// pytoy: output=ascii
+
+int main(void) {
+    int data[16];
+    data[0] = 'H';
+    data[1] = 'a';
+    data[2] = 'l';
+    data[3] = 'l';
+    data[4] = 'o';
+    data[5] = ' ';
+    int k = read(data + 6);   // name goes into data[6..], k = its length
+    write(data, k + 6);       // "Hallo " + the name, all out to io0..
+    return 0;
+}

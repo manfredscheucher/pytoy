@@ -25,6 +25,16 @@ import sys
 # toycc reuses the assembler for the shared 256-byte limit and the canonical
 # data-region marker, so the two tools can't drift apart.
 from .assembler import assemble, DATA_MARKER
+from .format import SP_TOP, IO_BASE, IO_READY
+
+# I/O builtins exposed at the C level. write(data, k) sends data[0..k-1] out to
+# io0,io1,...; read(data) busy-polls `ready`, then reads that many values into
+# data[0..], returning the count. Handled specially in the compiler: they map to
+# memory-mapped I/O (addresses 240.. and 255), not to the function-call scheme.
+IO_BUILTINS = {
+    'write': 2,   # write(data, k)   -> void
+    'read':  1,   # read(data)       -> int (count read)
+}
 
 
 # ── Lexer ──────────────────────────────────────────────────────────────────
@@ -81,6 +91,36 @@ def lex(src):
                 i += 1
             i += 2
             continue
+        # character literal 'x' -> its ASCII code as an int_lit. Supports the
+        # common C escapes (\n \t \0 \\ \' ...), so ascii examples can write
+        # data[0] = 'H' instead of a bare 72.
+        if c == "'":
+            start = i
+            i += 1
+            if i >= n:
+                raise CompileError(f"line {line}: unterminated character literal")
+            if src[i] == '\\':
+                i += 1
+                if i >= n:
+                    raise CompileError(
+                        f"line {line}: unterminated character literal")
+                esc = src[i]
+                mapping = {'n': 10, 't': 9, 'r': 13, '0': 0,
+                           '\\': 92, "'": 39, '"': 34}
+                if esc not in mapping:
+                    raise CompileError(
+                        f"line {line}: unknown escape '\\{esc}'")
+                val = mapping[esc]
+                i += 1
+            else:
+                val = ord(src[i])
+                i += 1
+            if i >= n or src[i] != "'":
+                raise CompileError(
+                    f"line {line}: character literal must be one character")
+            i += 1  # closing quote
+            toks.append(Token('int_lit', val & 0xFF, start, line))
+            continue
         # numbers (decimal or hex 0x..)
         if c.isdigit():
             start = i
@@ -127,6 +167,24 @@ def lex(src):
 
 class CompileError(Exception):
     pass
+
+
+def _const_name(value):
+    """A data-byte label for the constant `value` (0..255). Printable ASCII
+    letters/digits get a readable `ascii_<char>_<value>` label (e.g. 72 ->
+    ascii_H_72), which makes string/char data in the generated assembly
+    self-documenting. The value suffix is REQUIRED for correctness: the assembler
+    lowercases every label, so `ascii_H` and `ascii_h` would collide — appending
+    the value keeps 'H' (72) and 'h' (104) distinct. Dedup is unchanged (same
+    value -> same label). Everything else keeps the plain `c_<value>` form."""
+    v = value & 0xFF
+    if 65 <= v <= 90 or 97 <= v <= 122 or 48 <= v <= 57:   # A-Z a-z 0-9
+        return f"ascii_{chr(v)}_{v}"
+    named = {32: "space", 33: "bang", 46: "dot",
+             44: "comma", 63: "qmark", 10: "nl"}
+    if v in named:
+        return f"ascii_{named[v]}_{v}"
+    return f"c_{v}"
 
 
 # ── AST nodes ──────────────────────────────────────────────────────────────
@@ -484,7 +542,7 @@ class Parser:
     # primary     := int_lit | ident | '(' expr ')'
 
     def parse_expr(self):
-        return self.parse_equality()
+        return self.parse_logor()
 
     def _left_assoc(self, sub, ops):
         left = sub()
@@ -492,6 +550,26 @@ class Parser:
             op = self.next().value
             right = sub()
             left = ('binop', op, left, right)
+        return left
+
+    # Short-circuit && and || sit just above the comparisons. They build their
+    # own ('logand'/'logor', l, r) nodes (not binops) so the code generator can
+    # emit branching, short-circuiting code: && stops at the first 0, || at the
+    # first non-zero. Each yields a 0/1 result, like the comparisons.
+    def parse_logor(self):
+        left = self.parse_logand()
+        while self.at('op', '||'):
+            self.next()
+            right = self.parse_logand()
+            left = ('logor', left, right)
+        return left
+
+    def parse_logand(self):
+        left = self.parse_equality()
+        while self.at('op', '&&'):
+            self.next()
+            right = self.parse_equality()
+            left = ('logand', left, right)
         return left
 
     def parse_equality(self):
@@ -675,8 +753,7 @@ class CodeGen:
     def const_label(self, value):
         value &= 0xFF
         if value not in self.consts:
-            label = f"c_{value}"
-            self.consts[value] = label
+            self.consts[value] = _const_name(value)
         return self.consts[value]
 
     def new_temp(self):
@@ -742,6 +819,9 @@ class CodeGen:
         if kind == 'binop':
             self.gen_binop(e)
             return
+        if kind in ('logand', 'logor'):
+            self.gen_logical(e)
+            return
         if kind == 'index':
             self.gen_index_read(e)
             return
@@ -793,11 +873,31 @@ class CodeGen:
         # a pointer/param scalar: its byte already holds the address
         return self.var_label(name)
 
+    def _const_elem_label(self, name, idx):
+        """If name[idx] has a compile-time-known absolute address, return an
+        assembler operand for it ('arr_name+idx'); else None. Only real arrays
+        (whose base is a fixed data label) qualify — a pointer/param holds its
+        base at runtime, so its element address isn't known until then."""
+        if idx[0] != 'num' or name not in self.arrays:
+            return None
+        data_label, _base, size = self.arrays[name]
+        off = idx[1] & 0xFF
+        if off >= size:
+            return None            # out of bounds: fall back (keep old behaviour)
+        return data_label if off == 0 else f"{data_label}+{off}"
+
     def gen_index_read(self, e):
         # a[idx] : compute element address, patch a raw LOAD's address byte,
         # then execute that LOAD to bring a[idx] into ACC (self-modifying code,
         # exactly the sum.toys / bubblesort.toys trick).
         _, name, idx = e
+        # Fast path: a real array with a constant index has a fixed address, so
+        # read it directly — `load arr+idx` (2 bytes) instead of ~18 bytes of
+        # address patching. The assembler resolves the `label+N` operand.
+        direct = self._const_elem_label(name, idx)
+        if direct is not None:
+            self.emit(f"        load  {direct}       # {name}[{idx[1]}]")
+            return
         base = self._index_base_label(name)
         addr = self.new_label("iload_arg")
         self._gen_element_addr(base, idx)
@@ -854,6 +954,34 @@ class CodeGen:
             self.emit(f"{l_end}: nop")
             return
         raise CompileError(f"unknown unary op {op!r}")
+
+    def gen_logical(self, e):
+        # Short-circuit && / ||, result 0 or 1 in ACC.
+        #   a && b : if a==0 -> 0 (skip b); else result = (b != 0)
+        #   a || b : if a!=0 -> 1 (skip b); else result = (b != 0)
+        kind, left, right = e
+        l_short = self.new_label(f"{kind}_short")
+        l_end = self.new_label(f"{kind}_end")
+        # evaluate the left operand and take the short-circuit branch on it
+        self.gen_expr(left)
+        if kind == 'logand':
+            # a == 0 -> short-circuit to result 0
+            self.emit(f"        ifzero {l_short}")
+        else:
+            # a != 0 -> short-circuit to result 1. ifzero skips the goto, so a==0
+            # falls through to evaluate b; a!=0 jumps to the short-circuit.
+            l_eval = self.new_label("logor_eval")
+            self.emit(f"        ifzero {l_eval}")
+            self.emit(f"        goto  {l_short}")
+            self.emit(f"{l_eval}: nop")
+        # not short-circuited: result is (right != 0) as a 0/1 boolean
+        self.gen_expr(right)
+        self.emit(f"        ifzero {l_end}        # b == 0 -> result already 0")
+        self.emit(f"        load  {self.const_label(1)}")
+        self.emit(f"        goto  {l_end}")
+        # short-circuit result: 0 for &&, 1 for ||
+        self.emit(f"{l_short}: load  {self.const_label(0 if kind == 'logand' else 1)}")
+        self.emit(f"{l_end}: nop")
 
     def gen_binop(self, e):
         _, op, left, right = e
@@ -1162,6 +1290,9 @@ class CodeGen:
         if kind == 'deref_assign':
             self.gen_deref_write(s)
             return
+        if kind == 'builtin_stmt':
+            self.gen_builtin(s)
+            return
         if kind == 'return':
             _, expr = s
             self.comment("return")
@@ -1211,6 +1342,14 @@ class CodeGen:
         # and patch a raw STORE's address byte, then load the value and run the
         # STORE (self-modifying code, mirroring gen_index_read).
         _, name, idx, expr = s
+        # Fast path: a real array with a constant index has a fixed address, so
+        # write it directly — `store arr+idx` instead of address patching.
+        direct = self._const_elem_label(name, idx)
+        if direct is not None:
+            self.comment(f"{name}[{idx[1]}] = ...")
+            self.gen_expr(expr)
+            self.emit(f"        store {direct}       # {name}[{idx[1]}]")
+            return
         base = self._index_base_label(name)
         self.comment(f"{name}[idx] = ...")
         val = self.new_temp()
@@ -1251,6 +1390,106 @@ class CodeGen:
         self.gen_stmt(body)
         self.emit(f"        goto  {l_top}")
         self.emit(f"{l_end}: nop")
+
+    def gen_builtin(self, s):
+        # s = ('builtin_stmt', name, args, cap). write(data, k) and read(data)
+        # are memory-mapped I/O: both copy a run of bytes between an address
+        # range and the io cells (240..), one byte at a time, with the source and
+        # destination addresses PATCHED into raw load/store opcodes each pass
+        # (self-modifying code, the same trick as array indexing).
+        _, name, args, cap = s
+        if name == 'write':
+            self.gen_write(args[0], args[1])
+        elif name == 'read':
+            self.gen_read(args[0], cap)
+        else:
+            raise CompileError(f"unknown builtin {name!r}")
+
+    def _gen_copy_loop(self, src_base, dst_base, count_slot, tag):
+        """Emit: for i in 0..count-1: mem[dst_base+i] = mem[src_base+i].
+        src_base/dst_base/count_slot are data-byte labels holding a base address
+        or the count. src_base or dst_base may be the literal io base constant
+        label. Uses self-modifying load/store so the per-element addresses are
+        computed at runtime. ACC is clobbered."""
+        i = self.new_temp()
+        l_top = self.new_label(f"{tag}_top")
+        l_end = self.new_label(f"{tag}_end")
+        ld_addr = self.new_label(f"{tag}_ld")
+        st_addr = self.new_label(f"{tag}_st")
+        one = self.const_label(1)
+
+        self.emit(f"        load  {self.const_label(0)}")
+        self.emit(f"        store {i}            # i = 0")
+        self.emit(f"{l_top}: nop")
+        # while i < count:  (i >= count -> exit).  sub leaves i-count; the sign
+        # bit (bit 7) is set iff i < count. This holds for count 0..128, which
+        # is all we need: write/read only ever move I/O cells, and there are just
+        # 15 of them (io0..io14), so a real count is <= 15. No runtime clamp — a
+        # count > 128 (only reachable if the outside world writes a bogus `ready`)
+        # would simply copy nothing; that's out of spec, not worth guarding on a
+        # toy CPU. See doc/chapters/09-io.typ ("read/write and the 15-cell limit").
+        self.emit(f"        load  {i}")
+        self.emit(f"        sub   {count_slot}")
+        self.emit(f"        and   {self.const_label(0x80)}  # sign bit: i < count?")
+        self.emit(f"        ifzero {l_end}        # i >= count -> done")
+        # src address = src_base + i -> patch the LOAD below
+        self.emit(f"        load  {src_base}")
+        self.emit(f"        add   {i}")
+        self.emit(f"        store {ld_addr}")
+        # dst address = dst_base + i -> patch the STORE below
+        self.emit(f"        load  {dst_base}")
+        self.emit(f"        add   {i}")
+        self.emit(f"        store {st_addr}")
+        # acc = mem[src_base+i]  (raw LOAD, address patched above)
+        self.emit(f"        20               # LOAD opcode (raw)")
+        self.emit(f"{ld_addr}: 0                # <- src address patched here")
+        # mem[dst_base+i] = acc  (raw STORE, address patched above)
+        self.emit(f"        21               # STORE opcode (raw)")
+        self.emit(f"{st_addr}: 0                # <- dst address patched here")
+        self.emit(f"        load  {i}")
+        self.emit(f"        add   {one}")
+        self.emit(f"        store {i}            # i++")
+        self.emit(f"        goto  {l_top}")
+        self.emit(f"{l_end}: nop")
+
+    def _io_base_slot(self):
+        """A data byte holding the io base address (240), for use as a copy base.
+        Reuses the constant pool so it's deduped like any other constant."""
+        return self.const_label(IO_BASE)
+
+    def gen_write(self, data_expr, count_expr):
+        # write(data, k): send data[0..k-1] out to io0,io1,...  Evaluate the data
+        # address and the count into fixed bytes, then copy k bytes to the io base.
+        self.comment("write(data, k)")
+        src = self.new_temp()
+        self.gen_expr(data_expr)
+        self.emit(f"        store {src}            # src = &data[0]")
+        k = self.new_temp()
+        self.gen_expr(count_expr)
+        self.emit(f"        store {k}            # k")
+        self._gen_copy_loop(src, self._io_base_slot(), k, "write")
+
+    def gen_read(self, data_expr, cap):
+        # read(data): clear ready, busy-poll until it is non-zero, then copy that
+        # many bytes from io0.. into data[0..]. Returns the count (left in ACC,
+        # and captured into `cap` when the result is used as an expression).
+        self.comment("read(data)")
+        dst = self.new_temp()
+        self.gen_expr(data_expr)
+        self.emit(f"        store {dst}            # dst = &data[0]")
+        # clear ready first, so a stale value can't satisfy our own poll
+        self.emit(f"        load  {self.const_label(0)}")
+        self.emit(f"        store ready")
+        l_wait = self.new_label("read_wait")
+        self.emit(f"{l_wait}: load  ready")
+        self.emit(f"        ifzero {l_wait}       # spin until input arrives")
+        n = self.new_temp()
+        self.emit(f"        load  ready")
+        self.emit(f"        store {n}            # n = ready (count)")
+        self._gen_copy_loop(self._io_base_slot(), dst, n, "read")
+        self.emit(f"        load  {n}            # result = count read")
+        if cap is not None:
+            self.emit(f"        store {self.var_label(cap)}")
 
     def register_slots(self, name, params):
         # The fixed global slots this function owns: one per parameter, a
@@ -1345,14 +1584,15 @@ class CodeGen:
             self.register_slots(name, params)
 
         # The call stack lives at the very top of memory and grows DOWN. `sp`
-        # points at the last-pushed byte and starts at 255 (byte 255 is left
-        # unused; the first push writes to 254). Overflow into the data region
-        # is unchecked — depth is bounded by the free bytes between end-of-data
-        # and the stack top (see doc/design/recursion-codegen.md).
+        # points at the last-pushed byte and starts at SP_TOP=239 (the top 16
+        # bytes 240..255 are reserved for memory-mapped I/O; 239 is left unused,
+        # the first push writes to 238). Overflow into the data region is
+        # unchecked — depth is bounded by the free bytes between end-of-data and
+        # the stack top (see doc/design/recursion-codegen.md).
         # When no_stack is set (no function recurses, so nothing ever pushes),
         # the sp byte is dead weight — skip it.
         if not no_stack:
-            self.add_global_slot("sp", 255)
+            self.add_global_slot("sp", SP_TOP)
 
         self.gen_stmt(main_body)
         # Safety net: if control falls off the end of main without a return,
@@ -1923,6 +2163,17 @@ class CallLifter:
             self._expr_uses(expr, live)
             return s, live
 
+        if kind == 'builtin_stmt':
+            # write(data, k) / read(data): the io cells are reached indirectly, so
+            # nothing tracked is written there; the argument expressions are uses.
+            # read's capture slot (cap) is defined here, so it's killed.
+            _, _name, bargs, cap = s
+            if cap is not None:
+                live.discard(cap)
+            for a in bargs:
+                self._expr_uses(a, live)
+            return s, live
+
         if kind == 'return':
             self._expr_uses(s[1], live)
             return s, live
@@ -2056,6 +2307,16 @@ class CallLifter:
             return ('addrof_index', name, self.lift_calls(idx, out))
         if kind == 'deref':
             return ('deref', self.lift_calls(e[1], out))
+        if kind in ('logand', 'logor'):
+            # Short-circuit: the right operand may not run, so a call inside it
+            # cannot be hoisted out (that would run it unconditionally). Reject
+            # calls in && / || operands rather than silently miscompiling.
+            _, l, r = e
+            if any(True for _ in _calls_in(l)) or any(True for _ in _calls_in(r)):
+                raise CompileError(
+                    "function calls inside && / || are not supported "
+                    "(assign the call result to a variable first)")
+            return e
         if kind == 'call':
             return self.lift_call(e, out)
         raise CompileError(f"cannot compile expression {e!r}")
@@ -2063,6 +2324,30 @@ class CallLifter:
     # Emit one call's sequence into `out`; return ('var', 'f__ret'-capture-temp).
     def lift_call(self, call, out):
         _, name, args = call
+
+        # I/O builtins bypass the function-call scheme entirely: they are inlined
+        # by the code generator as memory-mapped I/O. We still lift any calls in
+        # their arguments, append a ('builtin_stmt', ...) node for the side
+        # effect, and return the result expression (read's captured count, or a
+        # dummy for write's void).
+        if name in IO_BUILTINS:
+            if len(args) != IO_BUILTINS[name]:
+                raise CompileError(
+                    f"{name}() takes {IO_BUILTINS[name]} argument(s), "
+                    f"got {len(args)}")
+            args2 = [self.lift_calls(a, out) for a in args]
+            # The I/O always runs as a statement, so its side effect happens even
+            # when the result is discarded (a bare `write(buf, n);`). read() also
+            # produces the count in ACC; capture it into a temp so expression use
+            # (`n = read(buf);`) reads the temp instead of re-running the I/O.
+            if name == 'read':
+                cap = self.fresh('readret')
+                out.append(('decl', cap, None))   # register cap as a real slot
+                out.append(('builtin_stmt', name, args2, cap))
+                return ('var', cap)
+            out.append(('builtin_stmt', name, args2, None))
+            return ('num', 0)   # write() is void; value never used
+
         if name not in self.funcs:
             raise CompileError(f"call to undefined function {name!r}")
 
@@ -2179,6 +2464,15 @@ def fold_expr(e):
             return ('num', 0)                # x & 0
         return ('binop', op, left, right)
 
+    if kind in ('logand', 'logor'):
+        _, left, right = e
+        left = fold_expr(left)
+        right = fold_expr(right)
+        if left[0] == 'num' and right[0] == 'num':
+            a = 1 if left[1] else 0
+            b = 1 if right[1] else 0
+            return ('num', (a and b) if kind == 'logand' else (a or b))
+        return (kind, left, right)
     if kind == 'index':
         return ('index', e[1], fold_expr(e[2]))
     if kind == 'addrof_index':
@@ -2265,7 +2559,7 @@ def compile_source(src, source_name, opts=None):
     defined = {f[1] for f in funcs}
     for _, name, _params, body in funcs:
         for callee in _calls_in(body):
-            if callee not in defined:
+            if callee not in defined and callee not in IO_BUILTINS:
                 raise CompileError(f"call to undefined function {callee!r}")
 
     if opts.fold:
@@ -2317,7 +2611,29 @@ def compile_source(src, source_name, opts=None):
     # safe to drop sp there. (Without --stackfree we keep sp whenever any
     # recursion exists; a non-recursive program simply never touches it.)
     no_stack = opts.stackfree or not recursive
-    return gen.generate(main_block, bodies, source_name, no_stack=no_stack)
+    asm = gen.generate(main_block, bodies, source_name, no_stack=no_stack)
+    # Pass any `// pytoy:` I/O directives from the C source through to the
+    # emitted assembly as `# pytoy:` lines, so the GUI (which only parses `#`)
+    # picks up the output display format for compiled programs too.
+    asm = _passthrough_directives(src, asm)
+    return asm
+
+
+def _passthrough_directives(c_src, asm):
+    """Copy `// pytoy: ...` lines from the C source into the assembly header as
+    `# pytoy: ...` lines (right after the generated-by banner)."""
+    directives = [ln.strip()[2:].strip()       # drop the leading `//`
+                  for ln in c_src.splitlines()
+                  if ln.strip().startswith("//") and "pytoy:" in ln]
+    if not directives:
+        return asm
+    lines = asm.splitlines()
+    # insert after the first comment banner line (keeps them near the top)
+    insert_at = 1
+    for d in directives:
+        lines.insert(insert_at, "# " + d)
+        insert_at += 1
+    return "\n".join(lines) + "\n"
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────
@@ -2353,21 +2669,11 @@ def compile_file(in_path, out_path=None, opts=None, run=False):
         first = size_errors[0] if size_errors else errors[0]
         sys.exit(f"compile error: {first}")
 
-    # The recursion stack grows DOWN from address 255 into the free space above
-    # the program. There is no hardware bounds check: if recursion goes deeper
-    # than the free space allows, the stack silently overwrites data and the
-    # program computes wrong answers. Warn when a recursive program leaves
-    # little stack room, so the failure is visible rather than silent.
-    funcs = Parser(lex(src)).parse_program()[1]
-    if find_recursive(build_call_graph(funcs)):
-        top = max((a for a, *_ in listing if a is not None), default=0)
-        free = 255 - top
-        if free < 32:
-            print(f"WARNING: only {free} bytes of stack space (data ends at "
-                  f"{top}, stack grows down from 255). Deep recursion will "
-                  f"overflow into data and give wrong results — reduce the "
-                  f"input, or pass -O to shrink the code (fold/compact).",
-                  file=sys.stderr)
+    # Note: the recursion stack grows DOWN from SP_TOP into the free space above
+    # the program, with no hardware bounds check — deep recursion can overflow
+    # into data and compute wrong answers. That's a real property of this tiny
+    # teaching machine (running out of room is part of the lesson), so we don't
+    # emit a compile-time warning about it.
 
     if out_path is None:
         base = in_path

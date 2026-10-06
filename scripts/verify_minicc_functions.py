@@ -24,11 +24,11 @@ EX = os.path.join(ROOT, "examples", "c")
 # examples that should compile+run and match their // expect: value
 FUNC_OK = ["sum3", "max3", "gcd_iter", "functions"]
 MAIN_ONLY_OK = ["ifelse", "sum_array", "max_array", "multiply", "sevenfold",
-                "bitops", "fibonacci_array", "msb_shift_vs_mask"]
+                "bitops", "fibonacci_array", "msb_shift_vs_mask", "count_iter"]
 # recursive -> must be rejected with a recursion/stackfree message
-REC_REJECT = ["factorial_rec", "fibonacci_rec", "gcd_rec"]
+REC_REJECT = ["count_rec", "fibonacci_rec", "gcd_rec"]
 # big / uses unsupported syntax -> noted, not a pass/fail
-NOTE = ["factorial_iter", "fibonacci_iter", "popcount", "sort_array_function"]
+NOTE = ["fibonacci_iter", "popcount", "sort_array_function"]
 
 
 def expect(path):
