@@ -83,5 +83,5 @@ different but equivalent scheme --- instead of hand-picking what to stack, it
 saves the caller's live values around each call and restores them after (see the
 recursion section of the previous chapter) --- but the core idea is identical:
 a self-modifying-code stack gives each activation its own copies, so recursion
-works. `examples/c/fibonacci_rec.toyc` is the C version of this very program,
+works. `examples/c/03-programs/fibonacci_rec.toyc` is the C version of this very program,
 compiled and run through the same pipeline.

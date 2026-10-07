@@ -37,7 +37,7 @@ def run_acc(asm):
 
 def main():
     fails = 0
-    for path in sorted(glob.glob(os.path.join(EXAMPLES, "*.toyc"))):
+    for path in sorted(glob.glob(os.path.join(EXAMPLES, "**", "*.toyc"), recursive=True)):
         name = os.path.basename(path)
         with open(path) as f:
             src = f.read()
@@ -61,7 +61,7 @@ def main():
             fails += 1
         else:
             print(f"[ok] {name} -> {os.path.basename(out)}  (ACC={acc})")
-    total = len(glob.glob(os.path.join(EXAMPLES, "*.toyc")))
+    total = len(glob.glob(os.path.join(EXAMPLES, "**", "*.toyc"), recursive=True))
     print(f"\n{total - fails}/{total} examples built and verified.")
     return 1 if fails else 0
 

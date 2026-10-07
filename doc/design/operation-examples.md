@@ -32,15 +32,15 @@ extended demos show the standard ways around that.
   digits of pi as the array; `i=5` → ACC = 9.
 - **`store_indirect.toys`** — the write counterpart: patch the address byte of a
   raw `STORE` (opcode 21). `i=3`, `val=42` → `data[3]` goes 0 → 42.
-- **`compare.toys`** — `a < b` without a compare opcode: compute `a - b` (wraps
+- **`compare_less.toys`** — `a < b` without a compare opcode: compute `a - b` (wraps
   mod 256); if bit 7 is set the subtraction underflowed, so `a < b`. `AND 128`
   isolates that bit, `IFZERO` branches on it. `a=3, b=5` → ACC = 1.
 - **`negate.toys`** — two's complement: `0 - x`. `x=5` → 251 (= −5 mod 256).
 - **`bit_set_clear_toggle.toys`** — one-bit masking: `OR mask` sets bit 3,
   `XOR mask` toggles it, `AND (NOT mask)` clears it. Results in `r_set`,
   `r_toggle`, `r_clear`.
-- **`multiply.toys`** — `a * b` by adding `a` to itself `b` times. `6 * 7 = 42`.
-- **`multiply_fast.toys`** — `a * b` by double-and-add: each step test `lsb(b)`
+- **`multiply_repeated.toys`** — `a * b` by adding `a` to itself `b` times. `6 * 7 = 42`.
+- **`multiply_doubling.toys`** — `a * b` by double-and-add: each step test `lsb(b)`
   (`AND 1`); if set, `res += a`; then `a <<= 1` (LEFT), `b >>= 1` (RIGHT). Same
   result, fewer steps for large `b`.
 - **`divide.toys`** — `a / b` by repeated subtraction, counting how often `b`
@@ -52,12 +52,12 @@ extended demos show the standard ways around that.
   of equality tests, each `x == k` done as `(x - k) == 0` via `SUB` + `IFZERO`.
 
 These are machine-level: the CPU has no multiply/divide opcode, so they are
-built from the 14 instructions, not new operations. `multiply` is the most
+built from the 14 instructions, not new operations. `multiply_repeated` is the most
 elementary of these, which is why the old `03-programs/multiply.toys` was
 dropped in favour of the two extended versions here.
 
-Range notes (inherent to the 8-bit accumulator, not bugs): `multiply` /
-`multiply_fast` wrap mod 256 when `a * b > 255`; `divide` / `modulo` assume
+Range notes (inherent to the 8-bit accumulator, not bugs): `multiply_repeated` /
+`multiply_doubling` wrap mod 256 when `a * b > 255`; `divide` / `modulo` assume
 `b > 0` (b=0 loops forever) and are correct for `a` in 0..127, since they read
 bit 7 as a sign.
 

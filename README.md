@@ -34,13 +34,13 @@ because the point is to *see* how a CPU works.
 pip install PySide6                                 # required for the default GUI
 
 python3 run.py                                       # open the GUI empty (Load an example)
-python3 run.py sim examples/asm/03-programs/fibonacci.toys       # open the GUI on an example
-python3 run.py sim examples/asm/03-programs/fibonacci.toys --cli --run   # or run in the terminal
+python3 run.py sim examples/asm/03-programs/fibonacci_iter.toys       # open the GUI on an example
+python3 run.py sim examples/asm/03-programs/fibonacci_iter.toys --cli --run   # or run in the terminal
 
-python3 run.py asm examples/asm/03-programs/fibonacci.toys       # assemble -> examples/asm/03-programs/fibonacci.toyo
-python3 run.py sim examples/asm/03-programs/fibonacci.toyo --run # run a compiled .toyo directly
+python3 run.py asm examples/asm/03-programs/fibonacci_iter.toys       # assemble -> examples/asm/03-programs/fibonacci_iter.toyo
+python3 run.py sim examples/asm/03-programs/fibonacci_iter.toyo --run # run a compiled .toyo directly
 
-python3 run.py cc examples/c/multiply.toyc --run     # compile C and run
+python3 run.py cc examples/c/02-extended/multiply_operator.toyc --run     # compile C and run
 ```
 
 `run.py sim` opens a graphical interface by default (source + memory panels, with
@@ -72,12 +72,12 @@ Toy CPU — often nicer than writing assembly by hand:
 int main(void) {
     int a = 7;
     int b = 6;
-    return a * b;   // no multiply opcode -> compiled to repeated addition
+    return a * b;   // no multiply opcode -> compiled to double-and-add
 }
 ```
 
 ```bash
-python3 run.py cc examples/c/multiply.toyc --run  # -> ACC = 42
+python3 run.py cc examples/c/02-extended/multiply_operator.toyc --run  # -> ACC = 42
 ```
 
 See [`compiler/`](compiler/) for the C compiler.

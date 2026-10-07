@@ -1,0 +1,16 @@
+// expect: 42
+/*
+ * multiply_operator.c - compute a * b with the '*' operator.
+ *
+ * The Toy CPU has no multiply instruction, so the compiler expands '*' to a
+ * double-and-add loop (one step per bit of b). See multiply_repeated.toyc and
+ * multiply_doubling.toyc for the same two methods written out by hand with only
+ * +, -, and shifts.
+ *
+ * With a = 7, b = 6: result = 42.
+ */
+int main(void) {
+    int a = 7;
+    int b = 6;
+    return a * b;
+}

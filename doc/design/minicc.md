@@ -53,8 +53,8 @@ Local variables and arrays are prefixed per function (`v_<fn>__<name>`,
 
 ## Scope vs. the examples
 
-Main-only examples it compiles correctly: `ifelse`, `sum_array`, `max_array`,
-`multiply`, `sevenfold`, `bitops`, `fibonacci_array`, `msb_shift_vs_mask`,
+Main-only examples it compiles correctly: `if_then_else`, `sum_array`, `max_array`,
+`multiply`, `times7_operator`, `bit_operators`, `fibonacci_array`, `msb_shift_vs_mask`,
 `count_iter`.
 
 Non-recursive function examples it compiles correctly: `sum3`, `max3`,
@@ -63,7 +63,7 @@ exactly 256 bytes (they just fit, since minicc does not optimize).
 
 Known, intended non-fits (not bugs):
 - `countdown` uses `+=` / `for` (syntax sugar minicc omits).
-- `sort_array_function` uses array parameters (`int a[]`), unsupported.
+- `sort_array_fn` uses array parameters (`int a[]`), unsupported.
 - the recursive `count_rec`, `fibonacci_rec`, `gcd_rec` are rejected with a
   clear "recursion is not supported (stackfree)" error — use toycc.
 - `sort_array_inline` (259 bytes) and `bigint_add` (373) overflow the 256-byte
@@ -71,7 +71,7 @@ Known, intended non-fits (not bugs):
 
 ## Usage
 
-    python3 -m pytoy.minicc examples/c/sum_array.toyc --run
+    python3 -m pytoy.minicc examples/c/03-programs/sum_array.toyc --run
 
 Tested in `tests/test_minicc.py` (core language + the examples above + the
 deliberate-limit rejections).

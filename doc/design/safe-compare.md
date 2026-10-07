@@ -15,7 +15,7 @@ the fold work.
 ## Why not just fix it always
 
 A full unsigned comparison needs ~30 more bytes per compare than the bit-7 trick.
-Measured on the tight examples: `sort_array_function` (230 bytes, ~4 compares),
+Measured on the tight examples: `sort_array_fn` (230 bytes, ~4 compares),
 `bigint_add` (237, ~3), `sort3` (129, ~9) would all blow past the 256-byte
 machine if every comparison were made correct. The bit-7 trick exists precisely
 so these fit.

@@ -117,7 +117,7 @@ def build_snapshot():
     # (ready stays 0 headless), spin to the step cap by design, so they have no
     # meaningful headless result. Exclude them — the GUI drives them live by
     # letting the user set `ready`.
-    SKIP = {"poll_demo", "greet_name", "sort", "pin_check"}
+    SKIP = {"poll_demo", "greet_name", "sort_array_io", "pin_check"}
     table = {}
     for path in sorted(glob.glob(os.path.join(ASM_DIR, "**", "*.toys"),
                                  recursive=True)):

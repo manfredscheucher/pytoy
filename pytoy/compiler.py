@@ -1062,12 +1062,15 @@ class CodeGen:
         self.emit(f"{l_end}: load  {acc_tmp}")
 
     def gen_multiply(self, left, right):
-        # result = left * right via repeated addition (loop `right` times,
-        # adding `left` each pass). Both operands wrap mod 256; the product
-        # is taken mod 256 as well.
-        self.comment("multiply via repeated addition")
-        a_tmp = self.new_temp()       # the value being added (left)
-        cnt_tmp = self.new_temp()     # loop counter (right)
+        # result = left * right by double-and-add (shift-and-add): one pass per
+        # BIT of `right`, not per unit. Each pass adds `a` to the result when the
+        # current low bit of `cnt` is set, then doubles `a` and halves `cnt`.
+        # 8-bit `cnt` means at most 8 passes (vs up to 255 for repeated addition,
+        # so 255*255 no longer explodes). Everything wraps mod 256, matching the
+        # product mod 256.
+        self.comment("multiply by double-and-add")
+        a_tmp = self.new_temp()       # left, doubled each pass
+        cnt_tmp = self.new_temp()     # right, halved each pass
         res_tmp = self.new_temp()     # accumulating result
         self.gen_expr(left)
         self.emit(f"        store {a_tmp}")
@@ -1076,15 +1079,22 @@ class CodeGen:
         self.emit(f"        load  {self.const_label(0)}")
         self.emit(f"        store {res_tmp}")
         l_loop = self.new_label("mul_loop")
+        l_skip = self.new_label("mul_skip")
         l_end = self.new_label("mul_end")
         self.emit(f"{l_loop}: load  {cnt_tmp}")
-        self.emit(f"        ifzero {l_end}")
+        self.emit(f"        ifzero {l_end}        # cnt == 0 -> done")
+        self.emit(f"        load  {cnt_tmp}")
+        self.emit(f"        and   {self.const_label(1)}  # low bit of cnt set?")
+        self.emit(f"        ifzero {l_skip}       # bit 0 -> don't add this pass")
         self.emit(f"        load  {res_tmp}")
         self.emit(f"        add   {a_tmp}")
-        self.emit(f"        store {res_tmp}")
+        self.emit(f"        store {res_tmp}       # res += a")
+        self.emit(f"{l_skip}: load  {a_tmp}")
+        self.emit(f"        left")
+        self.emit(f"        store {a_tmp}         # a <<= 1 (double)")
         self.emit(f"        load  {cnt_tmp}")
-        self.emit(f"        sub   {self.const_label(1)}")
-        self.emit(f"        store {cnt_tmp}")
+        self.emit(f"        right")
+        self.emit(f"        store {cnt_tmp}       # cnt >>= 1 (halve)")
         self.emit(f"        goto  {l_loop}")
         self.emit(f"{l_end}: load  {res_tmp}")
 

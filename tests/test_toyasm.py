@@ -270,7 +270,7 @@ b:      20
 
 def test_sim_fibonacci():
     """fibonacci.toys with n=7 should produce fib(7) = 13."""
-    src = open('examples/asm/03-programs/fibonacci.toys').read()
+    src = open('examples/asm/03-programs/fibonacci_iter.toys').read()
     assert _run(src) == 13
 
 def test_sim_left_shift_overflow():
@@ -319,7 +319,7 @@ def test_sim_sort3():
 def test_sim_bubblesort():
     """sort_array.toys sorts the 10 digits of pi in place. Check the whole
     array from memory, not just ACC."""
-    src = open('examples/asm/03-programs/sort_array.toys').read()
+    src = open('examples/asm/03-programs/sort_array_inline.toys').read()
     mem, listing, syms, data_addrs, errors, _ds = assemble(src)
     assert errors == []
     m, pc, acc, steps = list(mem), 0, 0, 0
@@ -345,7 +345,7 @@ def test_sim_fibonacci_rec():
 
 def test_sim_multiply():
     """multiply.toys with a=7, b=6 should produce 42."""
-    src = open('examples/asm/02-extended/multiply.toys').read()
+    src = open('examples/asm/02-extended/multiply_repeated.toys').read()
     assert _run(src) == 42
 
 def test_sim_loop_countdown():

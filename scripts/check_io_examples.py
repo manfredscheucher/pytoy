@@ -35,5 +35,5 @@ def check(name):
 
 
 if __name__ == "__main__":
-    for n in ("numbers", "hello_world", "fibonacci", "countdown"):
+    for n in ("numbers", "hello_world", "fibonacci_io", "countdown"):
         check(n)

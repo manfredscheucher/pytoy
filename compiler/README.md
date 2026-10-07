@@ -28,7 +28,7 @@ Consequences for the C you can write:
 - Every `int` is an **unsigned 8-bit** value (0–255) that wraps mod 256. A
   `char` and an `int` would be the same thing here. Keep results small.
 - `*` is real multiplication, but it is compiled to a **runtime
-  repeated-addition loop** (there is no multiply opcode). The product is taken
+  double-and-add loop** (there is no multiply opcode). The product is taken
   mod 256.
 - **I/O is not supported.** Fixed-size local arrays ARE supported (see "Arrays"
   below), as are one-byte **pointers** (`int *p`, `&x`, `*p` — see "Pointers"),
@@ -72,7 +72,7 @@ whatever value `return expr;` leaves in the accumulator when `main` stops.
 
 | Category      | Operators                        | Notes |
 |---------------|----------------------------------|-------|
-| Arithmetic    | `+`  `-`  `*`                    | `*` is a repeated-addition loop; all wrap mod 256 |
+| Arithmetic    | `+`  `-`  `*`                    | `*` is a double-and-add loop; all wrap mod 256 |
 | Unary         | `-x`  `~x`  `!x`                 | `-x` is `0 - x` mod 256; `!x` yields 0/1 |
 | Bitwise       | `&`  `\|`  `^`  `~`              | direct opcodes (`and`/`or`/`xor`/`not`) |
 | Shifts        | `<<`  `>>`                       | constant amount → unrolled; variable amount → loop |
@@ -98,7 +98,7 @@ size choice, not an optimization, so `-O` does **not** turn it on.
 ## Arrays (fixed-size, local)
 
 `toycc` supports fixed-size local arrays of `int` bytes — see
-`examples/c/sort_array_inline.toyc`:
+`examples/c/03-programs/sort_array_inline.toyc`:
 
 ```c
 int a[10] = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};  // size + initializers are constant
@@ -113,7 +113,7 @@ plus a base-pointer byte holding its address.
 
 **How indexing works with no index register.** The Toy CPU has no index
 register and no indirect load/store, so `a[i]` is compiled with **self-modifying
-code** (the `examples/asm/03-programs/sum_array.toys` / `examples/asm/03-programs/sort_array.toys` trick): compute the element address
+code** (the `examples/asm/03-programs/sum_array.toys` / `examples/asm/03-programs/sort_array_inline.toys` trick): compute the element address
 `base + i`, write it into the address byte of a raw `LOAD` (or `STORE`)
 instruction, then execute that instruction. `base` is the array's address, held
 in a data byte the assembler fills in.
@@ -155,7 +155,7 @@ int main(void) { int v[3] = {4, 5, 6}; return suma(v, 3); }   // 15
 The caller passes the array's base address; inside the function `a` is a pointer
 and `a[i]` means `*(a + i)` — indirect access through the passed address. So a
 function can sort or fill the caller's array **in place** (see
-`examples/c/sort_array_function.toyc`). This unifies indexing: `a[i]` computes
+`examples/c/03-programs/sort_array_fn.toyc`). This unifies indexing: `a[i]` computes
 `(value of a) + i` whether `a` is a real local array (its name evaluates to its
 base address) or a pointer/parameter (its byte holds the address).
 
@@ -170,7 +170,7 @@ address-taken local is not save/restored (its value lives in its memory slot).
 ## Functions (non-recursive)
 
 `toycc` supports multiple functions with parameters, calling each other — see
-`examples/c/functions.toyc`:
+`examples/c/03-programs/sum_of_squares.toyc`:
 
 ```c
 int square(int x) { return x * x; }
@@ -179,7 +179,7 @@ int main(void) { return sum_of_squares(3, 4); }   // 9 + 16 = 25
 ```
 
 There is exactly one `main` (the entry point). **Recursion — self and mutual —
-is supported** (see `examples/c/fibonacci_rec.toyc`).
+is supported** (see `examples/c/03-programs/fibonacci_rec.toyc`).
 
 ### How calls work with no call/return instruction
 
@@ -285,13 +285,13 @@ writing the `.toys`); keep programs small.
 
 ```bash
 # compile program.toyc -> program.toys
-python3 run.py cc examples/c/fibonacci_iter.toyc
+python3 run.py cc examples/c/03-programs/fibonacci_iter.toyc
 
 # choose the output path
 python3 run.py cc program.toyc -o build/program.toys
 
 # compile and immediately run through the simulator (CLI, no pausing)
-python3 run.py cc examples/c/fibonacci_iter.toyc --run
+python3 run.py cc examples/c/03-programs/fibonacci_iter.toyc --run
 ```
 
 Run a produced `.toys` directly through the simulator in the terminal (the
@@ -299,7 +299,7 @@ graphical debugger is the default, so pass `--cli`):
 
 ```bash
 # from the repo root
-python3 run.py sim examples/c/fibonacci_iter.toys --cli --run --quiet
+python3 run.py sim examples/c/03-programs/fibonacci_iter.toys --cli --run --quiet
 # ...
 # Result:  ACC = 55  (00110111  0x37  dec 55)
 ```
@@ -318,13 +318,13 @@ the expected accumulator result.
 | `sum3.toyc`        | a+b+c for the first 3 pi digits (3,1,4)         | 8   |
 | `max3.toyc`        | max(3,1,4) via `>`                              | 4   |
 | `sort3.toyc`       | sort 3,1,4 and return the smallest              | 1   |
-| `multiply.toyc`    | 7 * 6 via repeated addition (`*`)               | 42  |
-| `sevenfold.toyc`   | 7 * 4                                           | 28  |
-| `countdown.toyc`   | 5+4+3+2+1 via a countdown `while` loop          | 15  |
-| `bitops.toyc`      | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F`     | 36  |
+| `multiply_operator.toyc`    | 7 * 6 via double-and-add (`*`)                  | 42  |
+| `times7_operator.toyc`   | 7 * 4                                           | 28  |
+| `sum_countdown.toyc`   | 5+4+3+2+1 via a countdown `while` loop          | 15  |
+| `bit_operators.toyc`      | bitwise `&` `^`, shifts `>>` `<<`, `& 0x0F`     | 36  |
 | `popcount.toyc`    | count set bits of 37 (`x & 1`, `>>`)            | 3   |
-| `ifelse.toyc`      | if/else picking `b - a` for `a < b`             | 5   |
-| `functions.toyc`   | helper functions calling each other             | 25  |
+| `if_then_else.toyc`      | if/else picking `b - a` for `a < b`             | 5   |
+| `sum_of_squares.toyc`   | helper functions calling each other             | 25  |
 | `fibonacci_iter.toyc` | fib(10), iterative                           | 55  |
 | `fibonacci_rec.toyc`  | fib(10), recursive                           | 55  |
 | `fibonacci_array.toyc`| first 10 Fibonacci numbers in an array; a[9] | 34  |
@@ -335,7 +335,7 @@ the expected accumulator result.
 | `sum_array.toyc`   | sum of an array of the 10 pi digits             | 39  |
 | `max_array.toyc`   | max of an array of the 10 pi digits             | 9   |
 | `sort_array_inline.toyc`  | bubble sort of the 10 pi digits (array in main); a[0] | 1 |
-| `sort_array_function.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
+| `sort_array_fn.toyc` | bubble sort in a FUNCTION (array by pointer); a[0] | 1   |
 
 The generated `.toys` files are build artifacts (not tracked in git). Build and
 re-verify all of them from the C sources with one command:
@@ -344,7 +344,7 @@ re-verify all of them from the C sources with one command:
 python3 scripts/build_examples.py
 ```
 
-It compiles every `examples/c/*.toyc`, writes the `.toys` next to it, and
+It compiles every `examples/c/**/*.toyc`, writes the `.toys` next to it, and
 checks each result against its `// expect:` header.
 
 ## How the compiler works (brief)
@@ -370,4 +370,4 @@ If you want to see the whole idea in one short, linear file, read
 optimizations. It still compiles most single-function examples. Details in
 [`doc/design/minicc.md`](../doc/design/minicc.md).
 
-    python3 -m pytoy.minicc examples/c/sum_array.toyc --run
+    python3 -m pytoy.minicc examples/c/03-programs/sum_array.toyc --run

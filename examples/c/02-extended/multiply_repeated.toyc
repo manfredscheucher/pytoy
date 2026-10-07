@@ -1,0 +1,22 @@
+// expect: 42
+/*
+ * multiply_repeated.c - a * b by repeated addition, using only '+'.
+ *
+ * Add a to the result b times. Simple, but slow: the loop runs b times, so
+ * 255 * 255 would do 255 additions. multiply_doubling.toyc does the same in
+ * about 8 steps. (The '*' operator itself compiles to the doubling method;
+ * this file spells out the naive one by hand.)
+ *
+ * C analogue of examples/asm/02-extended/multiply_repeated.toys.
+ * With a = 7, b = 6: result = 42.
+ */
+int main(void) {
+    int a = 7;
+    int b = 6;
+    int res = 0;
+    while (b != 0) {
+        res = res + a;
+        b = b - 1;
+    }
+    return res;
+}

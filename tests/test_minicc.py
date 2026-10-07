@@ -16,7 +16,19 @@ from pytoy.assembler import assemble
 from pytoy.simulator import simulate
 from pytoy.minicc import compile_source, MiniError
 
+import glob as _glob
+
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), '..', 'examples', 'c')
+
+
+def _example_path(name):
+    """Find a C example by base name under examples/c/ (now organised into
+    subfolders 02-extended/ 03-programs/ 04-io/), so tests needn't hard-code the
+    folder."""
+    hits = _glob.glob(os.path.join(EXAMPLES_DIR, '**', name + '.toyc'),
+                      recursive=True)
+    assert hits, f"example {name!r} not found under {EXAMPLES_DIR}"
+    return hits[0]
 
 
 def run(src, name="t.toyc"):
@@ -83,13 +95,13 @@ def test_array_write_and_read():
 # ── examples it is expected to handle ────────────────────────────────────────
 
 MINICC_OK = [
-    "ifelse", "sum_array", "max_array", "multiply", "sevenfold",
-    "bitops", "fibonacci_array", "msb_shift_vs_mask",
+    "if_then_else", "sum_array", "max_array", "multiply_operator",
+    "times7_operator", "bit_operators", "fibonacci_array", "msb_shift_vs_mask",
 ]
 
 @pytest.mark.parametrize("name", MINICC_OK)
 def test_example_matches_expect(name):
-    path = os.path.join(EXAMPLES_DIR, name + ".toyc")
+    path = _example_path(name)
     src = open(path).read()
     want = int(re.search(r"//\s*expect:\s*(\d+)", src, re.IGNORECASE).group(1))
     assert run(src, name + ".toyc") == want

@@ -9,7 +9,7 @@ flows through the accumulator.
 == Straight-line: `a + b + c`
 
 The simplest programs just do one thing after another. Load a value, combine in
-more values, stop. `sevenfold.toys` computes `7 * a` with only adds:
+more values, stop. `times7_doubling.toys` computes `7 * a` with only adds:
 
 ```
         load  a         # acc = a
@@ -36,7 +36,7 @@ it up, `store` to save an intermediate, `stop` when done.* The data (`a`, `b`,
 
 The Toy CPU has no multiply instruction, so you build it. Keep a counter in
 memory, do work each pass, decrement the counter, and jump back until it hits
-zero. `multiply.toys` computes `a * b`:
+zero. `multiply_repeated.toys` computes `a * b`:
 
 ```
         load  a         # acc = a  (used as loop counter)
@@ -71,7 +71,7 @@ this value zero?". Two useful reductions:
   Follow with `ifzero` to branch on "equal".
 - *Countdown to a condition:* `sub` until you reach `0`, then `ifzero`.
 
-`fibonacci.toys` uses the countdown form to run its loop `n` times:
+`fibonacci_iter.toys` uses the countdown form to run its loop `n` times:
 
 ```
         load  n
@@ -111,6 +111,6 @@ dangerous.
   writing instructions.
 - *Put all data after a `stop` or `goto`* so it's never executed.
 - *Watch for wraparound.* Values are mod 256; `fib(14) = 377` overflows, so
-  `fibonacci.toys` only works up to `n = 13`.
+  `fibonacci_iter.toys` only works up to `n = 13`.
 - *Step through in the GUI* when something's wrong --- watching the PC move and
   the accumulator change makes bugs obvious.

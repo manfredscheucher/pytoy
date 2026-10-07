@@ -19,16 +19,27 @@ from pytoy.minicc import compile_source, MiniError
 from pytoy.assembler import assemble
 from pytoy.simulator import simulate
 
+import glob as _glob
+
 EX = os.path.join(ROOT, "examples", "c")
 
+
+def _ex_path(name):
+    """Resolve a C example by base name under examples/c/**/ (subfolders)."""
+    hits = _glob.glob(os.path.join(EX, "**", name + ".toyc"), recursive=True)
+    if not hits:
+        raise FileNotFoundError(f"example {name!r} not found under {EX}")
+    return hits[0]
+
 # examples that should compile+run and match their // expect: value
-FUNC_OK = ["sum3", "max3", "gcd_iter", "functions"]
-MAIN_ONLY_OK = ["ifelse", "sum_array", "max_array", "multiply", "sevenfold",
-                "bitops", "fibonacci_array", "msb_shift_vs_mask", "count_iter"]
+FUNC_OK = ["sum3", "max3", "gcd_iter", "sum_of_squares"]
+MAIN_ONLY_OK = ["if_then_else", "sum_array", "max_array", "multiply_operator",
+                "times7_operator", "bit_operators", "fibonacci_array",
+                "msb_shift_vs_mask", "count_iter"]
 # recursive -> must be rejected with a recursion/stackfree message
 REC_REJECT = ["count_rec", "fibonacci_rec", "gcd_rec"]
 # big / uses unsupported syntax -> noted, not a pass/fail
-NOTE = ["fibonacci_iter", "popcount", "sort_array_function"]
+NOTE = ["fibonacci_iter", "popcount", "sort_array_fn"]
 
 
 def expect(path):
@@ -51,7 +62,7 @@ def run(src, name):
 def main():
     fails = []
     for name in FUNC_OK + MAIN_ONLY_OK:
-        path = os.path.join(EX, name + ".toyc")
+        path = _ex_path(name)
         src = open(path).read()
         want = expect(path)
         try:
@@ -65,7 +76,7 @@ def main():
             fails.append(name)
 
     for name in REC_REJECT:
-        src = open(os.path.join(EX, name + ".toyc")).read()
+        src = open(_ex_path(name)).read()
         try:
             compile_source(src, name)
             print(f"[FAIL] {name}: expected MiniError (recursion), compiled")
@@ -91,7 +102,7 @@ def main():
 
     print("\n-- notes (big / unsupported syntax; not pass/fail) --")
     for name in NOTE:
-        path = os.path.join(EX, name + ".toyc")
+        path = _ex_path(name)
         src = open(path).read()
         want = expect(path)
         try:

@@ -160,7 +160,7 @@ may still hold name characters. Second, it indexes the `io` cells by the runtime
 count `n` using *self-modifying code* — patching the address byte of a
 `load`/`store` on each pass — exactly the indirect-access technique from the _A
 stack, and recursion_ chapter. The same machinery drives
-`examples/asm/04-io/sort.toys`, which reads `N` values, bubble-sorts them, and
+`examples/asm/04-io/sort_array_io.toys`, which reads `N` values, bubble-sorts them, and
 writes them back.
 
 == The rest of the examples
@@ -176,11 +176,11 @@ writes them back.
   [`numbers_hex`],   [same bytes, opens in hex view (`0`..`9`, `a`..`e`)],
   [`numbers_ascii`], [same bytes, opens in ascii view],
   [`hello_world`],   [write the ASCII of "Hello world!" (output, ascii view)],
-  [`fibonacci`],   [write the Fibonacci numbers `0`..`233` into the `io` cells],
+  [`fibonacci_io`],   [write the Fibonacci numbers `0`..`233` into the `io` cells],
   [`countdown`],   [count down from 10, writing each step to a cell],
   [`poll_demo`],   [the canonical busy-poll: wait on `ready`, echo `io0` to `io1`],
   [`greet_name`],  [read a name, write "hallo NAME!" (input + output)],
-  [`sort`],        [read `N` values, sort ascending, write them back],
+  [`sort_array_io`],        [read `N` values, sort ascending, write them back],
   [`pin_check`],   [read a 4-digit PIN (ascii), check it against 1337, write "succ"/"fail"],
 )
 

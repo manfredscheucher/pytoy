@@ -45,7 +45,7 @@ the output:
 
 - Every C variable gets a fixed *data byte* in memory; temporaries get their own
   bytes too.
-- `a * b` becomes a *repeated-addition loop* (there is no multiply opcode).
+- `a * b` becomes a *double-and-add loop* (there is no multiply opcode).
 - Comparisons reduce to the one available conditional, `ifzero` --- e.g.
   `a == b` compiles to `a - b` followed by `ifzero`, and ordering uses the
   sign-bit-of-difference trick.
@@ -54,7 +54,7 @@ the output:
 === Functions
 
 toycc supports multiple functions that call each other (see
-`examples/c/functions.toyc`). The Toy CPU has no call/return instruction, no stack
+`examples/c/03-programs/sum_of_squares.toyc`). The Toy CPU has no call/return instruction, no stack
 pointer, and no indirect jump, so each function is compiled with *global slots +
 marker dispatch*:
 
@@ -72,7 +72,7 @@ clobber its caller's values. So around *every* call, toycc saves the caller's
 live values onto a real stack (one `sp` byte plus self-modifying indirect
 push/pop, growing down from address 255) and restores them afterward --- giving
 each activation its own copies. This makes recursion, including mutual
-recursion, work automatically; `examples/c/fibonacci_rec.toyc` is a recursive
+recursion, work automatically; `examples/c/03-programs/fibonacci_rec.toyc` is a recursive
 Fibonacci. It is the same _idea_ as the hand-written `examples/asm/03-programs/fibonacci_rec.toys` (next
 chapter) --- a self-modifying-code stack --- though the compiler's stack grows
 *down* from 255 while the hand-written one grows up; the direction is a free
@@ -94,7 +94,7 @@ Fixed-size local arrays (`int a[10] = {...};`, `a[i]` read/write with any index
 expression) are supported. With no index register, `a[i]` compiles with
 self-modifying code: compute `base + i`, patch it into a raw load/store's
 address byte, and execute it --- the same trick the `examples/asm/03-programs/sum_array.toys` and
-`examples/asm/03-programs/sort_array.toys` assembly examples use. `examples/c/sum_array.toyc`, `examples/c/max_array.toyc` and `examples/c/sort_array_inline.toyc`
+`examples/asm/03-programs/sort_array_inline.toys` assembly examples use. `examples/c/03-programs/sum_array.toyc`, `examples/c/03-programs/max_array.toyc` and `examples/c/03-programs/sort_array_inline.toyc`
 operate on the ten digits of pi. (Arrays are not saved across recursive calls,
 so a recursive function may not declare one --- the compiler rejects that.)
 
@@ -110,7 +110,7 @@ address from `p` into a raw load/store, then execute it).
 Crucially, an array passed to a function *decays to a pointer*: `int f(int a[],
 int n)` receives the array's address, and `a[i]` inside `f` means `*(a + i)`
 through that address --- so a function can sort or fill the caller's array in
-place. `examples/c/sort_array_function.toyc` is the bubble sort written as such a function.
+place. `examples/c/03-programs/sort_array_fn.toyc` is the bubble sort written as such a function.
 (Taking the address of a local inside a *recursive* function is rejected, since
 `&x` names a single shared slot the recursion stack can't follow.)
 
@@ -137,14 +137,14 @@ program's `return` value in the accumulator, printed as the final
 
 ```bash
 # Stage 1: compile C to assembly
-python3 run.py cc examples/c/multiply.toyc
+python3 run.py cc examples/c/02-extended/multiply_operator.toyc
 
 # Stages 2+3: assemble and simulate (the simulator assembles the .toys, then runs it)
-python3 run.py sim examples/c/multiply.toys --cli --run --quiet
+python3 run.py sim examples/c/02-extended/multiply_operator.toys --cli --run --quiet
 #   -> Result: ACC = 42
 
 # Or all three at once with toycc's --run flag:
-python3 run.py cc examples/c/multiply.toyc --run
+python3 run.py cc examples/c/02-extended/multiply_operator.toyc --run
 ```
 
 == How the pipeline is tested

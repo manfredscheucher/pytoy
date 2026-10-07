@@ -85,8 +85,13 @@ _EXPECT_RE = re.compile(r'//\s*expect:\s*(\d+)', re.IGNORECASE)
 
 
 def _collect_examples():
+    # The I/O examples (04-io/) busy-poll `ready` / read input, so they can't run
+    # headless to a deterministic ACC and carry no `// expect:`. They are covered
+    # separately by tests/test_cc_io.py; skip them here.
     cases = []
-    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, '*.toyc'))):
+    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, '**', '*.toyc'), recursive=True)):
+        if os.sep + '04-io' + os.sep in path:
+            continue
         with open(path) as f:
             src = f.read()
         m = _EXPECT_RE.search(src)
@@ -103,7 +108,8 @@ def test_examples_present():
     names = {name for name, _, _ in EXAMPLE_CASES}
     assert names, "no .toyc examples found"
     # the ports of the assembler examples must exist
-    for expected in {'fibonacci_iter.toyc', 'multiply.toyc', 'sevenfold.toyc', 'sum_array.toyc', 'max_array.toyc'}:
+    for expected in {'fibonacci_iter.toyc', 'multiply_operator.toyc',
+                     'times7_operator.toyc', 'sum_array.toyc', 'max_array.toyc'}:
         assert expected in names, f"missing example {expected}"
 
 
@@ -812,7 +818,7 @@ def test_optimize_all_on_preserves_results():
 def test_optimizations_preserve_examples():
     """Every committed C example still produces its // expect: value, both at
     default (no opts) and with everything on."""
-    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, "*.toyc"))):
+    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, "**", "*.toyc"), recursive=True)):
         src = open(path).read()
         m = re.search(r"//\s*expect:\s*(\d+)", src, re.IGNORECASE)
         if not m:

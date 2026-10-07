@@ -119,6 +119,6 @@ Two things make this honest rather than a black box:
   substitution --- when you step through a program you can see each source line
   become the very bytes in memory.
 - *The C layer is optional.* `toycc` compiles a small subset of C down to
-  assembly (turning `a * b` into repeated addition, since the CPU has no
+  assembly (turning `a * b` into a double-and-add loop, since the CPU has no
   multiply). It sits on top of the machine, not inside it --- you can understand
   the Toy CPU completely without ever writing a line of C.

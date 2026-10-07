@@ -5,5 +5,9 @@ __pycache__/
 !examples/toyo/*.toyo
 .claude/
 .DS_Store
+# compiled C examples (the .toyc sources are checked in; .toys are build output)
+examples/c/**/*.toys
 examples/c/*.toys
+# editor swap files
+*.swp
 _private/
