@@ -1483,6 +1483,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
         def _refresh_source(self):
             lines = []
+            # Display-only line-number gutter: the 1-based index of each listing
+            # row (matching what a text editor shows for the .toys file). Never
+            # written into `orig` or any saved file — purely a view affordance,
+            # since labels, not line numbers, are how asm refers to lines.
+            gutter_width = len(str(len(self.listing))) if self.listing else 1
             pc_line = self.addr_to_line.get(self.pc)
             sel_line = self.addr_to_line.get(self.selected_addr) if self.selected_addr is not None else None
             # find which source line the current instruction references
@@ -1527,7 +1532,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                         text = f"{marker} {orig.rstrip()}  # now bytes: {raw}"
                         colours.append(HL_CODE)
 
-                lines.append(highlight_row(text, colours))
+                gutter = f"{i + 1:>{gutter_width}} | "
+                lines.append(highlight_row(gutter + text, colours))
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.source_view.setHtml(html)
 

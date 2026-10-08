@@ -73,6 +73,15 @@ Implementation (how the C line reaches each asm line):
 
 5. **asm line numbers in the view** — show line numbers in the source panel's
    display ONLY (not written into the asm, since labels exist). pytoy + ktoy.
+   DONE (pytoy): `_refresh_source` in `pytoy/simulator.py` prepends a right-aligned
+   gutter `f"{i+1:>{w}} | "` (w = digit count of the listing length) to each row,
+   1-based, one number per listing row (comments/blank/data included) so it matches
+   the text-editor line of the `.toys` file. The gutter is built inside the render
+   loop only; `orig` and saved files are untouched. Click-to-select is unaffected
+   (`_source_clicked` maps by `blockNumber()`, and the gutter is inline, not an
+   extra line). The row highlight (HL_PC/SELECTED/ARG/DATA/CODE) spans the whole
+   row including the gutter, like an editor's current-line highlight. Test:
+   `tests/test_source_gutter.py`.
 6. **asm edit mode** — right-click the asm (left) panel → a window opens to edit
    the assembly text → Save re-assembles it fresh and reloads. pytoy + ktoy.
 

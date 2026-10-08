@@ -33,7 +33,11 @@ python3 run.py sim examples/asm/03-programs/fibonacci_iter.toys
 The window has:
 
 - *Source panel* --- your program, with the current instruction highlighted in
-  yellow and any memory it references in green.
+  yellow and any memory it references in green. Each row is prefixed with a
+  display-only line number (right-aligned, like `3 |`) matching the line numbers
+  your text editor shows for the `.toys` file. The numbers are never written
+  into the source or any saved file --- assembly refers to lines by label, so
+  the numbering is just a reading aid.
 - *Memory panel* --- every address and its value in binary, so you watch the
   bits change as the program runs.
 - *Controls* --- Step, Run, and Reset buttons.
