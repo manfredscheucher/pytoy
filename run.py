@@ -37,6 +37,17 @@ def cmd_sim(args):
         empty_gui()
         return
 
+    # A .toyc is C source, not an assembly program: sim would feed it to the
+    # assembler and report a confusing "Assembly failed". Point at the cc
+    # subcommand (which compiles C), and at the GUI's Load/Examples for the
+    # side-by-side C|asm view.
+    if args.file.lower().endswith('.toyc'):
+        sys.exit(f"{args.file} is C source, not an assembly program. "
+                 f"Compile it first:\n"
+                 f"    python3 run.py cc {args.file} --run\n"
+                 f"or open the GUI and use the Load/Examples buttons to see "
+                 f"the C -> assembly view.")
+
     try:
         src = open(args.file).read()
     except OSError:
@@ -98,11 +109,13 @@ def cmd_sim(args):
 
     if use_gui:
         if is_toyo:
+            # bytecode has no re-runnable assembly source to edit
             gui_main(mem, listing, syms, data_addrs, guard, has_source=False,
                      source_path=args.file, io_config=io_config)
         else:
+            # pass the .toys source so right-click "edit asm" works right away
             gui_main(mem, listing, syms, data_addrs, guard,
-                     source_path=args.file, io_config=io_config)
+                     source_path=args.file, io_config=io_config, asm_text=src)
         return
 
     if args.export:

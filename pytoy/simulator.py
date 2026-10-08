@@ -8,6 +8,7 @@ debugger GUI. The command-line entry point lives in run.py at the repo root.
 """
 
 import os
+import re
 import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
@@ -305,6 +306,38 @@ def line_changed_bytes(mem, mem_original, addr, blist):
     return any(mem[addr + k] != mem_original[addr + k]
                for k in range(len(blist)))
 
+# ── C ↔ asm line map (from `# @c:N` annotations) ────────────────────────────
+
+_C_MARKER_RE = re.compile(r"@c:(\d+)")
+
+def parse_c_line_map(asm_text):
+    """Parse the `# @c:N` annotations in annotated assembly into a bidirectional
+    C↔asm line map, driving the C|asm window's two-sided highlight.
+
+    `asm_text` is the output of `_compile_c(..., annotate_c_lines=True)`: each
+    emitted line that came from a C statement carries a trailing `@c:N` (either a
+    standalone `# @c:N` comment or `@c:N` inside an existing comment); N is the
+    1-based C source line. Lines with no C origin (headers, data, blanks) carry
+    no marker and simply don't map.
+
+    Returns (c_to_asm, asm_to_c):
+      c_to_asm   dict: 1-based C line -> sorted list of 0-based asm line indices
+      asm_to_c   dict: 0-based asm line index -> 1-based C line
+    The asm indices are 0-based (block/row indices), matching QTextEdit's
+    blockNumber() so a clicked row maps straight through. Pure — no Qt."""
+    c_to_asm = {}
+    asm_to_c = {}
+    for idx, line in enumerate(asm_text.splitlines()):
+        m = _C_MARKER_RE.search(line)
+        if not m:
+            continue
+        c_line = int(m.group(1))
+        asm_to_c[idx] = c_line
+        c_to_asm.setdefault(c_line, []).append(idx)
+    for c_line in c_to_asm:
+        c_to_asm[c_line].sort()
+    return c_to_asm, asm_to_c
+
 # ── Step-back history (undo) ────────────────────────────────────────────────
 
 class History:
@@ -353,11 +386,14 @@ class History:
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
 def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
-             source_path=None, io_config=None):
+             source_path=None, io_config=None, asm_text=None):
     """Launch PySide6 graphical debugger. has_source=False (a .toyo) hides the
     source panel and shows only memory, matching the Load button's .toyo path.
     source_path is the file this program was loaded from (e.g. the CLI argument)
-    so Reload can re-read it even before the Load button is ever used."""
+    so Reload can re-read it even before the Load button is ever used.
+    asm_text is the assembly source of the initial program (a CLI-loaded .toys),
+    so right-click "edit asm" works before the Load button is ever used; None for
+    a .toyo/bytecode load (no source) or the empty startup window."""
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
@@ -591,6 +627,157 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             parent = self.parent()
             if parent._load_asm_text(self.edited_text(),
                                      parent._current_path or "<edited>"):
+                # the loaded program now differs from the file on disk, so a
+                # later Load/Reload warns before discarding this edit (like a
+                # memory edit). _load_asm_text cleared the flag; re-set it here.
+                parent._asm_edited = True
+                self.accept()
+
+    class CAsmDialog(QDialog):
+        """Side-by-side C | asm view for a compiled .toyc, with cross-highlight.
+
+        A resizable window with two read-only monospace panels:
+          LEFT  — the original C source (one line per C text line)
+          RIGHT — the assembly produced by `_compile_c(..., annotate_c_lines=
+                  True)`, so each asm line that came from a C statement carries a
+                  `# @c:N` marker tying it back to its C source line.
+
+        The markers are parsed once (parse_c_line_map) into a bidirectional map.
+        CLICKING a line (either panel) highlights that line AND every
+        corresponding line on the other side — one C line normally lights up
+        several asm lines. Click is used rather than hover: in a QTextEdit it is
+        reliable and mirrors the main panels' `_source_clicked`. Lines the
+        compiler could not attribute (asm headers, data, blanks) simply don't
+        highlight.
+
+        The title shows which compiler was used. OK re-uses the debugger's normal
+        asm load path (`_load_asm_text`) so the program loads at step 0; the
+        `# @c:N` comments are KEPT in the loaded source (the assembler ignores
+        comments, so the mem image is identical, and keeping them lets the asm
+        panel / editor still show the C origin). Cancel discards.
+        """
+
+        # Both panels get a right-aligned line-number gutter (like the main asm
+        # panel). It is display-only — click mapping uses blockNumber(), which
+        # the inline gutter does not change.
+        def __init__(self, parent, c_text, asm_text, compiler, title,
+                     source_path=None):
+            super().__init__(parent)
+            self.setWindowTitle(title)
+            self.resize(820, 560)
+            self._asm_text = asm_text
+            self._c_text = c_text
+            self._source_path = source_path
+            # c_to_asm: 1-based C line -> [0-based asm rows]; asm_to_c: inverse.
+            self._c_to_asm, self._asm_to_c = parse_c_line_map(asm_text)
+
+            mono = parent._mono if parent else self.font()
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel(
+                f"C source (left) and the assembly {compiler} generated "
+                f"(right).\nClick a line on either side to highlight the "
+                f"matching lines on both."))
+
+            splitter = QSplitter(Qt.Horizontal)
+            layout.addWidget(splitter, stretch=1)
+
+            self.c_view = QTextEdit()
+            self.c_view.setReadOnly(True)
+            self.c_view.setFont(mono)
+            self.c_view.setLineWrapMode(QTextEdit.NoWrap)
+            c_box = QGroupBox("C source")
+            _c_layout = QVBoxLayout(c_box)
+            _c_layout.setContentsMargins(4, 4, 4, 4)
+            _c_layout.addWidget(self.c_view)
+            splitter.addWidget(c_box)
+
+            self.asm_view = QTextEdit()
+            self.asm_view.setReadOnly(True)
+            self.asm_view.setFont(mono)
+            self.asm_view.setLineWrapMode(QTextEdit.NoWrap)
+            asm_box = QGroupBox(f"Assembly ({compiler})")
+            _a_layout = QVBoxLayout(asm_box)
+            _a_layout.setContentsMargins(4, 4, 4, 4)
+            _a_layout.addWidget(self.asm_view)
+            splitter.addWidget(asm_box)
+
+            # click-to-highlight, same mechanism as the main source panel
+            self.c_view.mouseReleaseEvent = self._c_clicked
+            self.asm_view.mouseReleaseEvent = self._asm_clicked
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok
+                                       | QDialogButtonBox.Cancel)
+            buttons.button(QDialogButtonBox.Ok).setText("Load")
+            buttons.accepted.connect(self._on_ok)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+
+            # nothing selected yet -> render with no highlight
+            self._sel_c_line = None          # 1-based C line, or None
+            self._refresh()
+
+        # ── highlight state ──────────────────────────────────────────────
+        def highlighted_asm_rows(self):
+            """The 0-based asm rows highlighted for the current selection (the
+            rows the selected C line maps to). Empty if nothing / an unmapped
+            line is selected. Exposed for tests."""
+            if self._sel_c_line is None:
+                return []
+            return list(self._c_to_asm.get(self._sel_c_line, []))
+
+        def select_c_line(self, c_line):
+            """Select a 1-based C line (as if the user clicked it) and refresh
+            both panels. Also the entry point for an asm click, which resolves
+            to its C line first. Exposed for tests."""
+            self._sel_c_line = c_line
+            self._refresh()
+
+        def _c_clicked(self, event):
+            QTextEdit.mouseReleaseEvent(self.c_view, event)
+            cursor = self.c_view.cursorForPosition(event.pos())
+            self.select_c_line(cursor.blockNumber() + 1)   # rows are 0-based
+
+        def _asm_clicked(self, event):
+            QTextEdit.mouseReleaseEvent(self.asm_view, event)
+            cursor = self.asm_view.cursorForPosition(event.pos())
+            row = cursor.blockNumber()
+            c_line = self._asm_to_c.get(row)
+            # Clicking an unattributed asm line clears the selection.
+            self.select_c_line(c_line)
+
+        # ── rendering ────────────────────────────────────────────────────
+        @staticmethod
+        def _render(lines, highlight_rows):
+            """Build panel HTML: each row full-width, rows in `highlight_rows`
+            tinted with HL_SELECTED, with a 1-based line-number gutter."""
+            width = len(str(len(lines))) if lines else 1
+            rendered = []
+            for i, text in enumerate(lines):
+                colours = [HL_SELECTED] if i in highlight_rows else []
+                gutter = f"{i + 1:>{width}} | "
+                rendered.append(highlight_row(gutter + text, colours))
+            return '<pre style="margin:0;">' + '\n'.join(rendered) + '</pre>'
+
+        def _refresh(self):
+            c_lines = self._c_text.splitlines()
+            asm_lines = self._asm_text.splitlines()
+            # selected C row (0-based) on the left; its mapped asm rows on right.
+            c_hl = set()
+            asm_hl = set()
+            if self._sel_c_line is not None:
+                c_hl.add(self._sel_c_line - 1)
+                asm_hl.update(self._c_to_asm.get(self._sel_c_line, []))
+            self.c_view.setHtml(self._render(c_lines, c_hl))
+            self.asm_view.setHtml(self._render(asm_lines, asm_hl))
+
+        def _on_ok(self):
+            # Load the asm into the simulator via the normal path. Keep the
+            # `# @c:N` comments (assembler ignores them). On success close;
+            # on failure _load_asm_text showed an error and we stay open.
+            parent = self.parent()
+            path = self._source_path or parent._current_path or "<compiled>"
+            if parent._load_asm_text(self._asm_text, path):
                 self.accept()
 
     class ClickLabel(QLabel):
@@ -819,7 +1006,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
     class ToyDebugger(QMainWindow):
         def __init__(self, mem_original, listing, syms, data_addrs, code_guard,
-                     has_source=True, source_path=None, io_config=None):
+                     has_source=True, source_path=None, io_config=None,
+                     asm_text=None):
             super().__init__()
             self.setWindowTitle("pytoy")
             self.resize(1000, 700)
@@ -830,8 +1018,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # path of the last file loaded (CLI arg or Load button), for Reload
             self._current_path = source_path
             # assembly source of the loaded program (None for a .toyo/bytecode
-            # load or an empty startup window), so right-click can edit it
-            self._asm_text = None
+            # load or an empty startup window), so right-click can edit it. For a
+            # CLI-loaded .toys the source is passed in so editing works right away.
+            self._asm_text = asm_text
+            # compiler chosen for a C load ("minicc"/"toycc"), so Reload reuses it
+            # instead of re-detecting; None for a non-C load.
+            self._current_compiler = None
+            # has the loaded assembly been hand-edited in the GUI (Edit-asm Save)?
+            # a Load/Reload then warns before discarding it, like memory edits.
+            self._asm_edited = False
             self._build_ui()
             self._setup_shortcuts()
             self.load_program(mem_original, listing, syms, data_addrs, code_guard,
@@ -1270,23 +1465,36 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             else:
                 self._start_timer()
 
-        def _confirm_discard(self):
-            """Ask before throwing away hand edits. Only prompts when the user
-            has made live memory edits (right-click) — plain stepping is not
-            worth a prompt, since loading/reloading is expected to reset
-            execution anyway. Returns True to proceed, False to cancel."""
-            if not self._has_live_edits:
+        def _confirm_discard(self, include_asm_edit=True):
+            """Ask before throwing away hand edits. Prompts when the user has
+            made live memory edits (right-click) OR edited the assembly source
+            in the GUI — plain stepping is not worth a prompt, since loading/
+            reloading is expected to reset execution anyway. Returns True to
+            proceed, False to cancel.
+
+            include_asm_edit=False drops the asm-edit check: re-opening the asm
+            editor doesn't discard an asm edit (the editor shows it, prefilled),
+            so only a pending memory edit is worth warning about there."""
+            asm_edited = self._asm_edited and include_asm_edit
+            if not (self._has_live_edits or asm_edited):
                 return True
+            if asm_edited and self._has_live_edits:
+                what = "hand-edited memory and edited the assembly"
+            elif asm_edited:
+                what = "edited the assembly in the editor"
+            else:
+                what = "hand-edited memory"
             reply = QMessageBox.question(
                 self, "Discard your edits?",
-                "You've hand-edited memory. Loading a file will replace it with "
-                "the file's contents.\n\nContinue?",
+                f"You've {what}. Loading a file will replace it with the "
+                f"file's contents.\n\nContinue?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             return reply == QMessageBox.Yes
 
         def _load_clicked(self):
-            """Pick a .toys (assembly source) or .toyo (byte listing) file and
-            load it into the debugger."""
+            """Pick a .toys (assembly), .toyo (bytecode) or .toyc (C) file and
+            load it. A .toyc is compiled first and shown in the C|asm window
+            (the user sees C vs asm before it loads); .toys/.toyo load directly."""
             if not self._confirm_discard():
                 return
             # Start the dialog in the folder of the last-loaded file, so loading
@@ -1296,9 +1504,40 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                          if self._current_path else "")
             path, _ = QFileDialog.getOpenFileName(
                 self, "Load program", start_dir,
-                "Toy programs (*.toys *.toyo);;All files (*)")
-            if path:
+                "Toy programs (*.toys *.toyo *.toyc);;All files (*)")
+            if not path:
+                return
+            if path.lower().endswith(".toyc"):
+                self._load_toyc(path)
+            else:
                 self._load_path(path)
+
+        def _load_toyc(self, path, compiler=None):
+            """Open a .toyc from the Load dialog: read it, pick a compiler, and
+            show the C|asm window (which loads the asm on OK). Unlike the Examples
+            browser the compiler isn't pre-chosen here, so detect which compilers
+            accept this source (reusing examples_index's actual-compile probe) and
+            prefer toycc (the full one) when both work; error if neither.
+
+            `compiler` pins the compiler (a Reload reusing the one chosen before),
+            so Reload doesn't silently re-detect and switch minicc -> toycc when
+            both accept the source. None means detect as above (a fresh Load)."""
+            try:
+                text = open(path).read()
+            except Exception as e:
+                QMessageBox.critical(self, "Load failed",
+                                     f"Could not read file:\n{e}")
+                return
+            if compiler is None:
+                from .examples_index import _detect_compilers
+                accepted = _detect_compilers(path)
+                if not accepted:
+                    show_error_dialog(
+                        f"Cannot compile: {path}",
+                        "Neither minicc nor toycc accepts this C source.")
+                    return
+                compiler = "toycc" if "toycc" in accepted else accepted[0]
+            self._compile_and_show_casm(text, compiler, path)
 
         def _examples_clicked(self):
             """Open the Examples browser and load whatever the user picks.
@@ -1322,8 +1561,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                     "(it was loaded as bytecode, or no program is loaded).")
                 return
             # Re-assembling resets the machine, so warn about live memory edits
-            # first — the same guard Load/Reload use.
-            if not self._confirm_discard():
+            # first. Not the asm-edit itself: the editor opens prefilled with the
+            # current (possibly already edited) source, so nothing is discarded.
+            if not self._confirm_discard(include_asm_edit=False):
                 return
             name = (os.path.basename(self._current_path)
                     if self._current_path else "program")
@@ -1336,10 +1576,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
               asm  (.toys): read -> assemble -> load          (like Load's .toys)
               toyo (.toyo): read -> parse_toyo -> load         (like Load's .toyo)
-              c    (.toyc): read -> compile with `compiler` -> assemble -> load
+              c    (.toyc): read -> compile -> C|asm window -> OK loads the asm
 
-            For C we only compile+assemble+load the asm for now; the side-by-side
-            C|asm view is a separate feature."""
+            A C example (the compiler is already chosen by the tree node) routes
+            through the C|asm window, same as a .toyc opened via Load, so the user
+            sees C vs asm before it loads. asm/toyo still load directly."""
             path = example.path
             try:
                 text = open(path).read()
@@ -1354,21 +1595,40 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             elif example.category == "asm":
                 if not self._load_asm_text(text, path):
                     return
-            else:   # "c": compile the source with the chosen compiler first
-                try:
-                    # Annotate each asm line with its C source line (`# @c:N`);
-                    # inert comments, so the loaded program is unchanged.
-                    asm = _compile_c(text, compiler, path,
-                                     annotate_c_lines=True)
-                except Exception as e:
-                    show_error_dialog(f"{compiler} failed: {path}", str(e))
-                    return
-                if not self._load_asm_text(asm, path):
-                    return
+            else:   # "c": compile, then show the C|asm window (it loads on OK)
+                self._compile_and_show_casm(text, compiler, path)
+                return   # _current_path/title updated by the window's OK path
 
             self._current_path = path
             self.btn_reload.setEnabled(True)
             self._update_title()
+
+        def _compile_and_show_casm(self, c_text, compiler, path):
+            """Compile C source and open the C|asm window. Shared by the Load
+            dialog's .toyc branch and the Examples browser's C selection.
+
+            Compiles with `annotate_c_lines=True` so the asm carries the `# @c:N`
+            markers that drive the window's cross-highlight. A compile error pops
+            the shared error dialog and no window opens. On the window's OK the
+            program is loaded (step 0) via _load_asm_text and _current_path/title
+            are updated here so Reload points at the .toyc."""
+            try:
+                asm = _compile_c(c_text, compiler, path, annotate_c_lines=True)
+            except Exception as e:
+                show_error_dialog(f"{compiler} failed: {path}", str(e))
+                return
+            name = os.path.basename(path)
+            dlg = CAsmDialog(self, c_text, asm, compiler,
+                             f"C → assembly ({compiler}) — {name}",
+                             source_path=path)
+            if dlg.exec() == QDialog.Accepted:
+                self._current_path = path
+                # remember the chosen compiler so Reload reuses it instead of
+                # re-detecting (which could silently switch minicc -> toycc).
+                # _load_asm_text (via the window's OK) cleared it; set it here.
+                self._current_compiler = compiler
+                self.btn_reload.setEnabled(True)
+                self._update_title()
 
         def _reload_clicked(self):
             """Re-read the current file (CLI arg or last Load) from disk and
@@ -1394,6 +1654,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                               code_guard=None, has_source=True)
             # keep the source so right-click can re-open it for editing
             self._asm_text = text
+            # a fresh assemble-and-load: the loaded asm now matches its source,
+            # and this is a plain .toys path (a C load re-sets the compiler after
+            # the C|asm window's OK). Clear both so stale state can't carry over.
+            self._asm_edited = False
+            self._current_compiler = None
             return True
 
         def _load_toyo_text(self, text):
@@ -1411,14 +1676,29 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             listing = [(a, [mem[a]], "", True) for a in range(256)]
             self.load_program(mem, listing, {}, set(range(256)),
                               code_guard=None, has_source=False)
-            # a .toyo is bytecode with no assembly source to edit
+            # a .toyo is bytecode with no assembly source to edit, and no C
+            # compiler behind it
             self._asm_text = None
+            self._asm_edited = False
+            self._current_compiler = None
             return True
 
         def _load_path(self, path):
             """Read `path` from disk, assemble/parse it, and point the debugger
             at it (resetting to step 0). Remembers the path so Reload can re-read
-            it. Shared by both the Load and Reload buttons."""
+            it. Shared by both the Load and Reload buttons.
+
+            A `.toyc` re-opens the C|asm window (same as the first Load), so a
+            C file Reloaded from disk is recompiled and shown, never fed to the
+            assembler as if it were .toys. Reloading the same .toyc reuses the
+            compiler chosen before (Reload shouldn't silently re-detect and
+            switch minicc -> toycc); a different .toyc is detected fresh."""
+            if path.lower().endswith(".toyc"):
+                reuse = (self._current_compiler
+                         if path == self._current_path else None)
+                self._load_toyc(path, compiler=reuse)
+                return
+
             try:
                 text = open(path).read()
             except Exception as e:
@@ -1700,16 +1980,20 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
     app = QApplication.instance() or QApplication(sys.argv)
     win = ToyDebugger(mem, listing, syms, data_addrs, code_guard, has_source,
-                      source_path=source_path, io_config=io_config)
+                      source_path=source_path, io_config=io_config,
+                      asm_text=asm_text)
     win.show()
     app.exec()
 
 
-def show_error_dialog(title, message):
-    """Pop up an error dialog (for assembly failures on GUI startup), then
-    return. Used by run.py so a bad file shows a window instead of only printing
-    to the terminal. Errors are shown INLINE (not hidden behind 'Show Details')
-    so a beginner sees them immediately; long messages get a scrollbar."""
+def show_error_dialog(title, message, heading="The program could not be built:"):
+    """Pop up an error dialog, then return. Used for assembly failures on GUI
+    startup and for C compile failures, so a bad file shows a window instead of
+    only printing to the terminal. `heading` is the one-line label above the
+    detail (default neutral so it fits both assemble and compile failures);
+    `title` is the window title. Errors are shown INLINE (not hidden behind
+    'Show Details') so a beginner sees them immediately; long messages get a
+    scrollbar."""
     from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout,
                                    QLabel, QTextEdit, QDialogButtonBox)
     from PySide6.QtGui import QFont
@@ -1718,7 +2002,7 @@ def show_error_dialog(title, message):
     dlg.setWindowTitle(title)
     dlg.resize(640, 320)
     layout = QVBoxLayout(dlg)
-    layout.addWidget(QLabel("The program could not be assembled:"))
+    layout.addWidget(QLabel(heading))
     box = QTextEdit()
     box.setReadOnly(True)
     box.setPlainText(message)          # inline + scrollable when long

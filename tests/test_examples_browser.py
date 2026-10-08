@@ -31,6 +31,11 @@ def _build_window():
     mem = [0] * 256
     listing = [(a, [mem[a]], "", True) for a in range(256)]
 
+    # Record the ToyDebugger windows that already exist, then pick the NEW one,
+    # so a lingering window from an earlier GUI test can't pollute the choice.
+    pre = set(w for w in app.topLevelWidgets()
+              if w.__class__.__name__ == "ToyDebugger")
+
     orig_exec = QApplication.exec
     QApplication.exec = lambda self: 0
     try:
@@ -40,7 +45,7 @@ def _build_window():
         QApplication.exec = orig_exec
 
     wins = [w for w in app.topLevelWidgets()
-            if w.__class__.__name__ == "ToyDebugger"]
+            if w.__class__.__name__ == "ToyDebugger" and w not in pre]
     assert wins, "ToyDebugger window was not constructed"
     win = wins[-1]
     # Destroy the window on close so it leaves topLevelWidgets() — otherwise a
@@ -141,15 +146,47 @@ def test_examples_dialog_grouping_and_load():
         assert win._current_path == asm_example.path
         assert win.has_source is True
 
-        # Loading a C example (compiled with toycc) also populates memory.
+        # Loading a C example now ROUTES THROUGH the C|asm window (the user sees
+        # C vs asm before it loads), rather than loading directly. Capture that
+        # window (don't open it modally) and drive its OK path, then assert the
+        # program loaded — mirroring test_casm_window.py.
         c_example, compiler = toycc_choices[0]
-        win._load_example(c_example, compiler)
+        dlg = _capture_casm_dialog(win, c_example, compiler)
+        assert "int main" in dlg.c_view.toPlainText()     # C panel populated
+        assert "load" in dlg.asm_view.toPlainText()        # asm panel populated
         assert any(b != 0 for b in win.mem), "compiled C example loaded empty"
         assert win._current_path == c_example.path
         assert win.has_source is True
+        dlg.close()
     finally:
         win.close()
         app.processEvents()   # let WA_DeleteOnClose remove it now
+
+
+def _capture_casm_dialog(win, example, compiler):
+    """Load a C example through _load_example but capture the C|asm window it
+    opens instead of running it modally (which would block headless). The fake
+    exec simulates an OK press: it runs the window's _on_ok (the real asm load,
+    which in a live GUI happens on the button click) and returns Accepted, so
+    _load_example's accepted branch (_current_path/title) also runs. Returns the
+    captured CAsmDialog."""
+    from PySide6.QtWidgets import QDialog
+
+    captured = {}
+    orig_exec = QDialog.exec
+
+    def fake_exec(self):
+        captured["dlg"] = self
+        self._on_ok()                 # the OK button's load path
+        return QDialog.Accepted
+
+    QDialog.exec = fake_exec
+    try:
+        win._load_example(example, compiler)
+    finally:
+        QDialog.exec = orig_exec
+    assert "dlg" in captured, "CAsmDialog was not constructed for the C example"
+    return captured["dlg"]
 
 
 def _make_dialog(win):

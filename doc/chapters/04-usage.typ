@@ -63,6 +63,38 @@ so you can fix it; Cancel discards your changes. (A `.toyo` loaded as bytecode
 has no assembly source, so right-click there just says there is nothing to
 edit.)
 
+Once you've edited the assembly this way, Load/Reload/Examples ask before
+discarding it (the same confirmation that guards hand-edited memory), so a stray
+Reload can't silently throw your edit away.
+
+=== Loading C --- the C #sym.arrow assembly view
+
+The Load button also accepts C sources (`.toyc`), and so does the Examples
+browser (which lists the C examples grouped per compiler). A C file is never
+loaded blindly: pytoy compiles it first and opens a *C #sym.arrow assembly
+window* so you see exactly what the compiler produced before anything runs.
+
+The window shows two panels side by side: your C source on the left and the
+generated assembly on the right, each with the same line-number gutter as the
+main source panel. The title says which compiler was used (`minicc` or `toycc`).
+*Click a line on either side* to highlight it and every matching line on the
+other: one C statement normally compiles to several assembly lines, so clicking
+`int x = 5;` lights up its `load`/`store` pair, and clicking an assembly line
+lights up the C statement it came from. Lines with no counterpart (the generated
+header, data bytes) simply don't highlight.
+
+Press *Load* to assemble the shown assembly and load it into the simulator at
+step 0 (Cancel discards it). The compiler records which C line each assembly
+line came from as a harmless `\# @c:N` comment on the line; the assembler ignores
+comments, so the loaded program is byte-for-byte what you'd get without them, and
+the markers stay visible in the assembly panel. If the C source fails to compile,
+the error is shown and no window opens. For a `.toyc` opened via Load (where you
+haven't picked a compiler), pytoy tries both and prefers `toycc` --- the fuller
+one --- when both accept the file; the Examples browser uses the compiler of the
+node you picked. Reload remembers that choice: reloading the same `.toyc` reuses
+the compiler it was loaded with, so a file both compilers accept doesn't silently
+switch between them.
+
 == CLI
 
 Use `-c` / `--cli` to run in the terminal instead of opening the window:
@@ -85,6 +117,11 @@ advance each instruction.
 )
 
 Run `python3 run.py sim -h` for the full list.
+
+`sim` expects an assembly (`.toys`) or bytecode (`.toyo`) program. Pointing it at
+a C source (`.toyc`) stops with a hint to compile it first (`run.py cc …`); the
+C #sym.arrow assembly view is a GUI feature, reached via the Load/Examples
+buttons.
 
 ```bash
 # Run to the end, compact output:

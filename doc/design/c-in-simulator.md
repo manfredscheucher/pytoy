@@ -32,7 +32,7 @@ then ported to ktoy.
    asm/c/toyo, detects minicc-vs-toycc compatibility per C example. Tests. — INDEPENDENT.
 3. **GUI compile+load + C|asm window** (simulator.py). Load accepts .toyc → compile
    → 2-column C|asm window with cross-highlighting (mirrors asm↔bytecode) → OK loads
-   asm. Needs Part 1.
+   asm. Needs Part 1. **DONE** (see "Part 3 implementation" below).
 4. **Examples browser UI** (simulator.py). "Examples" entry lists enumerated
    examples grouped by type; selecting a C one compiles with the chosen compiler.
    Needs Part 2.
@@ -111,3 +111,61 @@ is_data)` + `addr_to_line` / `line_to_addr` maps built in `load_program`
 (simulator.py ~658-688), highlighted in `_refresh_source` / `_refresh_memory`.
 C↔asm mirrors this: a `c_line → asm_lines` map drives the C|asm window's
 two-sided highlight, reusing `highlight_row()`.
+
+## Part 3 implementation (DONE)
+
+GUI compile+load + the C|asm window, all in `pytoy/simulator.py`. Test file:
+`tests/test_casm_window.py` (plus updated `tests/test_examples_browser.py`).
+
+- **Line map** — module-level pure `parse_c_line_map(asm_text)` returns
+  `(c_to_asm, asm_to_c)`: it scans each asm line for an `@c:N` marker (regex
+  `@c:(\d+)`, matches both the standalone `# @c:N` and the embedded-in-a-comment
+  form), building `c_line → sorted [0-based asm rows]` and the inverse
+  `asm row → c_line`. The asm indices are 0-based rows so a QTextEdit
+  `blockNumber()` from a click maps straight through. Unattributed lines
+  (headers, data, blanks) carry no marker and are absent from both maps.
+- **The window** — `CAsmDialog(QDialog)`, a closure-local class mirroring
+  `EditAsmDialog`/`ExamplesDialog`. Two read-only monospace panels in a
+  horizontal `QSplitter` (C left, asm right), each with the same right-aligned
+  line-number gutter as the main source panel. Rendering reuses
+  `highlight_row()` with `HL_SELECTED`. Title shows the compiler; the OK button
+  is relabelled "Load".
+- **Cross-highlight: CLICK, not hover** (judgment call — matches the prompt's
+  recommendation and the existing `_source_clicked`). `mouseReleaseEvent` on
+  each panel resolves `blockNumber()` to a C line (left: row+1; right: via
+  `asm_to_c`) and calls `select_c_line()`, which stores the selected C line and
+  re-renders both panels: the C line tinted on the left, all its `c_to_asm` rows
+  tinted on the right. One C line → many asm rows is the normal case. Clicking an
+  unattributed asm line clears the selection (maps to `None`).
+- **Routing** — `_compile_and_show_casm(c_text, compiler, path)` is shared by
+  both entry points: compiles with `annotate_c_lines=True`, pops
+  `show_error_dialog` on failure (no window), else opens the window; on OK
+  (`exec() == Accepted`) it sets `_current_path`/Reload/title.
+  - *Load dialog*: filter gained `*.toyc`; `_load_toyc(path)` reads the file,
+    uses `examples_index._detect_compilers` to pick a compiler (prefer `toycc`
+    when both accept, error if neither), then `_compile_and_show_casm`.
+  - *Examples browser*: `_load_example`'s C branch now routes through
+    `_compile_and_show_casm` with the tree node's chosen compiler (previously it
+    loaded the asm directly).
+- **OK-load path** — `CAsmDialog._on_ok` calls the debugger's existing
+  `_load_asm_text(self._asm_text, source_path)` (assemble + `load_program`,
+  step 0) and `accept()`s on success; on failure the shared error dialog shows
+  and the window stays open.
+- **Comments: KEPT, not stripped** (judgment call). The `# @c:N` markers stay in
+  the loaded asm — the assembler ignores comments so the mem image is identical
+  (pinned by `test_c_line_annotation.py`), and keeping them means the asm panel /
+  Edit-assembly window still show each line's C origin. Stripping would only add
+  code for no benefit.
+- **Line-number gutter in the asm panel: YES** — both panels get the gutter (the
+  prompt listed it as optional/nice; it's a two-line helper and reads better, so
+  kept it).
+
+Tests (`tests/test_casm_window.py`): `parse_c_line_map` bidirectional
+correctness on a known program (a specific C line → its expected asm rows, the
+inverse agrees, header/data unmapped) and the empty-without-markers case; the
+window built headlessly (recording pre-existing windows, picking the new
+ToyDebugger) asserting both panels populated, that selecting a C line highlights
+exactly the mapped asm rows (and an unmapped C line highlights none), that an asm
+click resolves back to its C line, and that OK loads a non-empty program at
+step 0. `tests/test_examples_browser.py` updated: the C-example load now drives
+through the captured C|asm window's OK path instead of loading directly.
