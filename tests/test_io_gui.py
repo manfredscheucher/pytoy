@@ -42,6 +42,13 @@ def test_io_widgets_offscreen():
     def fake_exec(self):
         return 0
 
+    # Record the ToyDebugger windows that already exist, then pick the NEW one
+    # (same pattern as the other GUI tests), so a window another test left around
+    # — or ordering changes when the shared cleanup fixture runs first — can't be
+    # mistaken for this one.
+    pre = set(w for w in app.topLevelWidgets()
+              if w.__class__.__name__ == "ToyDebugger")
+
     QApplication.exec = fake_exec
     try:
         # io_config exercising a non-default output format
@@ -51,11 +58,13 @@ def test_io_widgets_offscreen():
     finally:
         QApplication.exec = orig_exec
 
-    # The window was shown; find it among top-level widgets.
+    # The window was shown; find the one we just built among top-level widgets.
     wins = [w for w in app.topLevelWidgets()
-            if w.__class__.__name__ == "ToyDebugger"]
+            if w.__class__.__name__ == "ToyDebugger" and w not in pre]
     assert wins, "ToyDebugger window was not constructed"
     win = wins[-1]
+    from PySide6.QtCore import Qt
+    win.setAttribute(Qt.WA_DeleteOnClose, True)
 
     assert win.io_box.isVisible() or True   # offscreen visibility is quirky
     panel = win.io_widget

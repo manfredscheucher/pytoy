@@ -91,6 +91,21 @@ def test_compiler_detection_accepts_simple_for_both():
     assert sum3.compilers == ["minicc", "toycc"], sum3.compilers
 
 
+def test_detect_compilers_neither_accepts(tmp_path):
+    # A source neither compiler accepts -> empty list (the GUI's _load_toyc
+    # turns this into its "Neither minicc nor toycc accepts" error). Previously
+    # only the accepts-cases were covered.
+    ei._compiler_cache.clear()
+    bad = tmp_path / "junk.toyc"
+    bad.write_text("not C at all @@@ ;;;")
+    assert ei._detect_compilers(str(bad)) == []
+
+
+def test_detect_compilers_unreadable_path():
+    # An unreadable/absent path returns [] rather than raising (open() fails).
+    assert ei._detect_compilers("/no/such/file.toyc") == []
+
+
 def test_compilers_cached_by_source_text():
     ei._compiler_cache.clear()
     c = [e for e in ei.list_examples() if e.category == "c"]
