@@ -91,10 +91,32 @@ reviewer and writer agree and tests cover it.
   "memory differs from source" red (HL_CODE for code, HL_DATA for data) and the
   blue byte highlight are unchanged.
 
-- [ ] **Part 3 — compiler choice + switch button + right-click edit on the C
-  column.** Not done yet. The existing CAsmDialog file-preview flow and the
-  compiler-detection on `.toyc` load are retained; the inline per-column switch
-  button and C-column right-click-to-edit are the remaining work.
+- [x] **Part 3 — compiler choice + switch button + right-click edit on the C
+  column.** The existing CAsmDialog file-preview flow and the compiler-detection
+  on `.toyc` load are retained. Added:
+  - **C-column right-click edit.** `c_view` gets a CustomContextMenu handler
+    `_edit_c_clicked` (mirrors `_edit_asm_clicked`): with no C loaded it pops a
+    "Nothing to edit" info box, else it confirms discard then opens `EditCDialog`
+    (parallel to `EditAsmDialog`). Save recompiles with the active compiler
+    (falling back to `_detect_compilers` if none pinned), re-assembles via
+    `_load_asm_text`, and on success re-parses the `# @c:N` markers
+    (`parse_c_line_map`) and re-attaches via `_set_c_source`. A compile error
+    (`show_error_dialog`) or assemble error keeps the dialog open; the old
+    program/C is untouched.
+  - **Compiler switch button** in the C-box header (`btn_switch_compiler`,
+    label = the OTHER compiler, "Switch to mini C" / "Switch to full C"). Shown
+    only while `has_c_source` (wired into `_set_c_source` / `_clear_c_source`).
+    `_switch_compiler` recompiles `_c_text` with the target and verifies it both
+    compiles (catches minicc's recursion `MiniError`) AND assembles within 240
+    bytes (catches minicc overflow, surfaced by `_load_asm_text`). Either failure
+    shows `show_error_dialog` and leaves the simulator exactly on the current
+    compiler/program — no half-load. Success reloads at step 0, pins the new
+    compiler, re-parses the maps, re-attaches the C column, and flips the label.
+
+  Tests: `tests/test_part3.py` (C-edit valid/invalid/no-C, switch success both
+  directions, switch rollback on recursion and on overflow) +
+  `tests/test_probe_compiler_accept.py` (locks the fixture properties: sum3 both
+  accept, fibonacci_rec minicc-rejects, bigint_add minicc-overflows).
 
 Tests: `tests/test_three_column.py` (pure transitive mapping + headless
 debugger: adaptive visibility for .toyo/.toys/.toyc, C/asm/memory click

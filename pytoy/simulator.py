@@ -695,6 +695,80 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 parent._asm_edited = True
                 self.accept()
 
+    class EditCDialog(QDialog):
+        """Edit the loaded program's C source and recompile it.
+
+        The C-column counterpart to EditAsmDialog: a resizable window with a
+        monospace, editable QTextEdit prefilled with the current C source plus
+        Save/Cancel. Save recompiles with the CURRENTLY active compiler (falling
+        back to detection if none is pinned), re-assembles the result, and — on
+        success — re-attaches the fresh C source + C↔asm maps and closes. A
+        compile error (MiniError / CompileError) or an assemble error (e.g. the
+        result overflows 240 bytes) shows the shared error dialog and keeps this
+        window open so the user can fix the C."""
+
+        def __init__(self, parent, c_text, title):
+            super().__init__(parent)
+            self.setWindowTitle(title)
+            self.resize(560, 520)
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel("Edit the C source, then Save to "
+                                    "recompile:"))
+
+            self.edit = QTextEdit()
+            self.edit.setFont(parent._mono if parent else self.font())
+            self.edit.setLineWrapMode(QTextEdit.NoWrap)
+            self.edit.setPlainText(c_text)
+            layout.addWidget(self.edit, stretch=1)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Save
+                                       | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(self._on_save)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+
+        def edited_text(self):
+            return self.edit.toPlainText()
+
+        def _on_save(self):
+            # Recompile with the active compiler, then re-assemble via the normal
+            # load path. A compile error keeps the window open (the user fixes the
+            # C); an assemble error is surfaced by _load_asm_text and likewise
+            # keeps us open. On success re-attach the fresh C source + maps.
+            parent = self.parent()
+            new_c = self.edited_text()
+            compiler = parent._current_compiler
+            if compiler is None:
+                # No pinned compiler (e.g. C attached without going through the
+                # C|asm OK path): detect which accept the EDITED text (not the
+                # file on disk — the user may have just changed it), prefer toycc.
+                from .examples_index import _minicc_accepts, _toycc_accepts
+                if _toycc_accepts(new_c):
+                    compiler = "toycc"
+                elif _minicc_accepts(new_c):
+                    compiler = "minicc"
+                else:
+                    compiler = "toycc"   # let the compile fail + show its error
+            name = parent._current_path or "edited.toyc"
+            try:
+                asm = _compile_c(new_c, compiler, name, annotate_c_lines=True)
+            except Exception as e:
+                show_error_dialog(f"{compiler} failed", str(e))
+                return
+            # re-assemble through the normal path; on failure it already showed an
+            # error dialog, so stay open. The edited C is unchanged in-memory.
+            if not parent._load_asm_text(asm, name):
+                return
+            # loaded fresh: keep the chosen compiler pinned (_load_asm_text
+            # cleared it, but we recompiled with it), then re-parse the markers
+            # the same way the C|asm window does and re-attach the C column so
+            # highlighting — and the switch button's label — stay correct.
+            parent._current_compiler = compiler
+            c_to_asm, asm_to_c = parse_c_line_map(asm)
+            parent._set_c_source(new_c, c_to_asm, asm_to_c)
+            self.accept()
+
     class CAsmDialog(QDialog):
         """Side-by-side C | asm view for a compiled .toyc, with cross-highlight.
 
@@ -1163,6 +1237,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self._asm_to_c = asm_to_c
             self.has_c_source = True
             self.c_box.setVisible(True)
+            self.btn_switch_compiler.setVisible(True)
+            self._update_switch_button()
             self.act_show_c.setChecked(True)
             self.refresh()
 
@@ -1174,6 +1250,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.has_c_source = False
             self.selected_c_line = None
             self.c_box.setVisible(False)
+            self.btn_switch_compiler.setVisible(False)
             self.act_show_c.setChecked(False)
 
         def _build_ui(self):
@@ -1202,6 +1279,20 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.c_box = QGroupBox("C source")
             _c_layout = QVBoxLayout(self.c_box)
             _c_layout.setContentsMargins(4, 4, 4, 4)
+            # header row: a button to recompile with the OTHER C compiler (full C
+            # toycc <-> mini C minicc). Shown only while a C program is loaded;
+            # its visibility is wired into _set_c_source / _clear_c_source like
+            # the c_box itself. Label reflects the compiler it switches TO.
+            _c_header = QHBoxLayout()
+            self.btn_switch_compiler = QPushButton("Switch to mini C")
+            self.btn_switch_compiler.setFont(mono)
+            self.btn_switch_compiler.setToolTip(
+                "Recompile this C with the other compiler "
+                "(full C toycc / mini C minicc)")
+            self.btn_switch_compiler.clicked.connect(self._switch_compiler)
+            _c_header.addWidget(self.btn_switch_compiler)
+            _c_header.addStretch(1)
+            _c_layout.addLayout(_c_header)
             _c_layout.addWidget(self.c_view)
             splitter.addWidget(self.c_box)
 
@@ -1244,6 +1335,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 self._edit_asm_clicked)
             self.source_view.setToolTip("Right-click to edit the assembly "
                                         "source and re-assemble")
+
+            # right-click the C panel opens the "Edit C" window (same mechanism
+            # as the asm panel), which recompiles with the active compiler on
+            # Save. Left-click still drives select-C-line via mouseReleaseEvent.
+            self.c_view.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.c_view.customContextMenuRequested.connect(self._edit_c_clicked)
+            self.c_view.setToolTip("Right-click to edit the C source and "
+                                   "recompile")
 
             # three columns C | asm | memory; C+asm hidden widgets collapse to
             # nothing, so a .toyo shows memory full-width and a .toys shows
@@ -1695,6 +1794,81 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                     if self._current_path else "program")
             dlg = EditAsmDialog(self, self._asm_text, f"Edit assembly — {name}")
             dlg.exec()
+
+        def _edit_c_clicked(self, _pos=None):
+            """Right-click the C panel: open a window to edit the C source and
+            recompile it on Save. Mirrors _edit_asm_clicked. `_pos` (the click
+            position from customContextMenuRequested) is unused — the whole C
+            source is edited, not a single line."""
+            if not self.has_c_source or self._c_text is None:
+                QMessageBox.information(
+                    self, "Nothing to edit",
+                    "This program has no C source to edit "
+                    "(it was loaded as assembly or bytecode).")
+                return
+            # Recompiling resets the machine, so warn about live memory edits
+            # first — not the asm-edit itself (editing C replaces the asm anyway).
+            if not self._confirm_discard(include_asm_edit=False):
+                return
+            name = (os.path.basename(self._current_path)
+                    if self._current_path else "program")
+            dlg = EditCDialog(self, self._c_text, f"Edit C — {name}")
+            dlg.exec()
+
+        def _other_compiler(self):
+            """The compiler NOT currently active — the target of a switch. With
+            no compiler pinned, default the "other" to mini C (toycc assumed)."""
+            return "minicc" if self._current_compiler == "toycc" else "toycc"
+
+        def _update_switch_button(self):
+            """Label the switch button with the compiler it switches TO, so the
+            user reads it as the action ("Switch to mini C" / "Switch to full C")."""
+            target = self._other_compiler()
+            pretty = "mini C" if target == "minicc" else "full C"
+            self.btn_switch_compiler.setText(f"Switch to {pretty}")
+
+        def _switch_compiler(self):
+            """Recompile the loaded C with the OTHER compiler (full C toycc <->
+            mini C minicc), in place. The target must both compile AND assemble
+            within 240 bytes before anything changes: minicc can reject recursion
+            (a MiniError at compile) or overflow (an assemble error from
+            _load_asm_text). On either failure the error dialog is shown and the
+            simulator stays exactly on the current compiler/program. On success
+            the asm reloads at step 0, the C column re-attaches with fresh maps,
+            and the button flips to point at the new 'other' compiler."""
+            if not self.has_c_source or self._c_text is None:
+                return
+            # Recompiling resets the machine, so warn about live memory edits.
+            if not self._confirm_discard(include_asm_edit=False):
+                return
+            target = self._other_compiler()
+            name = self._current_path or "program.toyc"
+            # capture the C source now: _load_asm_text below clears the C context
+            # (sets _c_text to None), so we must hold it to re-attach afterwards.
+            c_text = self._c_text
+            # 1. compile (catches MiniError, e.g. minicc + recursion).
+            try:
+                asm = _compile_c(c_text, target, name,
+                                 annotate_c_lines=True)
+            except Exception as e:
+                show_error_dialog(
+                    f"{target} cannot compile this program",
+                    str(e))
+                return
+            # 2. assemble + load (catches the >240-byte overflow minicc can hit).
+            # _load_asm_text resets the machine and clears the C context; on
+            # failure it already showed an error dialog and returned False, so
+            # the simulator is untouched and we stay on the current compiler.
+            if not self._load_asm_text(asm, name):
+                return
+            # 3. committed: pin the new compiler first (so the button label and
+            # a later Reload are correct), then re-attach the C column with fresh
+            # maps and relabel the button to point at the other compiler.
+            self._current_compiler = target
+            c_to_asm, asm_to_c = parse_c_line_map(asm)
+            self._set_c_source(c_text, c_to_asm, asm_to_c)
+            self._update_switch_button()
+            self._update_title()
 
         def _load_example(self, example, compiler):
             """Load one example picked in the ExamplesDialog. `compiler` is the
