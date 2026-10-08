@@ -95,6 +95,19 @@ node you picked. Reload remembers that choice: reloading the same `.toyc` reuses
 the compiler it was loaded with, so a file both compilers accept doesn't silently
 switch between them.
 
+After you press Load the main window keeps the C level: it shows a third *C
+source* column to the left of the assembly panel, so you see C, assembly and
+memory side by side. The columns are adaptive --- a `.toyo` shows memory only, a
+`.toys` shows assembly and memory, and a compiled `.toyc` shows all three.
+
+*Click a line in any column* and the matching lines in the others light up
+(orange): a C statement lights the assembly lines it compiled to and the memory
+bytes those occupy; clicking an assembly line or a memory cell works back up to
+the C statement it came from. Clicking a blank or unrelated line clears the
+highlight everywhere. While the program runs, a `store` that overwrites a byte is
+shown in red not only on the byte but also on the assembly line and the C line it
+came from, so you can trace a write back to its source.
+
 == CLI
 
 Use `-c` / `--cli` to run in the terminal instead of opening the window:

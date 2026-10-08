@@ -338,6 +338,68 @@ def parse_c_line_map(asm_text):
         c_to_asm[c_line].sort()
     return c_to_asm, asm_to_c
 
+# ── Transitive C ↔ asm ↔ bytecode selection ─────────────────────────────────
+#
+# The three columns (C | asm | memory) are linked by two maps the debugger
+# already keeps: c_to_asm / asm_to_c (`# @c:N` markers) tie C lines to asm rows,
+# and line_to_addr / addr_to_line (the listing) tie asm rows to byte addresses.
+# Composing them gives a transitive selection: pick anything in any column and
+# the matching lines/cells in the other columns light up. These helpers are pure
+# (plain dicts in, sets out) so the mapping is tested without a GUI.
+
+def c_line_to_asm_rows(c_line, c_to_asm):
+    """The asm rows a C line owns (empty if the line has no asm origin)."""
+    if c_line is None:
+        return set()
+    return set(c_to_asm.get(c_line, ()))
+
+def asm_rows_to_addrs(asm_rows, line_to_addr):
+    """The byte addresses the given asm rows own."""
+    return {line_to_addr[row] for row in asm_rows if row in line_to_addr}
+
+def addr_to_c_line(addr, addr_to_line, asm_to_c):
+    """The 1-based C line a byte came from, composing addr→asm-row→C-line.
+    None if the address isn't in any asm row, or its row has no C origin."""
+    if addr is None:
+        return None
+    row = addr_to_line.get(addr)
+    if row is None:
+        return None
+    return asm_to_c.get(row)
+
+def transitive_selection(c_line, addr, c_to_asm, asm_to_c,
+                         line_to_addr, addr_to_line):
+    """Resolve a selection (a C line and/or a byte address) into the full set of
+    highlighted things across all three columns.
+
+    Either anchor may be None; whichever is given is expanded through both maps:
+      - a C line expands down to its asm rows and their byte addresses;
+      - a byte address expands up to its asm row and that row's C line, then back
+        down so the C line's *sibling* asm rows / bytes also light up (one C
+        statement normally owns several asm lines — selecting one lights the set).
+
+    Returns (c_lines, asm_rows, addrs): sets of highlighted 1-based C lines,
+    0-based asm rows, and byte addresses. Pure — no Qt."""
+    c_lines = set()
+    if c_line is not None:
+        c_lines.add(c_line)
+    # a byte selection resolves up to its C line so the whole statement lights up
+    up_c = addr_to_c_line(addr, addr_to_line, asm_to_c)
+    if up_c is not None:
+        c_lines.add(up_c)
+
+    asm_rows = set()
+    for cl in c_lines:
+        asm_rows |= c_line_to_asm_rows(cl, c_to_asm)
+    # an asm row owning the selected byte, even when no C line attributes it
+    if addr is not None and addr in addr_to_line:
+        asm_rows.add(addr_to_line[addr])
+
+    addrs = asm_rows_to_addrs(asm_rows, line_to_addr)
+    if addr is not None:
+        addrs.add(addr)
+    return c_lines, asm_rows, addrs
+
 # ── Step-back history (undo) ────────────────────────────────────────────────
 
 class History:
@@ -778,6 +840,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             parent = self.parent()
             path = self._source_path or parent._current_path or "<compiled>"
             if parent._load_asm_text(self._asm_text, path):
+                # _load_asm_text cleared any C context; re-attach this program's
+                # C source + maps so the main window shows the C column inline
+                # and highlights transitively (the maps were parsed here already).
+                parent._set_c_source(self._c_text, self._c_to_asm,
+                                     self._asm_to_c)
                 self.accept()
 
     class ClickLabel(QLabel):
@@ -1024,6 +1091,13 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # compiler chosen for a C load ("minicc"/"toycc"), so Reload reuses it
             # instead of re-detecting; None for a non-C load.
             self._current_compiler = None
+            # C source + C↔asm maps of a loaded C program, so the debugger can
+            # show the C column and highlight transitively (C ↔ asm ↔ bytecode).
+            # Cleared for a non-C load. See _set_c_source / _clear_c_source.
+            self._c_text = None
+            self._c_to_asm = {}
+            self._asm_to_c = {}
+            self.has_c_source = False
             # has the loaded assembly been hand-edited in the GUI (Edit-asm Save)?
             # a Load/Reload then warns before discarding it, like memory edits.
             self._asm_edited = False
@@ -1072,8 +1146,35 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # collect all visible addresses
             self.visible = set(self.addr_orig.keys())
 
+            # adaptive columns: C only for a C load, asm only with source, memory
+            # always. load_program itself never has C context (it's reached from
+            # the asm/bytecode paths); a C load calls _set_c_source afterwards.
+            self.c_box.setVisible(self.has_c_source)
             self.source_box.setVisible(has_source)
             self.reset()
+
+        def _set_c_source(self, c_text, c_to_asm, asm_to_c):
+            """Attach the C source + C↔asm maps of a just-loaded C program and
+            show the C column. Called right after _load_asm_text when the asm
+            came from a compiled .toyc, so the debugger keeps the C level that
+            was previously discarded once the C|asm window closed."""
+            self._c_text = c_text
+            self._c_to_asm = c_to_asm
+            self._asm_to_c = asm_to_c
+            self.has_c_source = True
+            self.c_box.setVisible(True)
+            self.act_show_c.setChecked(True)
+            self.refresh()
+
+        def _clear_c_source(self):
+            """Drop any C context (a non-C load) and hide the C column."""
+            self._c_text = None
+            self._c_to_asm = {}
+            self._asm_to_c = {}
+            self.has_c_source = False
+            self.selected_c_line = None
+            self.c_box.setVisible(False)
+            self.act_show_c.setChecked(False)
 
         def _build_ui(self):
             self._base_point_size = 13
@@ -1091,7 +1192,20 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             splitter = QSplitter(Qt.Horizontal)
             main_layout.addWidget(splitter, stretch=1)
 
-            # left: source code, in a labelled box
+            # leftmost: C source, in a labelled box. Shown only after a C load
+            # (has_c_source); read-only, with the same line-number gutter as the
+            # asm panel so the columns read alike.
+            self.c_view = QTextEdit()
+            self.c_view.setReadOnly(True)
+            self.c_view.setFont(mono)
+            self.c_view.setLineWrapMode(QTextEdit.NoWrap)
+            self.c_box = QGroupBox("C source")
+            _c_layout = QVBoxLayout(self.c_box)
+            _c_layout.setContentsMargins(4, 4, 4, 4)
+            _c_layout.addWidget(self.c_view)
+            splitter.addWidget(self.c_box)
+
+            # middle: assembly source, in a labelled box
             self.source_view = QTextEdit()
             self.source_view.setReadOnly(True)
             self.source_view.setFont(mono)
@@ -1118,6 +1232,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.mem_view.setContextMenuPolicy(Qt.NoContextMenu)
             self.mem_view.setToolTip("Right-click a cell to edit its value")
 
+            self.c_view.mouseReleaseEvent = self._c_clicked
             self.source_view.mouseReleaseEvent = self._source_clicked
             self.mem_view.mouseReleaseEvent = self._mem_clicked
 
@@ -1130,7 +1245,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.source_view.setToolTip("Right-click to edit the assembly "
                                         "source and re-assemble")
 
-            splitter.setSizes([500, 500])
+            # three columns C | asm | memory; C+asm hidden widgets collapse to
+            # nothing, so a .toyo shows memory full-width and a .toys shows
+            # asm|memory. Give C and asm equal share, memory a touch more.
+            splitter.setSizes([340, 340, 420])
 
             # memory-mapped I/O panel: the friendly view of io0..io14 plus the
             # ready register. Sits between the two-panel splitter and the buttons.
@@ -1227,7 +1345,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             # widgets whose mono font follows the View → Font size setting
             self._fonted = [
-                self.source_view, self.mem_view,
+                self.c_view, self.source_view, self.mem_view,
                 self.btn_load, self.btn_examples, self.btn_reload, spd_label,
                 self.spin_speed,
                 self.btn_edit, self.btn_back, self.btn_step, self.btn_run,
@@ -1248,6 +1366,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 view.addAction(act)
                 return act
 
+            # The C panel toggle starts matching has_c_source (hidden until a C
+            # program is loaded). A later C load re-shows the box directly; the
+            # toggle just lets the user hide/show it like the other panels.
+            self.act_show_c = toggle_action("C source panel", self.c_box,
+                                            checked=self.has_c_source)
             self.act_show_asm = toggle_action("Assembly panel", self.source_box)
             self.act_show_mem = toggle_action("CPU & memory panel", self.mem_box)
             self.act_show_io = toggle_action("I/O panel", self.io_box)
@@ -1315,6 +1438,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.step_count = 0
             self.arg_addr = None
             self.selected_addr = None
+            self.selected_c_line = None   # C line picked (1-based), for highlight
             self.mem_selected_addr = None   # cell picked in the memory panel (Edit)
             self.changed_cell = None    # cell written in the last step (blue)
             self.changed_cell_prev = None # that cell's value before the write
@@ -1414,6 +1538,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.changed_cell_prev = old_val  # prev value of changed_cell, this step only
             self.step_count += 1
             self.selected_addr = None
+            self.selected_c_line = None     # clear the whole cross-column pick
             self.mem_selected_addr = None   # selection no longer current
             self.arg_addr = arg_addr
             self.visible.update(self.touched)
@@ -1424,6 +1549,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         # visible are mutable containers (History copies them); the rest scalars.
         _SNAPSHOT_FIELDS = ("mem", "touched", "visible", "acc", "pc", "stopped",
                             "step_count", "arg_addr", "selected_addr",
+                            "selected_c_line",
                             "changed_cell", "changed_cell_prev",
                             "acc_written", "overwrite_ok",
                             "_has_live_edits")
@@ -1655,10 +1781,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # keep the source so right-click can re-open it for editing
             self._asm_text = text
             # a fresh assemble-and-load: the loaded asm now matches its source,
-            # and this is a plain .toys path (a C load re-sets the compiler after
-            # the C|asm window's OK). Clear both so stale state can't carry over.
+            # and this is a plain .toys path (a C load re-sets the compiler and
+            # the C column after the C|asm window's OK). Clear so stale state
+            # can't carry over; a C load re-attaches it via _set_c_source.
             self._asm_edited = False
             self._current_compiler = None
+            self._clear_c_source()
             return True
 
         def _load_toyo_text(self, text):
@@ -1677,10 +1805,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.load_program(mem, listing, {}, set(range(256)),
                               code_guard=None, has_source=False)
             # a .toyo is bytecode with no assembly source to edit, and no C
-            # compiler behind it
+            # compiler behind it — so the C and asm columns both hide.
             self._asm_text = None
             self._asm_edited = False
             self._current_compiler = None
+            self._clear_c_source()
             return True
 
         def _load_path(self, path):
@@ -1723,17 +1852,43 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 return
             self.step()
 
+        def _select(self, c_line=None, addr=None, mem_selected_addr=None):
+            """Set the shared cross-column selection from a clicked anchor (a C
+            line and/or a byte address) and refresh. Passing both as None (an
+            unmapped/blank click) clears everything, so no leftover highlight
+            lingers after a deselect. mem_selected_addr is tracked separately so
+            only a memory-panel click enables the Edit button."""
+            self.selected_c_line = c_line
+            self.selected_addr = addr
+            self.mem_selected_addr = mem_selected_addr
+            self.refresh()
+
+        def _c_clicked(self, event):
+            QTextEdit.mouseReleaseEvent(self.c_view, event)
+            cursor = self.c_view.cursorForPosition(event.pos())
+            c_line = cursor.blockNumber() + 1   # rows are 0-based, C lines 1-based
+            # Clicking a C line with asm origin selects it and lights its asm
+            # rows + their bytes; clicking a line with no origin (or past the end)
+            # clears the selection. The first owned byte becomes selected_addr so
+            # the asm/memory panels get their usual anchor highlight too.
+            rows = self._c_to_asm.get(c_line)
+            if not rows:
+                self._select()
+                return
+            addrs = asm_rows_to_addrs(rows, self.line_to_addr)
+            anchor = min(addrs) if addrs else None
+            self._select(c_line=c_line, addr=anchor)
+
         def _source_clicked(self, event):
             QTextEdit.mouseReleaseEvent(self.source_view, event)
             cursor = self.source_view.cursorForPosition(event.pos())
             line = cursor.blockNumber()
             addr = self.line_to_addr.get(line)
-            if addr is not None:
-                self.selected_addr = addr
-                # a source-line selection doesn't enable the Edit button — that
-                # only edits a cell picked in the memory panel.
-                self.mem_selected_addr = None
-                self.refresh()
+            # Clicking an unmapped row (comment/blank) deselects everything.
+            # a source-line selection resolves up to its C line (if any) so the C
+            # column lights up too; it never enables Edit (mem_selected_addr=None).
+            c_line = self._asm_to_c.get(line)
+            self._select(c_line=c_line, addr=addr)
 
         def _mem_clicked(self, event):
             QTextEdit.mouseReleaseEvent(self.mem_view, event)
@@ -1741,15 +1896,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             line = cursor.blockNumber()
             addr = self._mem_line_addrs.get(line)
             # right-click opens the live-edit dialog for that cell; left-click
-            # just selects it (highlight in both panels + enables Edit).
+            # selects it (highlight across all columns + enables Edit).
             if event.button() == Qt.RightButton:
                 if addr is not None:      # ignore right-clicks on header/blank
                     self._edit_cell(addr)
                 return
-            if addr is not None:
-                self.selected_addr = addr
-                self.mem_selected_addr = addr
-                self.refresh()
+            # resolve the byte up to its C line so the C column lights up too;
+            # a click on an unmapped/blank row clears the whole selection.
+            c_line = addr_to_c_line(addr, self.addr_to_line, self._asm_to_c)
+            self._select(c_line=c_line, addr=addr, mem_selected_addr=addr)
 
         def _edit_selected(self):
             """Edit the value at the address selected in the memory panel (the
@@ -1810,6 +1965,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.changed_cell = a       # highlight the edited cell (blue)
             self.acc_written = False
             self.selected_addr = a
+            # resolve the edited byte up to its C line so the C column highlights
+            # the owning statement too (consistent with a memory-panel click).
+            self.selected_c_line = addr_to_c_line(a, self.addr_to_line,
+                                                  self._asm_to_c)
             self._has_live_edits = True  # a Load/Reload now warns before discard
             self._mark_dirty()
             self.refresh()
@@ -1828,13 +1987,63 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self._mark_dirty()
             self.refresh()
 
+        def _selection_sets(self):
+            """The transitive highlight sets for the current selection, shared by
+            all three panels so one click lights up consistently everywhere.
+            Returns (sel_c_lines, sel_asm_rows, sel_addrs)."""
+            return transitive_selection(
+                self.selected_c_line, self.selected_addr,
+                self._c_to_asm, self._asm_to_c,
+                self.line_to_addr, self.addr_to_line)
+
+        def _change_sets(self):
+            """The transitive "changed" sets (STORE → red up): the asm row(s) and
+            C line(s) owning the cell a STORE just overwrote, so the change shows
+            red on the asm line and the C line, not only on the byte. Empty while
+            stopped or when nothing changed (matching the blue byte highlight,
+            which also only lingers while running). Returns (c_lines, asm_rows)."""
+            changed = self.changed_cell if not self.stopped else None
+            if changed is None:
+                return set(), set()
+            asm_rows = set()
+            row = self.addr_to_line.get(changed)
+            if row is not None:
+                asm_rows.add(row)
+            c_lines = set()
+            c_line = self._asm_to_c.get(row) if row is not None else None
+            if c_line is not None:
+                c_lines.add(c_line)
+            return c_lines, asm_rows
+
         def refresh(self):
+            self._refresh_c()
             self._refresh_source()
             self._refresh_memory()
             # keep the friendly I/O output cells in sync with execution
             self.io_widget.update_from_mem(self.mem)
             # Edit is available only when a cell is selected in the memory panel
             self.btn_edit.setEnabled(self.mem_selected_addr is not None)
+
+        def _refresh_c(self):
+            """Render the C column: the C source with a line-number gutter, the
+            selected statement in orange and a STORE-changed statement in red.
+            A no-op when no C program is loaded (the column is hidden)."""
+            if not self.has_c_source or self._c_text is None:
+                return
+            c_lines = self._c_text.splitlines()
+            gutter_width = len(str(len(c_lines))) if c_lines else 1
+            sel_c, _, _ = self._selection_sets()
+            changed_c, _ = self._change_sets()
+            rendered = []
+            for i, text in enumerate(c_lines):
+                c_line = i + 1          # 1-based, matching the markers
+                colours = []
+                if c_line in sel_c:      colours.append(HL_SELECTED)
+                if c_line in changed_c:  colours.append(HL_CODE)
+                gutter = f"{i + 1:>{gutter_width}} | "
+                rendered.append(highlight_row(gutter + text, colours))
+            html = '<pre style="margin:0;">' + '\n'.join(rendered) + '</pre>'
+            self.c_view.setHtml(html)
 
         def _line_changed_bytes(self, addr, blist):
             """Widget wrapper around line_changed_bytes() using the live memory."""
@@ -1848,7 +2057,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # since labels, not line numbers, are how asm refers to lines.
             gutter_width = len(str(len(self.listing))) if self.listing else 1
             pc_line = self.addr_to_line.get(self.pc)
-            sel_line = self.addr_to_line.get(self.selected_addr) if self.selected_addr is not None else None
+            # the transitive selection: a click in ANY column resolves to the asm
+            # rows that light up here (a selected C line maps to several rows).
+            _, sel_rows, _ = self._selection_sets()
+            # a STORE just overwrote a byte: its owning asm row goes red too.
+            _, changed_rows = self._change_sets()
             # find which source line the current instruction references
             instr, cur_arg, _ = decode(self.mem, self.pc)
             arg_line = self.addr_to_line.get(cur_arg) if cur_arg is not None else None
@@ -1870,13 +2083,17 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
                 text = f"{marker} {orig.rstrip()}" if orig else marker
                 colours = []
-                if i == sel_line:  colours.append(HL_SELECTED)
+                if i in sel_rows:  colours.append(HL_SELECTED)
                 if i in pc_lines:  colours.append(HL_PC)
                 if i == arg_line:  colours.append(HL_ARG)
 
                 # Show how the running program has changed memory vs. the source.
                 # A line owns byte `addr` (and addr+1 for a two-byte instruction).
                 changed = self._line_changed_bytes(addr, blist)
+                # a STORE this step into this line's byte flags it red even when
+                # the written value equals the original (change propagation).
+                if i in changed_rows and HL_CODE not in colours:
+                    colours.append(HL_CODE)
                 if changed:
                     if is_data:
                         # data byte edited at runtime: light red + live value.
@@ -1889,7 +2106,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                         raw = " ".join(str(self.mem[addr + k])
                                        for k in range(len(blist)))
                         text = f"{marker} {orig.rstrip()}  # now bytes: {raw}"
-                        colours.append(HL_CODE)
+                        if HL_CODE not in colours:
+                            colours.append(HL_CODE)
 
                 gutter = f"{i + 1:>{gutter_width}} | "
                 lines.append(highlight_row(gutter + text, colours))
@@ -1948,6 +2166,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             lines.append(_esc(hdr))
             # Blue (change) only lingers while running, never once stopped.
             changed = self.changed_cell if not self.stopped else None
+            # the transitive selection: a click anywhere lights up all the bytes
+            # of the selected statement here, not just the one cell clicked.
+            _, _, sel_addrs = self._selection_sets()
             # Show ALL 256 addresses; untouched, non-program bytes (not in
             # self.visible) are greyed out rather than hidden.
             for a in range(256):
@@ -1965,7 +2186,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 # A cell can hold several roles at once; collect all active
                 # colours (fixed stripe order) instead of letting one win.
                 colours = []
-                if a == self.selected_addr: colours.append(HL_SELECTED)
+                if a in sel_addrs:          colours.append(HL_SELECTED)
                 if a in pc_bytes:           colours.append(HL_PC)
                 if a == cur_arg:            colours.append(HL_ARG)
                 if a == changed:            colours.append(HL_CHANGE)
