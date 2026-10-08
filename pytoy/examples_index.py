@@ -91,27 +91,40 @@ class Example:
 _compiler_cache: "dict[str, list[str]]" = {}
 
 
+def _assembles_and_fits(asm):
+    """Compiling without error is not enough — minicc inlines everything and can
+    overflow the 240-byte program region (0..239; 240..255 are reserved I/O).
+    A program that won't assemble can't be offered to the user, so probe the
+    assembler and reject if it reports any error (the too-big case lands here)."""
+    try:
+        from pytoy.assembler import assemble
+        _mem, _listing, _syms, _data_addrs, errors, _data_start = assemble(asm)
+        return not errors
+    except Exception:
+        return False
+
+
 def _minicc_accepts(src):
     from pytoy.minicc import compile_source, MiniError
     try:
-        compile_source(src, "probe")
-        return True
+        asm = compile_source(src, "probe")
     except MiniError:
         return False
     except Exception:
         # Any other failure means the source is not usable with minicc.
         return False
+    return _assembles_and_fits(asm)
 
 
 def _toycc_accepts(src):
     from pytoy.compiler import compile_source, CompileError
     try:
-        compile_source(src, "probe")
-        return True
+        asm = compile_source(src, "probe")
     except CompileError:
         return False
     except Exception:
         return False
+    return _assembles_and_fits(asm)
 
 
 def _detect_compilers(path):
