@@ -195,6 +195,26 @@ def parse_toyo(text):
                 break   # first non-byte token starts the source text
     return mem
 
+def _compile_c(src, compiler, source_name, annotate_c_lines=False):
+    """Compile C source text to Toy assembly with the named compiler
+    ("minicc" or "toycc"). Returns the assembly text. Raises the compiler's own
+    error (MiniError / CompileError) on failure. Used by the Examples browser to
+    load a C example end to end.
+
+    With annotate_c_lines the emitted asm carries `# @c:N` comments tying each
+    line back to its C source line (inert comments: the mem image is unchanged).
+    The GUI turns this on so a compiled C example shows where each asm line came
+    from."""
+    if compiler == "minicc":
+        from .minicc import compile_source
+        return compile_source(src, source_name,
+                              annotate_c_lines=annotate_c_lines)
+    if compiler == "toycc":
+        from .compiler import compile_source
+        return compile_source(src, source_name,
+                              annotate_c_lines=annotate_c_lines)
+    raise ValueError(f"unknown compiler {compiler!r}")
+
 # ── Speed control ──────────────────────────────────────────────────────────
 
 # Auto-run speed is expressed as steps per second. The timer interval in
@@ -344,7 +364,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                    QLabel, QDoubleSpinBox, QFileDialog,
                                    QGroupBox, QComboBox,
                                    QDialog, QLineEdit, QDialogButtonBox,
-                                   QGridLayout)
+                                   QGridLayout, QTreeWidget, QTreeWidgetItem)
     from PySide6.QtCore import Qt, QTimer, QPointF
     from PySide6.QtGui import (QFont, QTextCursor, QShortcut, QKeySequence,
                                QPainter, QColor, QPolygonF, QAction,
@@ -402,6 +422,133 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             """Run the dialog modally; return the parsed byte or None if
             cancelled."""
             return self._value if self.exec() == QDialog.Accepted else None
+
+    class ExamplesDialog(QDialog):
+        """Browse the examples/ folder and pick one to load.
+
+        A tree grouped by category then subfolder. Top-level nodes:
+
+          Assembly       — .toys examples, children grouped by subfolder
+          C (minicc)     — C examples minicc accepts, grouped by subfolder
+          C (toycc)      — C examples toycc accepts, grouped by subfolder
+          Bytecode       — .toyo listings (no subfolders)
+
+        A C example that both compilers accept appears under BOTH C nodes, so
+        the minicc-vs-toycc choice is explicit: which node a leaf sits under IS
+        the chosen compiler. Leaves carry (Example, compiler) in their data;
+        group nodes carry None and aren't selectable targets.
+
+        Double-clicking a leaf, or selecting one and pressing OK, accepts.
+        exec_choice() returns (Example, compiler) — compiler is "minicc"/"toycc"
+        for a C example, else None — or None if the user cancelled or picked
+        nothing."""
+
+        # column 0 user-data role: the (Example, compiler) tuple on a leaf.
+        _CHOICE_ROLE = Qt.UserRole
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Examples")
+            self.resize(480, 520)
+            self._choice = None
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel("Pick an example to load:"))
+
+            self.tree = QTreeWidget()
+            self.tree.setHeaderHidden(True)
+            self.tree.setFont(self.font())   # dialog font; leaves set mono below
+            layout.addWidget(self.tree, stretch=1)
+
+            self._populate()
+            self.tree.itemDoubleClicked.connect(self._on_double_click)
+            self.tree.currentItemChanged.connect(self._on_current_changed)
+
+            self.buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            self.buttons.accepted.connect(self._on_accept)
+            self.buttons.rejected.connect(self.reject)
+            self.buttons.button(QDialogButtonBox.Ok).setEnabled(False)
+            layout.addWidget(self.buttons)
+
+        def _add_group(self, parent, label):
+            node = QTreeWidgetItem(parent, [label])
+            node.setData(0, self._CHOICE_ROLE, None)
+            node.setFirstColumnSpanned(True)
+            return node
+
+        def _add_leaf(self, parent, example, compiler):
+            leaf = QTreeWidgetItem(parent, [example.display_name])
+            leaf.setData(0, self._CHOICE_ROLE, (example, compiler))
+            leaf.setFont(0, self._mono)
+            return leaf
+
+        def _populate(self):
+            from .examples_index import grouped_examples
+            self._mono = self.parent()._mono if self.parent() else self.font()
+            groups = grouped_examples()
+
+            # Assembly: one group node per subfolder, leaves are asm examples.
+            asm = groups.get("asm", {})
+            if asm:
+                top = self._add_group(self.tree, "Assembly")
+                for sub, examples in asm.items():
+                    sub_node = self._add_group(top, sub)
+                    for ex in examples:
+                        self._add_leaf(sub_node, ex, None)
+                top.setExpanded(True)
+
+            # C: one top-level node per compiler, each example listed under a
+            # compiler only if that compiler accepts it (probed lazily here).
+            c_by_sub = groups.get("c", {})
+            for compiler in ("minicc", "toycc"):
+                sub_nodes = []
+                for sub, examples in c_by_sub.items():
+                    accepted = [ex for ex in examples
+                                if compiler in ex.compilers]
+                    if accepted:
+                        sub_nodes.append((sub, accepted))
+                if not sub_nodes:
+                    continue
+                top = self._add_group(self.tree, f"C ({compiler})")
+                for sub, accepted in sub_nodes:
+                    sub_node = self._add_group(top, sub)
+                    for ex in accepted:
+                        self._add_leaf(sub_node, ex, compiler)
+                top.setExpanded(True)
+
+            # Bytecode: flat list of .toyo listings (subfolder is "").
+            toyo = groups.get("toyo", {})
+            toyo_examples = [ex for exs in toyo.values() for ex in exs]
+            if toyo_examples:
+                top = self._add_group(self.tree, "Bytecode")
+                for ex in toyo_examples:
+                    self._add_leaf(top, ex, None)
+                top.setExpanded(True)
+
+        def _choice_of(self, item):
+            """The (Example, compiler) a leaf carries, or None for a group."""
+            return item.data(0, self._CHOICE_ROLE) if item else None
+
+        def _on_current_changed(self, current, _previous):
+            self.buttons.button(QDialogButtonBox.Ok).setEnabled(
+                self._choice_of(current) is not None)
+
+        def _on_double_click(self, item, _column):
+            choice = self._choice_of(item)
+            if choice is not None:
+                self._choice = choice
+                self.accept()
+
+        def _on_accept(self):
+            choice = self._choice_of(self.tree.currentItem())
+            if choice is not None:
+                self._choice = choice
+                self.accept()
+
+        def exec_choice(self):
+            """Run modally; return the chosen (Example, compiler) or None."""
+            return self._choice if self.exec() == QDialog.Accepted else None
 
     class ClickLabel(QLabel):
         """A QLabel that calls on_click(addr) when clicked — used for I/O cells
@@ -757,6 +904,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             bottom.addWidget(self.btn_load)
             self.btn_load.clicked.connect(self._load_clicked)
 
+            # Examples browses the bundled examples/ folder (asm, C, bytecode)
+            # and loads whatever is picked — no file dialog needed.
+            self.btn_examples = QPushButton("Examples…")
+            self.btn_examples.setFont(mono)
+            self.btn_examples.setToolTip("Browse and load a bundled example "
+                                         "(assembly, C, or bytecode)")
+            bottom.addWidget(self.btn_examples)
+            self.btn_examples.clicked.connect(self._examples_clicked)
+
             # Reload re-reads the current file from disk (edit it externally,
             # then reload). Disabled until a file has actually been loaded.
             self.btn_reload = QPushButton("Reload")
@@ -822,7 +978,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # widgets whose mono font follows the View → Font size setting
             self._fonted = [
                 self.source_view, self.mem_view,
-                self.btn_load, self.btn_reload, spd_label, self.spin_speed,
+                self.btn_load, self.btn_examples, self.btn_reload, spd_label,
+                self.spin_speed,
                 self.btn_edit, self.btn_back, self.btn_step, self.btn_run,
                 self.btn_reset,
             ]
@@ -1088,6 +1245,56 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             if path:
                 self._load_path(path)
 
+        def _examples_clicked(self):
+            """Open the Examples browser and load whatever the user picks.
+            Respects the same discard-edits confirmation as the Load button."""
+            if not self._confirm_discard():
+                return
+            dlg = ExamplesDialog(self)
+            choice = dlg.exec_choice()
+            if choice is not None:
+                self._load_example(*choice)
+
+        def _load_example(self, example, compiler):
+            """Load one example picked in the ExamplesDialog. `compiler` is the
+            chosen C compiler ("minicc"/"toycc") for a C example, else None.
+
+              asm  (.toys): read -> assemble -> load          (like Load's .toys)
+              toyo (.toyo): read -> parse_toyo -> load         (like Load's .toyo)
+              c    (.toyc): read -> compile with `compiler` -> assemble -> load
+
+            For C we only compile+assemble+load the asm for now; the side-by-side
+            C|asm view is a separate feature."""
+            path = example.path
+            try:
+                text = open(path).read()
+            except Exception as e:
+                QMessageBox.critical(self, "Load failed",
+                                     f"Could not read file:\n{e}")
+                return
+
+            if example.category == "toyo":
+                if not self._load_toyo_text(text):
+                    return
+            elif example.category == "asm":
+                if not self._load_asm_text(text, path):
+                    return
+            else:   # "c": compile the source with the chosen compiler first
+                try:
+                    # Annotate each asm line with its C source line (`# @c:N`);
+                    # inert comments, so the loaded program is unchanged.
+                    asm = _compile_c(text, compiler, path,
+                                     annotate_c_lines=True)
+                except Exception as e:
+                    show_error_dialog(f"{compiler} failed: {path}", str(e))
+                    return
+                if not self._load_asm_text(asm, path):
+                    return
+
+            self._current_path = path
+            self.btn_reload.setEnabled(True)
+            self._update_title()
+
         def _reload_clicked(self):
             """Re-read the current file (CLI arg or last Load) from disk and
             reload it — so the file can be edited externally and picked up
@@ -1098,6 +1305,36 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             if not self._confirm_discard():
                 return
             self._load_path(self._current_path)
+
+        def _load_asm_text(self, text, path):
+            """Assemble `text` and point the debugger at it (step 0). Returns
+            True on success, False if assembly failed (an error dialog is shown).
+            `path` is only used for the error-dialog title. Shared by the Load
+            button's .toys branch and the Examples browser (asm + compiled C)."""
+            mem, listing, syms, data_addrs, errors, data_start = assemble(text)
+            if errors:
+                show_error_dialog(f"Assembly failed: {path}", "\n".join(errors))
+                return False
+            self.load_program(mem, listing, syms, data_addrs,
+                              code_guard=None, has_source=True)
+            return True
+
+        def _load_toyo_text(self, text):
+            """Parse `text` as a .toyo byte listing and show it in the memory
+            panel only (a .toyo has no re-runnable source). Returns True on
+            success, False if parsing failed (an error dialog is shown). Shared
+            by the Load button's .toyo branch and the Examples browser."""
+            try:
+                mem = parse_toyo(text)
+            except Exception as e:
+                QMessageBox.critical(self, "Load failed",
+                                     f"Could not parse .toyo file:\n{e}")
+                return False
+            # Build a minimal listing so every byte is visible in memory.
+            listing = [(a, [mem[a]], "", True) for a in range(256)]
+            self.load_program(mem, listing, {}, set(range(256)),
+                              code_guard=None, has_source=False)
+            return True
 
         def _load_path(self, path):
             """Read `path` from disk, assemble/parse it, and point the debugger
@@ -1111,25 +1348,11 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 return
 
             if path.lower().endswith(".toyo"):
-                try:
-                    mem = parse_toyo(text)
-                except Exception as e:
-                    QMessageBox.critical(self, "Load failed",
-                                         f"Could not parse .toyo file:\n{e}")
+                if not self._load_toyo_text(text):
                     return
-                # a .toyo has no re-runnable source: show only the memory panel.
-                # Build a minimal listing so every byte is visible in memory.
-                listing = [(a, [mem[a]], "", True) for a in range(256)]
-                self.load_program(mem, listing, {}, set(range(256)),
-                                  code_guard=None, has_source=False)
             else:
-                mem, listing, syms, data_addrs, errors, data_start = assemble(text)
-                if errors:
-                    show_error_dialog(f"Assembly failed: {path}",
-                                      "\n".join(errors))
+                if not self._load_asm_text(text, path):
                     return
-                self.load_program(mem, listing, syms, data_addrs,
-                                  code_guard=None, has_source=True)
 
             self._current_path = path
             self.btn_reload.setEnabled(True)

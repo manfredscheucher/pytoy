@@ -169,6 +169,20 @@ class CompileError(Exception):
     pass
 
 
+def _annotate(line, c_line):
+    """Append a `# @c:N` marker tying this asm line to C source line N. The
+    assembler ignores everything after the first '#', so the marker is inert: an
+    annotated file assembles to the same memory image. If the line already has a
+    comment, the marker is appended inside it (still one comment); otherwise a
+    fresh `  # @c:N` comment is added. Returns the line unchanged when c_line is
+    None (no C origin)."""
+    if c_line is None:
+        return line
+    if '#' in line:
+        return f"{line} @c:{c_line}"
+    return f"{line}  # @c:{c_line}"
+
+
 def _const_name(value):
     """A data-byte label for the constant `value` (0..255). Printable ASCII
     letters/digits get a readable `ascii_<char>_<value>` label (e.g. 72 ->
@@ -209,6 +223,11 @@ class Parser:
     def __init__(self, toks):
         self.toks = toks
         self.i = 0
+        # id(statement node) -> C source line (1-based), filled by
+        # parse_statement. Used only to annotate the emitted asm with `# @c:N`
+        # markers; the transforms (fold/CallLifter) carry entries forward as they
+        # rebuild statement nodes, so codegen can still look them up by identity.
+        self.stmt_lines = {}
 
     def peek(self):
         return self.toks[self.i]
@@ -303,6 +322,14 @@ class Parser:
         return ('block', stmts)
 
     def parse_statement(self):
+        # Record the source line of the statement's first token, so codegen can
+        # tag the asm it emits (see compile_source's annotate_c_lines).
+        line = self.peek().line
+        node = self._parse_statement_inner()
+        self.stmt_lines[id(node)] = line
+        return node
+
+    def _parse_statement_inner(self):
         t = self.peek()
         if t.kind == 'op' and t.value == '{':
             return self.parse_block()
@@ -661,10 +688,17 @@ class Parser:
 # temporary is a named data byte placed after the code.
 
 class CodeGen:
-    def __init__(self, compact=False, safe_compare=False):
+    def __init__(self, compact=False, safe_compare=False, stmt_lines=None):
         self.compact = compact  # enable smaller codegen fast paths (opt-in)
         self.safe_compare = safe_compare  # full unsigned compare (opt-in, bigger)
         self.code = []          # list of instruction/comment lines (strings)
+        # Parallel to self.code: the C source line each asm line came from, or
+        # None (generated header/structural/data lines have no C origin). Filled
+        # by emit()/comment() from _cur_c_line; only consumed (as `# @c:N`) when
+        # annotate_c_lines is on. _peephole keeps the two lists in lockstep.
+        self.code_lines = []
+        self.stmt_lines = stmt_lines or {}   # id(stmt node) -> C source line
+        self._cur_c_line = None              # C line of the statement being gen'd
         self.vars = {}          # C variable name -> data label
         self.consts = {}        # constant value -> data label (dedup)
         self.temps = []         # list of temp data labels (name, initial)
@@ -691,9 +725,11 @@ class CodeGen:
     # -- emission helpers --
     def emit(self, text):
         self.code.append(text)
+        self.code_lines.append(self._cur_c_line)
 
     def comment(self, text):
         self.code.append(f"        # {text}")
+        self.code_lines.append(self._cur_c_line)
 
     def new_label(self, base):
         self.label_n += 1
@@ -1259,6 +1295,20 @@ class CodeGen:
 
     # -- statements --
     def gen_stmt(self, s):
+        # Tag every asm line this statement emits with its C source line (looked
+        # up by node identity; the parser records it and the transforms carry it
+        # forward). A nested gen_stmt (block/if/while children) overwrites
+        # _cur_c_line, so save and restore it around the dispatch.
+        prev = self._cur_c_line
+        line = self.stmt_lines.get(id(s))
+        if line is not None:
+            self._cur_c_line = line
+        try:
+            self._gen_stmt(s)
+        finally:
+            self._cur_c_line = prev
+
+    def _gen_stmt(self, s):
         kind = s[0]
         if kind == 'block':
             for st in s[1]:
@@ -1540,11 +1590,14 @@ class CodeGen:
         # No marker matched (shouldn't happen). Halt rather than run into data.
         self.emit(f"        stop            # unreachable: bad {name} marker")
 
-    def _peephole(self, code):
+    def _peephole(self, code, code_lines):
         """Drop a `load X` that immediately follows `store X` on the next line:
         `store` leaves ACC unchanged, so ACC already holds mem[X] and the reload
         is redundant. Only safe when the `load` line carries NO label (it must
-        not be a jump target). Small but the 256-byte budget is tight."""
+        not be a jump target). Small but the 256-byte budget is tight.
+
+        `code_lines` is the parallel C-source-line list; it is filtered in
+        lockstep so the annotation stays attached to the correct final line."""
         def parts(line):
             body = line.split('#', 1)[0].strip()
             label = None
@@ -1563,7 +1616,7 @@ class CodeGen:
                     return j
                 j += 1
             return None
-        out = []
+        out, out_lines = [], []
         i = 0
         while i < len(code):
             line = code[i]
@@ -1576,14 +1629,17 @@ class CodeGen:
                         # emit everything up to (but not incl.) the redundant load,
                         # then skip that load line.
                         out.extend(code[i:j])
+                        out_lines.extend(code_lines[i:j])
                         i = j + 1
                         continue
             out.append(line)
+            out_lines.append(code_lines[i])
             i += 1
-        return out
+        return out, out_lines
 
     # -- assemble the whole .toys file --
-    def generate(self, main_body, bodies, source_name, no_stack=False):
+    def generate(self, main_body, bodies, source_name, no_stack=False,
+                 annotate_c_lines=False):
         # `main_body` is main's ('block', [...]); `bodies` is the list of
         # (name, params, body_block, n_sites) for every called non-main function
         # (from CallLifter). Recursion works: each call is bracketed by
@@ -1619,7 +1675,12 @@ class CodeGen:
         lines.append("# Toy CPU assembly. 8-bit values, wraps mod 256.")
         lines.append("# The return value ends up in ACC when the program stops.")
         lines.append("")
-        lines.extend(self._peephole(self.code))
+        # Peephole first (it drops/moves lines), carrying the parallel C-line
+        # list in lockstep so each annotation stays on the correct FINAL line.
+        code, code_lines = self._peephole(self.code, self.code_lines)
+        if annotate_c_lines:
+            code = [_annotate(ln, n) for ln, n in zip(code, code_lines)]
+        lines.extend(code)
         lines.append("")
         lines.append(DATA_MARKER)   # canonical marker so --detect-code-overwrite works
         # C variables (declared but possibly with runtime init; give initial 0)
@@ -1761,12 +1822,24 @@ def find_recursive(graph):
 # first, then the sub-expression is replaced by ('var', capture-temp).
 
 class CallLifter:
-    def __init__(self, funcs, recursive):
+    def __init__(self, funcs, recursive, stmt_lines=None):
         self.funcs = {f[1]: f for f in funcs}
         self.recursive = set(recursive)
         self.call_counts = {}     # fname -> number of call sites seen so far
         self.uid = 0              # unique suffix for local-variable renaming
         self.cur_caller = None    # name of the function currently being lifted
+        # id(node)->C-line map (shared with the parser/codegen). The lift carries
+        # each statement's line onto the new nodes it builds so the annotation
+        # survives into the final AST codegen walks.
+        self.stmt_lines = stmt_lines if stmt_lines is not None else {}
+        self._cur_line = None     # C line of the statement currently being lifted
+
+    def _stamp(self, node):
+        """Tag a freshly built statement node with the current statement's C
+        line, so codegen can annotate the asm it emits for it. Returns node."""
+        if self._cur_line is not None:
+            self.stmt_lines[id(node)] = self._cur_line
+        return node
 
     def next_site(self, fname):
         k = self.call_counts.get(fname, 0)
@@ -1844,6 +1917,15 @@ class CallLifter:
         return names
 
     def _rename(self, node, rename):
+        """Copy `node`, remapping names through `rename`, and carry each
+        statement's recorded C line onto the rebuilt node (so a renamed helper
+        body keeps its annotation). Expression nodes have no line entry, so the
+        carry is a harmless no-op for them."""
+        out = self._rename_inner(node, rename)
+        _carry_line(self.stmt_lines, node, out)
+        return out
+
+    def _rename_inner(self, node, rename):
         """Copy `node`, remapping 'var'/'assign'/'decl' names through `rename`
         (unknown names left as-is). Calls are kept intact for later lifting."""
         if not isinstance(node, tuple):
@@ -1894,7 +1976,25 @@ class CallLifter:
     # main (a `return` really halts) or 'f__ret' inside f's body (a `return e`
     # becomes: store e to f__ret; goto f__dispatch).
     def lift_stmt(self, s, out, ret_slot):
+        # Set the "current C line" for everything this statement emits (the nodes
+        # appended here, plus any call sequences lift_calls appends), and restore
+        # it afterwards so a nested lift_stmt doesn't leak its line outward. A
+        # `block` has no line of its own; its children set theirs.
+        prev = self._cur_line
+        line = self.stmt_lines.get(id(s))
+        if line is not None:
+            self._cur_line = line
+        try:
+            self._lift_stmt(s, out, ret_slot)
+        finally:
+            self._cur_line = prev
+
+    def _lift_stmt(self, s, out, ret_slot):
         kind = s[0]
+
+        # Append a freshly built node, tagged with the current statement's line.
+        def emit(node):
+            out.append(self._stamp(node))
 
         if kind == 'block':
             for st in s[1]:
@@ -1904,33 +2004,33 @@ class CallLifter:
         if kind == 'decl':
             _, name, init = s
             init2 = None if init is None else self.lift_calls(init, out)
-            out.append(('decl', name, init2))
+            emit(('decl', name, init2))
             return
 
         if kind == 'arraydecl':
             _, name, size, init = s
             init2 = (None if init is None
                      else [self.lift_calls(x, out) for x in init])
-            out.append(('arraydecl', name, size, init2))
+            emit(('arraydecl', name, size, init2))
             return
 
         if kind == 'assign':
             _, name, expr = s
-            out.append(('assign', name, self.lift_calls(expr, out)))
+            emit(('assign', name, self.lift_calls(expr, out)))
             return
 
         if kind == 'idxassign':
             _, name, idx, expr = s
             idx2 = self.lift_calls(idx, out)
             expr2 = self.lift_calls(expr, out)
-            out.append(('idxassign', name, idx2, expr2))
+            emit(('idxassign', name, idx2, expr2))
             return
 
         if kind == 'deref_assign':
             _, ptr, expr = s
             ptr2 = self.lift_calls(ptr, out)
             expr2 = self.lift_calls(expr, out)
-            out.append(('deref_assign', ptr2, expr2))
+            emit(('deref_assign', ptr2, expr2))
             return
 
         if kind == 'exprstmt':
@@ -1943,10 +2043,10 @@ class CallLifter:
             _, expr = s
             expr2 = self.lift_calls(expr, out)
             if ret_slot is None:
-                out.append(('return', expr2))          # main: really halt
+                emit(('return', expr2))          # main: really halt
             else:
-                out.append(('assign', ret_slot, expr2))  # store to f__ret
-                out.append(('goto', f"{ret_slot[:-5]}__dispatch"))
+                emit(('assign', ret_slot, expr2))  # store to f__ret
+                emit(('goto', f"{ret_slot[:-5]}__dispatch"))
             return
 
         if kind == 'if':
@@ -1954,7 +2054,7 @@ class CallLifter:
             cond2 = self.lift_calls(cond, out)     # cond evaluated before branch
             then2 = self.block_of(then_body, ret_slot)
             else2 = None if else_body is None else self.block_of(else_body, ret_slot)
-            out.append(('if', cond2, then2, else2))
+            emit(('if', cond2, then2, else2))
             return
 
         if kind == 'while':
@@ -1974,19 +2074,20 @@ class CallLifter:
             if not any(True for _ in _calls_in(cond)):
                 body_out = []
                 self.lift_stmt(body, body_out, ret_slot)
-                out.append(('while', cond, ('block', body_out)))
+                emit(('while', cond, ('block', body_out)))
                 return
             end = self.fresh('while_end')
             inner = []
             cond2 = self.lift_calls(cond, inner)
-            inner.append(('if', ('unop', '!', cond2), ('goto', end), None))
+            inner.append(self._stamp(('if', ('unop', '!', cond2),
+                                      ('goto', end), None)))
             self.lift_stmt(body, inner, ret_slot)
-            out.append(('while', ('num', 1), ('block', inner)))
-            out.append(('label', end))
+            emit(('while', ('num', 1), ('block', inner)))
+            emit(('label', end))
             return
 
         if kind in ('label', 'goto'):
-            out.append(s)
+            emit(s)
             return
 
         raise CompileError(f"cannot compile statement {s!r}")
@@ -2131,7 +2232,11 @@ class CallLifter:
         if kind == 'block':
             new, live = self._live_block(s[1], live, live_at_label, caller_slots,
                                          changed, record, caller, skip)
-            return (('block', new) if record else s), live
+            if record:
+                block = ('block', new)
+                _carry_line(self.stmt_lines, s, block)
+                return block, live
+            return s, live
 
         if kind == 'decl':
             _, name, init = s
@@ -2205,7 +2310,10 @@ class CallLifter:
             live = live_then | live_else
             self._expr_uses(cond, live)
             if record:
-                s = ('if', cond, self._as_stmt(new_then), self._as_stmt(new_else))
+                new = ('if', cond, self._as_stmt(new_then),
+                       self._as_stmt(new_else))
+                _carry_line(self.stmt_lines, s, new)
+                s = new
             return s, live
 
         if kind == 'while':
@@ -2228,7 +2336,9 @@ class CallLifter:
                 new_body, _ = self._live_block(body[1], body_live_out, live_at_label,
                                                caller_slots, changed, True,
                                                caller, skip)
-                s = ('while', _cond, ('block', new_body))
+                new = ('while', _cond, ('block', new_body))
+                _carry_line(self.stmt_lines, s, new)
+                s = new
             return s, body_live_out
 
         if kind == 'label':
@@ -2276,20 +2386,27 @@ class CallLifter:
         if not record:
             return s, live
 
-        # Expand: [push saves] param-assigns setmark call_jump capture [pop rev]
+        # Expand: [push saves] param-assigns setmark call_jump capture [pop rev].
+        # Every emitted statement belongs to the same C statement as the call, so
+        # tag them all with the call_site node's recorded line.
+        line = self.stmt_lines.get(id(s))
+        def tag(node):
+            if line is not None:
+                self.stmt_lines[id(node)] = line
+            return node
         do_save = save and not skip
         stmts = []
         if do_save:
             for slot in save:
-                stmts.append(('push', slot))
+                stmts.append(tag(('push', slot)))
         for pslot, tmp in param_pairs:
-            stmts.append(('assign', pslot, ('var', tmp)))
-        stmts.append(('setmark', name, k))
-        stmts.append(('call_jump', name, cont))
-        stmts.append(('decl', cap, ('var', f"{name}__ret")))
+            stmts.append(tag(('assign', pslot, ('var', tmp))))
+        stmts.append(tag(('setmark', name, k)))
+        stmts.append(tag(('call_jump', name, cont)))
+        stmts.append(tag(('decl', cap, ('var', f"{name}__ret"))))
         if do_save:
             for slot in reversed(save):
-                stmts.append(('pop', slot))
+                stmts.append(tag(('pop', slot)))
         return stmts, live
 
     # ── expression pass ─────────────────────────────────────────────────────
@@ -2352,10 +2469,10 @@ class CallLifter:
             # (`n = read(buf);`) reads the temp instead of re-running the I/O.
             if name == 'read':
                 cap = self.fresh('readret')
-                out.append(('decl', cap, None))   # register cap as a real slot
-                out.append(('builtin_stmt', name, args2, cap))
+                out.append(self._stamp(('decl', cap, None)))  # register cap slot
+                out.append(self._stamp(('builtin_stmt', name, args2, cap)))
                 return ('var', cap)
-            out.append(('builtin_stmt', name, args2, None))
+            out.append(self._stamp(('builtin_stmt', name, args2, None)))
             return ('num', 0)   # write() is void; value never used
 
         if name not in self.funcs:
@@ -2375,7 +2492,7 @@ class CallLifter:
         for arg in args:
             arg2 = self.lift_calls(arg, out)
             tmp = self.fresh('arg')
-            out.append(('decl', tmp, arg2))
+            out.append(self._stamp(('decl', tmp, arg2)))
             arg_temps.append(tmp)
         param_pairs = [(f"{name}__p_{pname}", tmp)
                        for pname, tmp in zip(params, arg_temps)]
@@ -2391,15 +2508,16 @@ class CallLifter:
         # call_jump capture [pop restores].  arg_temps is recorded so the pass
         # knows those temps die inside the setup (they are consumed by the
         # param assigns before the jump) and are therefore never live-across.
-        out.append(('call_site', name, param_pairs, k, cont, cap, arg_temps))
+        out.append(self._stamp(
+            ('call_site', name, param_pairs, k, cont, cap, arg_temps)))
         return ('var', cap)
 
 
-def lift_functions(funcs, recursive):
+def lift_functions(funcs, recursive, stmt_lines=None):
     """Return (main_block, bodies) with all calls rewritten to the global-slots
     + marker-dispatch scheme. Save/restore is inserted automatically around calls
     from recursive callers (and skipped for non-recursive ones). See CallLifter."""
-    return CallLifter(funcs, recursive).run()
+    return CallLifter(funcs, recursive, stmt_lines).run()
 
 
 # ── Constant folding + algebraic simplification ─────────────────────────────
@@ -2495,34 +2613,49 @@ def fold_expr(e):
     return e
 
 
-def fold_stmt(s):
-    """Fold every expression inside a statement (recursively)."""
+def fold_stmt(s, stmt_lines=None):
+    """Fold every expression inside a statement (recursively). `stmt_lines`, if
+    given, is the id(node)->C-line map; it is carried from the old node to the
+    rebuilt one so the C-source-line annotation survives folding."""
     kind = s[0]
     if kind == 'decl':
-        return ('decl', s[1], fold_expr(s[2]) if s[2] is not None else None)
-    if kind == 'assign':
-        return ('assign', s[1], fold_expr(s[2]))
-    if kind == 'idxassign':
-        return ('idxassign', s[1], fold_expr(s[2]), fold_expr(s[3]))
-    if kind == 'deref_assign':
-        return ('deref_assign', fold_expr(s[1]), fold_expr(s[2]))
-    if kind == 'return':
-        return ('return', fold_expr(s[1]) if s[1] is not None else None)
-    if kind == 'exprstmt':
-        return ('exprstmt', fold_expr(s[1]))
-    if kind == 'if':
-        return ('if', fold_expr(s[1]), fold_stmt(s[2]),
-                fold_stmt(s[3]) if s[3] is not None else None)
-    if kind == 'while':
-        return ('while', fold_expr(s[1]), fold_stmt(s[2]))
-    if kind == 'block':
-        return ('block', [fold_stmt(x) for x in s[1]])
-    return s
+        out = ('decl', s[1], fold_expr(s[2]) if s[2] is not None else None)
+    elif kind == 'assign':
+        out = ('assign', s[1], fold_expr(s[2]))
+    elif kind == 'idxassign':
+        out = ('idxassign', s[1], fold_expr(s[2]), fold_expr(s[3]))
+    elif kind == 'deref_assign':
+        out = ('deref_assign', fold_expr(s[1]), fold_expr(s[2]))
+    elif kind == 'return':
+        out = ('return', fold_expr(s[1]) if s[1] is not None else None)
+    elif kind == 'exprstmt':
+        out = ('exprstmt', fold_expr(s[1]))
+    elif kind == 'if':
+        out = ('if', fold_expr(s[1]), fold_stmt(s[2], stmt_lines),
+               fold_stmt(s[3], stmt_lines) if s[3] is not None else None)
+    elif kind == 'while':
+        out = ('while', fold_expr(s[1]), fold_stmt(s[2], stmt_lines))
+    elif kind == 'block':
+        out = ('block', [fold_stmt(x, stmt_lines) for x in s[1]])
+    else:
+        return s                      # unchanged node keeps its own line entry
+    _carry_line(stmt_lines, s, out)
+    return out
 
 
-def fold_program(funcs):
+def _carry_line(stmt_lines, old, new):
+    """Propagate a statement's recorded C source line from `old` to the rebuilt
+    `new` node (no-op when there is no map or no entry). Keeping the old node
+    alive is the caller's job, so id() can't be reused before this runs."""
+    if stmt_lines is not None and old is not new:
+        line = stmt_lines.get(id(old))
+        if line is not None:
+            stmt_lines[id(new)] = line
+
+
+def fold_program(funcs, stmt_lines=None):
     """Apply constant folding to every function body."""
-    return [(ret, name, params, fold_stmt(body))
+    return [(ret, name, params, fold_stmt(body, stmt_lines))
             for (ret, name, params, body) in funcs]
 
 
@@ -2557,11 +2690,23 @@ class Opts:
         return cls(fold=True, compact=True)
 
 
-def compile_source(src, source_name, opts=None):
+def compile_source(src, source_name, opts=None, annotate_c_lines=False):
+    """Compile C source to Toy CPU assembly text.
+
+    When annotate_c_lines is True, each emitted asm line that originates from a C
+    statement gets a trailing `# @c:N` comment (N = C source line). The marker is
+    a comment, so the annotated text assembles to the identical memory image. The
+    default (False) is byte-for-byte the plain output (committed examples and the
+    snapshot tests rely on this)."""
     if opts is None:
         opts = Opts()
     toks = lex(src)
-    funcs = Parser(toks).parse_program()[1]
+    parser = Parser(toks)
+    funcs = parser.parse_program()[1]
+    # id(stmt node) -> C line, carried through fold + lift so codegen can tag the
+    # asm it emits. Only consumed when annotate_c_lines is on; building it always
+    # is cheap and keeps the transforms' signatures uniform.
+    stmt_lines = parser.stmt_lines
 
     # Validate calls BEFORE folding: folding can drop a subexpression (x*0 -> 0),
     # which would otherwise swallow a call to an undefined function and hide the
@@ -2573,7 +2718,7 @@ def compile_source(src, source_name, opts=None):
                 raise CompileError(f"call to undefined function {callee!r}")
 
     if opts.fold:
-        funcs = fold_program(funcs)
+        funcs = fold_program(funcs, stmt_lines)
 
     graph = build_call_graph(funcs)
     recursive = find_recursive(graph)
@@ -2612,16 +2757,18 @@ def compile_source(src, source_name, opts=None):
                 f"follow the recursion save/restore stack (take the address in a "
                 f"non-recursive function, or pass the value instead)")
 
-    main_block, bodies = lift_functions(funcs, recursive)
+    main_block, bodies = lift_functions(funcs, recursive, stmt_lines)
 
-    gen = CodeGen(compact=opts.compact, safe_compare=opts.safe_compare)
+    gen = CodeGen(compact=opts.compact, safe_compare=opts.safe_compare,
+                  stmt_lines=stmt_lines)
     # Save/restore is now automatic and emitted only for recursive callers. So
     # when nothing recurses, no push/pop is ever generated and the sp byte is
     # dead. --stackfree already guarantees no recursion (checked above), so it is
     # safe to drop sp there. (Without --stackfree we keep sp whenever any
     # recursion exists; a non-recursive program simply never touches it.)
     no_stack = opts.stackfree or not recursive
-    asm = gen.generate(main_block, bodies, source_name, no_stack=no_stack)
+    asm = gen.generate(main_block, bodies, source_name, no_stack=no_stack,
+                       annotate_c_lines=annotate_c_lines)
     # Pass any `// pytoy:` I/O directives from the C source through to the
     # emitted assembly as `# pytoy:` lines, so the GUI (which only parses `#`)
     # picks up the output display format for compiled programs too.

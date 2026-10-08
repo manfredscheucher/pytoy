@@ -32,6 +32,20 @@ class MiniError(Exception):
     """A compile error with a human-readable message."""
 
 
+def _annotate(line, c_line):
+    """Append a `# @c:N` marker tying this asm line to C source line N. The
+    assembler ignores everything after the first '#', so the marker is inert: an
+    annotated file assembles to the same memory image. If the line already has a
+    comment, the marker is appended inside it (still one comment); otherwise a
+    fresh `  # @c:N` comment is added. Returns the line unchanged when c_line is
+    None (no C origin)."""
+    if c_line is None:
+        return line
+    if '#' in line:
+        return f"{line} @c:{c_line}"
+    return f"{line}  # @c:{c_line}"
+
+
 # ── 1. Lexer: text -> list of tokens ─────────────────────────────────────────
 # A token is a (kind, value) pair. Kinds: 'num', 'id', 'kw', 'op', 'punct'.
 
@@ -44,9 +58,28 @@ PUNCT = ['(', ')', '{', '}', '[', ']', ';', ',']
 
 
 def lex(src):
-    """Turn source text into a list of (kind, value) tokens, ending with ('eof', '')."""
+    """Turn source text into tokens plus a parallel list of their source line
+    numbers (1-based). Returns (toks, lines); toks ends with ('eof', '') and
+    lines has the same length. The line numbers are only used to map emitted
+    assembly back to C source lines (see compile_source(annotate_c_lines=True));
+    they do not affect the tokens themselves."""
+    # Precompute the line number for any source offset, so each token can record
+    # the line it starts on without the lexer having to track newlines by hand.
+    line_at = []
+    line = 1
+    for ch in src:
+        line_at.append(line)
+        if ch == '\n':
+            line += 1
+    line_at.append(line)        # one past the end (for the final 'eof' token)
+
     # strip // line comments and /* ... */ block comments
-    out, i, n = [], 0, len(src)
+    out, lines, i, n = [], [], 0, len(src)
+
+    def add(tok, start):
+        out.append(tok)
+        lines.append(line_at[start])
+
     while i < n:
         c = src[i]
         if c in ' \t\r\n':
@@ -68,29 +101,29 @@ def lex(src):
             else:
                 while j < n and src[j].isdigit():
                     j += 1
-            out.append(('num', int(src[i:j], 0) & 0xFF))
+            add(('num', int(src[i:j], 0) & 0xFF), i)
             i = j
         elif c.isalpha() or c == '_':
             j = i
             while j < n and (src[j].isalnum() or src[j] == '_'):
                 j += 1
             word = src[i:j]
-            out.append(('kw', word) if word in KEYWORDS else ('id', word))
+            add(('kw', word) if word in KEYWORDS else ('id', word), i)
             i = j
         else:
             for op in OPS:
                 if src.startswith(op, i):
-                    out.append(('op', op))
+                    add(('op', op), i)
                     i += len(op)
                     break
             else:
                 if c in PUNCT:
-                    out.append(('punct', c))
+                    add(('punct', c), i)
                     i += 1
                 else:
                     raise MiniError(f"unexpected character {c!r}")
-    out.append(('eof', ''))
-    return out
+    add(('eof', ''), n)
+    return out, lines
 
 
 # ── 2. Parser: tokens -> AST ─────────────────────────────────────────────────
@@ -108,9 +141,20 @@ def lex(src):
 #                ('block', [stmts])
 
 class Parser:
-    def __init__(self, toks):
+    def __init__(self, toks, lines=None):
         self.toks = toks
+        # Source line per token (1-based), parallel to `toks`; see lex(). When
+        # absent (callers that don't need the mapping) line tracking is skipped.
+        self.lines = lines
         self.i = 0
+        # id(statement-node) -> C source line, filled by parse_stmt. Keyed by
+        # object identity, which is safe because minicc never rebuilds a
+        # statement node between parsing and code generation.
+        self.stmt_lines = {}
+
+    def cur_line(self):
+        """The source line of the token about to be consumed, or None."""
+        return self.lines[self.i] if self.lines is not None else None
 
     def peek(self):
         return self.toks[self.i]
@@ -169,6 +213,17 @@ class Parser:
         return ('block', stmts)
 
     def parse_stmt(self):
+        # Record the source line of the first token of this statement, so the
+        # code generator can tag the asm it emits (see compile_source's
+        # annotate_c_lines). Keyed by node identity, safe because minicc never
+        # rebuilds a statement node between parsing and code generation.
+        line = self.cur_line()
+        node = self._parse_stmt_inner()
+        if line is not None:
+            self.stmt_lines[id(node)] = line
+        return node
+
+    def _parse_stmt_inner(self):
         t = self.peek()
         if t == ('kw', 'int'):
             return self.parse_decl()
@@ -325,8 +380,14 @@ class Parser:
 # only the accumulator, so intermediate values are spilled to memory).
 
 class Gen:
-    def __init__(self, funcs=None):
+    def __init__(self, funcs=None, stmt_lines=None):
         self.code = []
+        # Parallel to self.code: the C source line each asm line came from, or
+        # None (header/data/structural lines have no C origin). Filled by emit()
+        # from _cur_c_line, and only consumed when annotate_c_lines is on.
+        self.code_lines = []
+        self.stmt_lines = stmt_lines or {}   # id(stmt node) -> C source line
+        self._cur_c_line = None              # C line of the statement being gen'd
         self.vars = {}          # name -> data label
         self.consts = {}        # value -> data label (deduplicated)
         self.arrays = {}        # name -> (base_label, size, inits)
@@ -343,6 +404,7 @@ class Gen:
 
     def emit(self, line):
         self.code.append(line)
+        self.code_lines.append(self._cur_c_line)
 
     def const(self, value):
         value &= 0xFF
@@ -532,6 +594,19 @@ class Gen:
 
     # -- statements ----------------------------------------------------------
     def gen_stmt(self, s):
+        # Tag every asm line this statement emits with its C source line. A
+        # nested gen_stmt (then/else/while body) temporarily overwrites
+        # _cur_c_line, so save and restore it around the dispatch below.
+        prev = self._cur_c_line
+        line = self.stmt_lines.get(id(s))
+        if line is not None:
+            self._cur_c_line = line
+        try:
+            self._gen_stmt(s)
+        finally:
+            self._cur_c_line = prev
+
+    def _gen_stmt(self, s):
         kind = s[0]
         if kind == 'block':
             for st in s[1]:
@@ -688,12 +763,19 @@ class Gen:
         self.emit(f"        stop            # unreachable: bad {name} marker")
 
     # -- assemble the final .toys text --------------------------------------
-    def finish(self, source_name):
+    def finish(self, source_name, annotate_c_lines=False):
         lines = [f"# Generated by minicc from {source_name}",
                  "# Toy CPU assembly. 8-bit values, wrap mod 256.",
                  "# Result ends up in the accumulator at STOP.",
                  ""]
-        lines += self.code
+        code = self.code
+        if annotate_c_lines:
+            # Append a `# @c:N` marker to each code line that came from a C line.
+            # The assembler ignores everything after the first '#', so an
+            # annotated file assembles to the identical memory image. Only
+            # self.code is annotated; the header and data section below are not.
+            code = [_annotate(ln, n) for ln, n in zip(self.code, self.code_lines)]
+        lines += code
         lines.append("")
         lines.append("# data")
         for label in self.all_vars:
@@ -771,12 +853,19 @@ def check_no_recursion(funcs):
             f"indirectly. Use the full toycc for recursion.")
 
 
-def compile_source(src, source_name="minicc"):
-    """Compile C source text to Toy CPU assembly text."""
-    funcs = Parser(lex(src)).parse_program()
+def compile_source(src, source_name="minicc", annotate_c_lines=False):
+    """Compile C source text to Toy CPU assembly text.
+
+    When annotate_c_lines is True, each emitted asm line that came from a C
+    statement gets a trailing `# @c:N` comment (N = C source line). The marker is
+    a comment, so the annotated text assembles to the identical memory image. The
+    default (False) is byte-for-byte the plain output."""
+    toks, line_nums = lex(src)
+    parser = Parser(toks, line_nums)
+    funcs = parser.parse_program()
     check_calls(funcs)
     check_no_recursion(funcs)
-    gen = Gen(funcs)
+    gen = Gen(funcs, stmt_lines=parser.stmt_lines)
     # main first (its `return` halts); then each helper body; then every
     # helper's dispatch chain, by which time all call sites have been counted.
     main = next(f for f in funcs if f[1] == 'main')
@@ -789,7 +878,7 @@ def compile_source(src, source_name="minicc"):
         gen.gen_function_body(f)
     for f in helpers:
         gen.gen_dispatch(f[1])
-    return gen.finish(source_name)
+    return gen.finish(source_name, annotate_c_lines=annotate_c_lines)
 
 
 def compile_file(in_path, out_path=None, run=False):
