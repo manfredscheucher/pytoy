@@ -54,6 +54,15 @@ The window has:
 Click any line to highlight it (orange) on both panels --- handy for tracing
 which memory box a label refers to.
 
+*Right-click the source panel* to open an _Edit assembly_ window: a plain-text
+editor prefilled with the current program's assembly source. Change it and press
+Save --- pytoy re-assembles the edited text fresh and reloads the program at
+step 0, so you can tweak a program and re-run without leaving the GUI. If the
+edited text has an assembly error, the error is shown and the editor stays open
+so you can fix it; Cancel discards your changes. (A `.toyo` loaded as bytecode
+has no assembly source, so right-click there just says there is nothing to
+edit.)
+
 == CLI
 
 Use `-c` / `--cli` to run in the terminal instead of opening the window:

@@ -550,6 +550,49 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             """Run modally; return the chosen (Example, compiler) or None."""
             return self._choice if self.exec() == QDialog.Accepted else None
 
+    class EditAsmDialog(QDialog):
+        """Edit the loaded program's assembly source and re-assemble it.
+
+        A resizable window with a monospace, editable QTextEdit prefilled with
+        the current source plus Save/Cancel buttons. Save routes the edited text
+        back through the debugger's normal re-assemble-and-load path: if it
+        assembles the program reloads at step 0 and the dialog closes; if it
+        fails the shared error dialog is shown and this window stays open so the
+        user can fix the source. edited_text() returns the final text."""
+
+        def __init__(self, parent, asm_text, title):
+            super().__init__(parent)
+            self.setWindowTitle(title)
+            self.resize(560, 520)
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel("Edit the assembly, then Save to "
+                                    "re-assemble:"))
+
+            self.edit = QTextEdit()
+            self.edit.setFont(parent._mono if parent else self.font())
+            self.edit.setLineWrapMode(QTextEdit.NoWrap)
+            self.edit.setPlainText(asm_text)
+            layout.addWidget(self.edit, stretch=1)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Save
+                                       | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(self._on_save)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+
+        def edited_text(self):
+            return self.edit.toPlainText()
+
+        def _on_save(self):
+            # Re-assemble+load via the same path a fresh Load uses. On success
+            # accept (closes the dialog); on failure _load_asm_text already
+            # showed an error dialog — keep this window open to fix the source.
+            parent = self.parent()
+            if parent._load_asm_text(self.edited_text(),
+                                     parent._current_path or "<edited>"):
+                self.accept()
+
     class ClickLabel(QLabel):
         """A QLabel that calls on_click(addr) when clicked — used for I/O cells
         so clicking one opens the same edit dialog as the memory panel."""
@@ -786,6 +829,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             # path of the last file loaded (CLI arg or Load button), for Reload
             self._current_path = source_path
+            # assembly source of the loaded program (None for a .toyo/bytecode
+            # load or an empty startup window), so right-click can edit it
+            self._asm_text = None
             self._build_ui()
             self._setup_shortcuts()
             self.load_program(mem_original, listing, syms, data_addrs, code_guard,
@@ -879,6 +925,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             self.source_view.mouseReleaseEvent = self._source_clicked
             self.mem_view.mouseReleaseEvent = self._mem_clicked
+
+            # right-click the assembly panel opens the "Edit assembly" window.
+            # This is a separate mechanism from mouseReleaseEvent (which still
+            # handles left-click select-address), so the two don't collide.
+            self.source_view.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.source_view.customContextMenuRequested.connect(
+                self._edit_asm_clicked)
+            self.source_view.setToolTip("Right-click to edit the assembly "
+                                        "source and re-assemble")
 
             splitter.setSizes([500, 500])
 
@@ -1255,6 +1310,26 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             if choice is not None:
                 self._load_example(*choice)
 
+        def _edit_asm_clicked(self, _pos=None):
+            """Right-click the assembly panel: open a window to edit the source
+            and re-assemble it on Save. `_pos` is the click position passed by
+            customContextMenuRequested and is unused (the whole source is
+            edited, not a single line)."""
+            if not self._asm_text:
+                QMessageBox.information(
+                    self, "Nothing to edit",
+                    "This program has no assembly source to edit "
+                    "(it was loaded as bytecode, or no program is loaded).")
+                return
+            # Re-assembling resets the machine, so warn about live memory edits
+            # first — the same guard Load/Reload use.
+            if not self._confirm_discard():
+                return
+            name = (os.path.basename(self._current_path)
+                    if self._current_path else "program")
+            dlg = EditAsmDialog(self, self._asm_text, f"Edit assembly — {name}")
+            dlg.exec()
+
         def _load_example(self, example, compiler):
             """Load one example picked in the ExamplesDialog. `compiler` is the
             chosen C compiler ("minicc"/"toycc") for a C example, else None.
@@ -1317,6 +1392,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 return False
             self.load_program(mem, listing, syms, data_addrs,
                               code_guard=None, has_source=True)
+            # keep the source so right-click can re-open it for editing
+            self._asm_text = text
             return True
 
         def _load_toyo_text(self, text):
@@ -1334,6 +1411,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             listing = [(a, [mem[a]], "", True) for a in range(256)]
             self.load_program(mem, listing, {}, set(range(256)),
                               code_guard=None, has_source=False)
+            # a .toyo is bytecode with no assembly source to edit
+            self._asm_text = None
             return True
 
         def _load_path(self, path):

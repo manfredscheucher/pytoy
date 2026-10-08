@@ -84,6 +84,20 @@ Implementation (how the C line reaches each asm line):
    `tests/test_source_gutter.py`.
 6. **asm edit mode** — right-click the asm (left) panel → a window opens to edit
    the assembly text → Save re-assembles it fresh and reloads. pytoy + ktoy.
+   DONE (pytoy): the loaded program's source is now retained as `self._asm_text`
+   in `_load_asm_text` (set to `None` in `_load_toyo_text` and the constructor,
+   since a `.toyo`/empty window has no source). The source panel gets
+   `setContextMenuPolicy(Qt.CustomContextMenu)` and
+   `customContextMenuRequested → _edit_asm_clicked`; this is a separate mechanism
+   from the existing left-click `mouseReleaseEvent = _source_clicked`, so
+   select-address still works. `_edit_asm_clicked` guards the no-source case (an
+   info box, no-op) and the live-edit discard (`_confirm_discard`, same as
+   Load/Reload), then opens `EditAsmDialog` (mirrors ExamplesDialog: resizable
+   QDialog, monospace editable QTextEdit prefilled with `_asm_text`,
+   Save/Cancel). Save routes the edited text through the SAME re-assemble+load
+   path as a fresh load (`_load_asm_text(text, _current_path or "<edited>")`):
+   success reloads at step 0 and updates `_asm_text`; failure shows the shared
+   error dialog and keeps the editor open. Test: `tests/test_edit_asm_gui.py`.
 
 NOTE on orchestration: parts 4, 5, 6 all touch simulator.py — they must be done
 SERIALLY (one at a time), not in parallel, to avoid clobbering the same file.
