@@ -6,8 +6,13 @@
 #   2. set `ready` (255) to any non-zero value to submit.
 # The program busy-polls `ready`; once non-zero it compares the four entered
 # characters against the PIN "1337" and overwrites io0..io3 with the result:
-#   right PIN -> "succ", acc = 1
+#   right PIN -> "succ", acc = 42   (the secret: the Answer to Life, the
+#                                     Universe and Everything — Hitchhiker's)
 #   wrong PIN -> "fail", acc = 0
+#
+# So the PIN guards a secret: enter 1337 and the accumulator reveals 42. This
+# is the running example for the security slides — brute force, reading the
+# bytecode, side channels, fault injection. See doc/design/pin-security.md.
 #
 # The comparison is the classic one: for each digit, LOAD the entered character,
 # SUB the expected character; if the difference is 0 the digit matched, so
@@ -40,7 +45,7 @@ ok2:    load  io3
         ifzero ok3
         goto  fail
 
-# ── 3a. success: write "succ", acc = 1, stop ──────────────────────
+# ── 3a. success: write "succ", reveal the answer (acc = 42), stop ─
 ok3:    load  s_s
         store io0
         load  s_u
@@ -49,7 +54,7 @@ ok3:    load  s_s
         store io2
         load  s_c2
         store io3
-        load  one          # acc = 1 signals success
+        load  answer       # acc = 42, the secret, now revealed
         stop
 
 # ── 3b. failure: write "fail", acc = 0, stop ──────────────────────
@@ -66,7 +71,7 @@ fail:   load  f_f
 
 # ── data ──────────────────────────────────────────────────────────
 zero:   0
-one:    1
+answer: 42             # the secret behind the PIN
 
 # expected PIN "1337" as ASCII codes
 pin0:  49              # '1'

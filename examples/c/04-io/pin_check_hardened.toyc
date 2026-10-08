@@ -1,0 +1,42 @@
+// pin_check_hardened — the same 1337 PIN check, but constant-time.
+//
+// The naive pin_check bails on the first wrong digit. That early-out is a
+// timing side channel: a wrong first digit stops sooner than a wrong last
+// digit, so an attacker measuring run time (steps in pytoy) can recover the
+// PIN one digit at a time — 4*10 tries instead of 10^4. See the security
+// slides and doc/design/pin-security.md.
+//
+// Fix: never branch on a single digit. OR the differences together and test
+// once at the end. Every digit is always compared, so the work — and the
+// timing — is the same whatever the input. `diff` is 0 exactly when all four
+// digits match (XOR is 0 iff equal; OR stays 0 only if every XOR was 0).
+//
+// Residual weakness (covered in the slides): the single final `diff == 0` is
+// now the one place a fault-injection attack can target. Constant time closes
+// the timing channel; it does not make the check fault-proof. Security needs
+// both a safe program AND safe hardware.
+//
+// pytoy: output=ascii
+
+int main(void) {
+    int data[4];
+    int succ[4] = {'s', 'u', 'c', 'c'};
+    int fail[4] = {'f', 'a', 'i', 'l'};
+    int diff;
+
+    read(data);
+
+    // Constant-time compare: always touch all four digits, no early-out.
+    // Each (digit ^ expected) is 0 iff that digit matches; OR them together so
+    // diff is 0 exactly when all four match. One expression, no per-digit
+    // branch — the work (and the timing) is the same whatever the input. The
+    // compare is unrolled by hand (no pin[] array, no for) to fit 240 bytes.
+    diff = (data[0] ^ '1') | (data[1] ^ '3') | (data[2] ^ '3') | (data[3] ^ '7');
+
+    if (diff == 0) {
+        write(succ, 4);
+        return 42;   // the secret, revealed
+    }
+    write(fail, 4);
+    return 0;
+}

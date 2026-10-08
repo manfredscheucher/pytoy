@@ -1,8 +1,15 @@
 // pin_check — read a 4-digit PIN and check it against 1337.
 //
+// The PIN guards a secret: get it right and the program returns 42 — the
+// Answer to Life, the Universe and Everything (Hitchhiker's Guide). Wrong PIN
+// returns 0. This is the running example for the security slides (brute force,
+// reading the bytecode, side channels, fault injection). See
+// doc/design/pin-security.md.
+//
 // GUI usage (ascii input): type the four digits into io0..io3 (e.g. '1','3',
 // '3','7'), then set `ready` to a non-zero value to submit. The program reads
-// the digits, compares them to "1337", and writes back "succ" or "fail".
+// the digits, compares them to "1337", and writes back "succ" or "fail" while
+// the return value (the accumulator at STOP) is 42 on success, 0 on failure.
 //
 // The digits are checked one at a time; the first mismatch falls through to
 // "fail". Only when all four match does it reach "succ". (Nested ifs rather
@@ -22,7 +29,7 @@ int main(void) {
             if (data[2] == '3') {
                 if (data[3] == '7') {
                     write(succ, 4);
-                    return 1;
+                    return 42;   // the secret, revealed
                 }
             }
         }

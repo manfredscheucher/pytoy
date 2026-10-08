@@ -181,8 +181,13 @@ writes them back.
   [`poll_demo`],   [the canonical busy-poll: wait on `ready`, echo `io0` to `io1`],
   [`greet_name`],  [read a name, write "hallo NAME!" (input + output)],
   [`sort_array_io`],        [read `N` values, sort ascending, write them back],
-  [`pin_check`],   [read a 4-digit PIN (ascii), check it against 1337, write "succ"/"fail"],
+  [`pin_check`],   [read a 4-digit PIN (ascii), check it against 1337; right PIN reveals the secret 42 ("succ"), wrong PIN gives 0 ("fail")],
+  [`pin_check_hardened`], [the same check made _constant-time_ (no per-digit branch), to close the timing side channel],
 )
+
+`pin_check` is the running example for a short tour of security basics on the
+Toy CPU — brute force, reading the bytecode, side channels, and fault injection,
+and what each countermeasure buys. See `doc/design/pin-security.md`.
 
 Most have a `# pytoy: output=…` hint on the first line that sets the I/O
 widget's default display format (overridable any time from _View → I/O format_).
@@ -238,5 +243,6 @@ The C I/O examples under `examples/c/04-io/`:
   table.header([*Program*], [*What it shows*]),
   [`hello_world`], [write "Hello world!" from a constant array (output, ascii)],
   [`greet_name`],  [put "Hallo " in a buffer, `read(data + 6)` the name, `write(data, k + 6)` the greeting],
-  [`pin_check`],   [`read` a 4-digit PIN, compare to 1337 digit by digit, `write` "succ" or "fail"],
+  [`pin_check`],   [`read` a 4-digit PIN, compare to 1337 digit by digit, reveal the secret 42 on success],
+  [`pin_check_hardened`], [the constant-time version: OR the per-digit differences, one final `diff == 0` test],
 )
