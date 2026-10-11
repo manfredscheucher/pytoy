@@ -12,9 +12,49 @@ import re
 import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
-                   _describe, _esc, WRITES_ACC)
+                   _describe, _esc, WRITES_ACC, has_operand, _INSTR)
 from .assembler import assemble, show_assembly, export
 from . import format as iofmt
+
+
+def _reference_text():
+    """The Help -> reference text: the 14 instructions (built from core so it
+    can't drift) plus the GUI keyboard shortcuts."""
+    lines = ["TOY CPU — INSTRUCTION SET", ""]
+    lines.append(f"  {'mnemonic':<9} {'opcode':>6}  {'bytes':>5}   effect")
+    lines.append("  " + "-" * 54)
+    # list by opcode value, mnemonic from _INSTR; two-byte iff the fetch bit is set
+    effects = {
+        0: "halt execution",               1: "ACC >>= 1 (shift right)",
+        2: "ACC <<= 1 (shift left)",       15: "ACC = ~ACC (bitwise not)",
+        17: "ACC &= mem[addr]",            18: "ACC |= mem[addr]",
+        19: "ACC ^= mem[addr]",            20: "ACC = mem[addr] (load)",
+        21: "mem[addr] = ACC (store)",     22: "ACC += mem[addr]",
+        23: "ACC -= mem[addr]",            24: "PC = addr (goto)",
+        25: "if ACC==0: PC = addr (ifzero)", 128: "do nothing",
+    }
+    for op in sorted(_INSTR):
+        name = _INSTR[op][0]
+        nbytes = 2 if has_operand(op) else 1
+        lines.append(f"  {name.lower():<9} {op:>6}  {nbytes:>5}   {effects.get(op, '')}")
+    lines += ["",
+              "Any opcode not listed behaves like nop.",
+              "Arithmetic wraps modulo 256. ifzero is the only conditional.",
+              "",
+              "KEYBOARD SHORTCUTS", "",
+              "  Space / Enter    step one instruction",
+              "  Backspace        step back (undo one step)",
+              "  R                run / stop",
+              "  Esc              reset to the start",
+              "  Cmd/Ctrl+O       load a program",
+              "  Cmd/Ctrl+R       reload from disk",
+              "  Cmd/Ctrl+S       save the current program",
+              "",
+              "Right-click a memory cell (or the assembly) to edit it."]
+    return "\n".join(lines)
+
+
+_REFERENCE_TEXT = _reference_text()
 
 
 def polling_input(mem, pc):
@@ -460,7 +500,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                    QHBoxLayout, QVBoxLayout, QTextEdit,
                                    QPushButton, QSplitter, QMessageBox,
                                    QLabel, QDoubleSpinBox, QFileDialog,
-                                   QGroupBox, QComboBox,
+                                   QGroupBox, QComboBox, QInputDialog,
                                    QDialog, QLineEdit, QDialogButtonBox,
                                    QGridLayout, QTreeWidget, QTreeWidgetItem)
     from PySide6.QtCore import Qt, QTimer, QPointF
@@ -1256,6 +1296,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         def _build_ui(self):
             self._base_point_size = 13
             self._font_scale = 1
+            self._line_numbers = True   # View -> Line numbers (gutter on by default)
             mono = QFont("Menlo, Courier New, monospace")
             mono.setPointSize(self._base_point_size)
             mono.setStyleHint(QFont.Monospace)
@@ -1453,8 +1494,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self._build_menu()
 
         def _build_menu(self):
-            """A single View menu: panel visibility, font size, and the I/O
-            display format (which also drives how clicking a cell is read back)."""
+            """The menu bar: File (load/reload/save), View (panels, font, I/O
+            format, line numbers), and Help (ISA/shortcuts reference + About)."""
+            self._build_file_menu()
+
             view = self.menuBar().addMenu("&View")
 
             # — panel visibility —
@@ -1477,6 +1520,14 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             act_show_ready.setChecked(False)
             act_show_ready.toggled.connect(self.io_widget.set_input_row_visible)
             view.addAction(act_show_ready)
+
+            view.addSeparator()
+
+            # — line-number gutter (display only) —
+            act_line_numbers = QAction("Line numbers", self, checkable=True)
+            act_line_numbers.setChecked(self._line_numbers)
+            act_line_numbers.toggled.connect(self._toggle_line_numbers)
+            view.addAction(act_line_numbers)
 
             view.addSeparator()
 
@@ -1508,6 +1559,53 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                     lambda _checked, f=fmt: self.io_widget.set_output_format(f))
                 fmt_group.addAction(act)
                 fmt_menu.addAction(act)
+
+            self._build_help_menu()
+
+        def _build_file_menu(self):
+            """File menu: Load / Reload / Save, with the usual shortcuts. Load and
+            Reload mirror the toolbar buttons; Save exports the current program in
+            a format the user picks (only the formats that make sense are offered)."""
+            file_menu = self.menuBar().addMenu("&File")
+
+            act_load = QAction("Load…", self)
+            act_load.setShortcut(QKeySequence.Open)          # Cmd/Ctrl+O
+            act_load.triggered.connect(self._load_clicked)
+            file_menu.addAction(act_load)
+
+            self.act_reload_menu = QAction("Reload", self)
+            self.act_reload_menu.setShortcut(QKeySequence.Refresh)  # Cmd/Ctrl+R
+            self.act_reload_menu.triggered.connect(self._reload_clicked)
+            file_menu.addAction(self.act_reload_menu)
+
+            file_menu.addSeparator()
+
+            act_save = QAction("Save…", self)
+            act_save.setShortcut(QKeySequence.Save)          # Cmd/Ctrl+S
+            act_save.triggered.connect(self._save_clicked)
+            file_menu.addAction(act_save)
+
+        def _build_help_menu(self):
+            """Help menu: a quick reference (instruction set + shortcuts) and an
+            About dialog with the build identity (version + commit, hex610-style)."""
+            help_menu = self.menuBar().addMenu("&Help")
+
+            act_ref = QAction("Instruction set && shortcuts", self)
+            act_ref.triggered.connect(self._show_reference)
+            help_menu.addAction(act_ref)
+
+            help_menu.addSeparator()
+
+            act_about = QAction("About pytoy", self)
+            act_about.triggered.connect(self._show_about)
+            help_menu.addAction(act_about)
+
+        def _toggle_line_numbers(self, on):
+            """View -> Line numbers: show/hide the display-only line-number gutter
+            in the C and assembly panels. Purely a view affordance; never touches
+            any saved file."""
+            self._line_numbers = on
+            self.refresh()
 
         def _apply_font_scale(self, scale):
             """Scale every mono-font widget (both panels, buttons, I/O cells)."""
@@ -1763,6 +1861,88 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                     return
                 compiler = "toycc" if "toycc" in accepted else accepted[0]
             self._compile_and_show_casm(text, compiler, path)
+
+        def _save_formats(self):
+            """Which export formats make sense for the currently loaded program,
+            as (label, extension) pairs. .toyo (the compiled byte image, including
+            any hand edits) is always available; .toys / .toyc only when that
+            source is present (e.g. .toyc only after a C load)."""
+            formats = [("Bytecode (.toyo)", ".toyo")]
+            if self._asm_text:
+                formats.append(("Assembly (.toys)", ".toys"))
+            if self._c_text is not None:
+                formats.append(("C source (.toyc)", ".toyc"))
+            return formats
+
+        def _save_clicked(self):
+            """Save the current program. Asks which format to export (only the
+            ones that fit the loaded program), then where to write it.
+
+            - .toyo writes the live compiled byte image (reflects runtime/hand
+              edits via self.mem), using the assembler's export().
+            - .toys / .toyc write the current (possibly GUI-edited) source text."""
+            formats = self._save_formats()
+            labels = [lbl for lbl, _ext in formats]
+            if len(formats) == 1:
+                choice = labels[0]
+            else:
+                choice, ok = QInputDialog.getItem(
+                    self, "Save program", "Export as:", labels, 0, False)
+                if not ok:
+                    return
+            ext = dict((lbl, e) for lbl, e in formats)[choice]
+
+            base = (os.path.splitext(os.path.basename(self._current_path))[0]
+                    if self._current_path else "program")
+            start_dir = (os.path.dirname(self._current_path)
+                         if self._current_path else "")
+            suggested = os.path.join(start_dir, base + ext) if start_dir else base + ext
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save program", suggested, f"*{ext}")
+            if not path:
+                return
+            if not path.lower().endswith(ext):
+                path += ext
+
+            try:
+                if ext == ".toyo":
+                    # Export the LIVE bytes: re-read each listing row's bytes from
+                    # self.mem so hand edits (right-click) and runtime stores are
+                    # saved, not the stale assembled image. Source text/labels in
+                    # each row are kept for the listing comments. quiet=True keeps
+                    # the console clean (no "exported → …" from a GUI action).
+                    live = []
+                    for addr, blist, orig, is_data in self.listing:
+                        if addr is None:
+                            live.append((addr, blist, orig, is_data))
+                        else:
+                            bytes_now = [self.mem[(addr + k) % 256]
+                                         for k in range(len(blist))]
+                            live.append((addr, bytes_now, orig, is_data))
+                    export(live, self.syms, self.mem, path, quiet=True)
+                else:
+                    text = self._asm_text if ext == ".toys" else self._c_text
+                    with open(path, "w") as f:
+                        f.write(text if text.endswith("\n") else text + "\n")
+            except Exception as e:
+                QMessageBox.critical(self, "Save failed",
+                                     f"Could not write file:\n{e}")
+                return
+            self.statusBar().showMessage(f"Saved {os.path.basename(path)}", 4000)
+
+        def _show_reference(self):
+            """Help -> a quick reference: the 14 instructions and the GUI
+            shortcuts, shown in a plain read-only dialog."""
+            show_text_dialog(self, "Instruction set & shortcuts", _REFERENCE_TEXT)
+
+        def _show_about(self):
+            """Help -> About: the build identity (version + commit), hex610-style."""
+            from .version import version_lines
+            lines = version_lines()
+            lines.append("")
+            lines.append("A Toy CPU toolbox: simulator, assembler, compiler.")
+            lines.append("https://github.com/manfredscheucher/pytoy")
+            QMessageBox.about(self, "About pytoy", "\n".join(lines))
 
         def _examples_clicked(self):
             """Open the Examples browser and load whatever the user picks.
@@ -2214,7 +2394,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 colours = []
                 if c_line in sel_c:      colours.append(HL_SELECTED)
                 if c_line in changed_c:  colours.append(HL_CODE)
-                gutter = f"{i + 1:>{gutter_width}} | "
+                gutter = f"{i + 1:>{gutter_width}} | " if self._line_numbers else ""
                 rendered.append(highlight_row(gutter + text, colours))
             html = '<pre style="margin:0;">' + '\n'.join(rendered) + '</pre>'
             self.c_view.setHtml(html)
@@ -2283,7 +2463,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                         if HL_CODE not in colours:
                             colours.append(HL_CODE)
 
-                gutter = f"{i + 1:>{gutter_width}} | "
+                gutter = f"{i + 1:>{gutter_width}} | " if self._line_numbers else ""
                 lines.append(highlight_row(gutter + text, colours))
             html = '<pre style="margin:0;">' + '\n'.join(lines) + '</pre>'
             self.source_view.setHtml(html)
@@ -2401,6 +2581,27 @@ def show_error_dialog(title, message, heading="The program could not be built:")
     box = QTextEdit()
     box.setReadOnly(True)
     box.setPlainText(message)          # inline + scrollable when long
+    box.setFont(QFont("Menlo, Courier New, monospace"))
+    layout.addWidget(box)
+    buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+    buttons.accepted.connect(dlg.accept)
+    layout.addWidget(buttons)
+    dlg.exec()
+
+
+def show_text_dialog(parent, title, text):
+    """A read-only, monospaced, scrollable text dialog — used by Help ->
+    Instruction set & shortcuts. `parent` keeps it centred on the window."""
+    from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTextEdit,
+                                   QDialogButtonBox)
+    from PySide6.QtGui import QFont
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.resize(560, 560)
+    layout = QVBoxLayout(dlg)
+    box = QTextEdit()
+    box.setReadOnly(True)
+    box.setPlainText(text)
     box.setFont(QFont("Menlo, Courier New, monospace"))
     layout.addWidget(box)
     buttons = QDialogButtonBox(QDialogButtonBox.Ok)

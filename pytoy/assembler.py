@@ -219,8 +219,14 @@ def show_assembly(listing, syms, mem):
 
 # ── Export ─────────────────────────────────────────────────────────────────
 
-def export(listing, syms, mem, path):
-    """Write compiled listing to file + print interactive assembly walk-through."""
+def export(listing, syms, mem, path, quiet=False):
+    """Write the compiled byte listing to `path` as a .toyo file.
+
+    `quiet` suppresses the "exported → …" stdout line — the GUI Save passes it so
+    the file write produces no console noise. (`mem` is unused here; the bytes
+    come from `listing`. The GUI builds `listing` from its live memory before
+    calling, so a saved .toyo reflects runtime/hand edits — see simulator
+    `_save_clicked`.)"""
     rsym = {v: k for k, v in syms.items()}
     out  = ["# Toy CPU – compiled listing", "#",
             f"# {'ADDR':>4}  {'BYTES':<22}  SOURCE", "# " + "─"*56]
@@ -235,4 +241,5 @@ def export(listing, syms, mem, path):
         out.append(f"#   {name:<15} = {addr:3d}  ({addr:08b})")
     with open(path, 'w') as f:
         f.write("\n".join(out) + "\n")
-    print(f"exported → {path}\n")
+    if not quiet:
+        print(f"exported → {path}\n")

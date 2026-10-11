@@ -59,10 +59,17 @@ inline controls plus new visibility and font toggles:
   disabled for now — see below.) This replaces the old dropdown. The initial choice
   comes from the program's `# pytoy: output=…` directive. Picking a format also
   changes how a clicked cell's current value is shown for editing.
+- **Line numbers** (checkable, on by default): shows/hides the display-only
+  line-number gutter in the C and assembly panels. The gutter is purely a view
+  affordance (never written into any saved file); `_toggle_line_numbers()` flips
+  `self._line_numbers`, which both `_refresh_source` and `_refresh_c` honour.
 
 Requirement, in Manfred's words: "just a window menu with what's visible, and
 font size normal / double etc." — hence the plain `View` menu rather than
 in-widget controls or a toolbar.
+
+The menu bar also has **File** and **Help** menus — see
+[`menus.md`](menus.md).
 
 ## 7-segment: disabled, parked
 
