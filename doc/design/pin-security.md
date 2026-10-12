@@ -187,9 +187,12 @@ separate agent implements them). Recorded here so the spec lives with the rest:
 
 - `tests/test_pin_examples.py`:
   - naive asm `pin_check` returns 42 for 1337, 0 for wrong PINs.
-  - C `pin_check` compiles and loads the secret 42 (the C `read()` clears
-    `ready` before polling, so it cannot run headless — busy-poll only works in
-    the GUI; the asm test covers the identical compare logic end to end).
+  - C `pin_check` runs end to end with a pre-seeded PIN (returns 42 for 1337, 0
+    for wrong PINs), just like the asm version. `read()` no longer clears `ready`
+    before polling, so a value set before Run is seen — matching the GUI "set io
+    cells + ready, then Run" flow and the hand-written asm examples. (The old
+    clear-first behaviour hung in the GUI, since the user's pre-set `ready` was
+    wiped before the poll.)
   - hardened asm `pin_check_hardened` returns 42 / 0 correctly **and** is
     constant-time: all wrong PINs take the same step count, while the naive
     version's step count varies with the first-mismatch position.

@@ -204,7 +204,7 @@ so a C program never has to touch the `io` cells by hand:
   stroke: 0.5pt + luma(200),
   table.header([*Call*], [*What it does*]),
   [`write(data, k)`], [send `data[0]`..`data[k-1]` out to `io0`, `io1`, … (addresses 240, 241, …)],
-  [`read(data)`],     [clear `ready`, busy-poll until it is non-zero, then copy that many values from `io0`.. into `data[0]`.., and return the count],
+  [`read(data)`],     [busy-poll `ready` until it is non-zero, then copy that many values from `io0`.. into `data[0]`.., and return the count],
 )
 
 `read` returns the number of values it read (the `ready` value), so the usual

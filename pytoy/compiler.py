@@ -1537,9 +1537,14 @@ class CodeGen:
         dst = self.new_temp()
         self.gen_expr(data_expr)
         self.emit(f"        store {dst}            # dst = &data[0]")
-        # clear ready first, so a stale value can't satisfy our own poll
-        self.emit(f"        load  {self.const_label(0)}")
-        self.emit(f"        store ready")
+        # Busy-poll `ready` for input. We do NOT clear it first: the GUI workflow
+        # is "set the io cells + ready, then Run", so a pre-set ready is exactly
+        # the input we want to see — clearing it would make the poll hang (the
+        # user would have to re-set ready mid-run). This matches the hand-written
+        # asm I/O examples (e.g. pin_check.toys), so .toyc and .toys behave the
+        # same. The trade-off: a stale ready from a previous read is taken as new
+        # input (no stale-flag guard), which is fine for the single-shot programs
+        # pytoy runs; a real streaming device would re-arm ready between reads.
         l_wait = self.new_label("read_wait")
         self.emit(f"{l_wait}: load  ready")
         self.emit(f"        ifzero {l_wait}       # spin until input arrives")

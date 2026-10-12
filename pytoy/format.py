@@ -146,7 +146,10 @@ def parse_input(text, fmt="decimal"):
 # ── Source directives (# pytoy: key=value  /  // pytoy: key=value) ────────────
 
 _DEFAULTS = {
-    "output": "decimal",    # io-widget display format: decimal|binary|hex|ascii
+    # io-widget display format: decimal|binary|hex|ascii. ascii by default so a
+    # program with no `output=` directive shows its I/O as characters (the most
+    # legible for the typical print/greet examples); an explicit directive wins.
+    "output": "ascii",
 }
 
 _OUTPUT_OK = set(FORMATS)

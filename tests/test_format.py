@@ -63,8 +63,9 @@ def test_parse_input_errors():
 
 
 def test_directives_defaults():
+    # no directive -> ascii (the GUI's default I/O display format)
     d = F.parse_directives("just some code\nno directives")
-    assert d == {"output": "decimal"}
+    assert d == {"output": "ascii"}
 
 
 def test_directives_asm_and_c():
@@ -81,6 +82,6 @@ def test_directives_ignores_unknown_keys():
 
 
 def test_directives_ignores_invalid_values():
-    # an unknown output mode falls back to the default (decimal), not crash
+    # an unknown output mode falls back to the default (ascii), not crash
     d = F.parse_directives("# pytoy: output=rainbow\n")
-    assert d["output"] == "decimal"
+    assert d["output"] == "ascii"

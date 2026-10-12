@@ -83,39 +83,49 @@ def test_c_line_resolves_to_asm_rows_and_bytes():
     assert sel_addrs == addrs
 
 
-def test_asm_row_resolves_back_to_c_line():
-    """Clicking an asm line resolves up to its C line, which then lights up all
-    its sibling asm rows (the whole statement, not just the clicked line)."""
+def test_asm_row_resolves_back_to_c_line_no_sibling_fanout():
+    """Clicking an asm line (from_c=False) resolves UP to its C line (so the C
+    column lights up) but lights ONLY the clicked asm row + its bytes — it does
+    NOT fan back out to the statement's sibling asm rows."""
     _, c_to_asm, asm_to_c, line_to_addr, addr_to_line = _maps_for(PROG)
 
-    row = c_to_asm[2][0]
-    assert asm_to_c[row] == 2
-    # a byte of that row, resolved up to C, must be line 2.
-    addr = line_to_addr.get(c_to_asm[2][1])   # a row that owns a byte
-    assert addr_to_c_line(addr, addr_to_line, asm_to_c) == 2
+    # a C line with more than one asm row, so sibling fan-out would be visible.
+    multi = next(cl for cl, rows in c_to_asm.items() if len(rows) >= 2)
+    row = next(r for r in c_to_asm[multi] if r in line_to_addr)
+    addr = line_to_addr[row]
+    assert addr_to_c_line(addr, addr_to_line, asm_to_c) == multi
 
-    # selecting via the byte lights the whole statement.
+    # from an asm/mem anchor (from_c=False): C line lights, but only this one row.
     c_lines, sel_rows, sel_addrs = transitive_selection(
-        None, addr, c_to_asm, asm_to_c, line_to_addr, addr_to_line)
-    assert c_lines == {2}
-    assert sel_rows == set(c_to_asm[2])
+        None, addr, c_to_asm, asm_to_c, line_to_addr, addr_to_line,
+        from_c=False)
+    assert c_lines == {multi}
+    assert sel_rows == {row}                 # only the clicked row, no siblings
+    assert sel_rows != set(c_to_asm[multi])  # (the statement has more rows)
+
+    # from the C column (from_c=True) the SAME C line fans down to all its rows.
+    c_lines, sel_rows, _ = transitive_selection(
+        multi, None, c_to_asm, asm_to_c, line_to_addr, addr_to_line,
+        from_c=True)
+    assert c_lines == {multi}
+    assert sel_rows == set(c_to_asm[multi])
 
 
-def test_memory_cell_resolves_up_to_c():
-    """Clicking a memory cell resolves addr → asm row → C line, then back down,
-    so the C column and the statement's sibling bytes all light up."""
+def test_memory_cell_resolves_up_to_c_no_sibling_fanout():
+    """Clicking a memory cell (from_c=False) resolves addr → asm row → C line so
+    the C column lights, but lights only this cell's own row + bytes."""
     _, c_to_asm, asm_to_c, line_to_addr, addr_to_line = _maps_for(PROG)
 
-    # pick a byte owned by a C-attributed asm row.
     row = next(r for r in c_to_asm[3] if r in line_to_addr)
     addr = line_to_addr[row]
     assert addr_to_c_line(addr, addr_to_line, asm_to_c) == 3
 
     c_lines, sel_rows, sel_addrs = transitive_selection(
-        None, addr, c_to_asm, asm_to_c, line_to_addr, addr_to_line)
+        None, addr, c_to_asm, asm_to_c, line_to_addr, addr_to_line,
+        from_c=False)
     assert c_lines == {3}
     assert addr in sel_addrs
-    assert sel_rows == set(c_to_asm[3])
+    assert sel_rows == {row}                 # only the clicked cell's row
 
 
 def test_unmapped_anchors_select_nothing():
@@ -214,34 +224,40 @@ def test_click_c_line_selects_asm_rows_and_bytes(build_debugger):
 
 
 def test_click_asm_resolves_to_c_line(build_debugger):
-    """Clicking an asm line (its byte) resolves up to its C line and lights the
-    whole statement in the C column."""
+    """Clicking an asm line (its byte) resolves up to its C line (the C column
+    lights) but highlights ONLY the clicked asm row, not the whole statement."""
     win = build_debugger()
     c_to_asm, asm_to_c = _load_c(win, PROG)
 
-    row = next(r for r in c_to_asm[3] if r in win.line_to_addr)
+    # a C line that owns several asm rows, so no-fan-out is observable.
+    multi = next(cl for cl, rows in c_to_asm.items()
+                 if len(rows) >= 2 and any(r in win.line_to_addr for r in rows))
+    row = next(r for r in c_to_asm[multi] if r in win.line_to_addr)
     addr = win.line_to_addr[row]
-    # _source_clicked sets c_line from asm_to_c + addr from the row.
-    win._select(c_line=asm_to_c.get(row), addr=addr)
+    # _source_clicked sets c_line from asm_to_c + addr, from_c=False.
+    win._select(c_line=asm_to_c.get(row), addr=addr, from_c=False)
 
     sel_c, sel_rows, _ = win._selection_sets()
-    assert sel_c == {3}
-    assert sel_rows == set(c_to_asm[3])
+    assert sel_c == {multi}
+    assert sel_rows == {row}                    # only the clicked row
+    assert sel_rows != set(c_to_asm[multi])     # no sibling fan-out
 
 
 def test_click_memory_resolves_up_to_c(build_debugger):
-    """Clicking a memory cell resolves up to the C line and lights all columns."""
+    """Clicking a memory cell resolves up to the C line (C column lights) and
+    lights only that cell's row — a memory click also enables Edit."""
     win = build_debugger()
     c_to_asm, asm_to_c = _load_c(win, PROG)
 
     row = next(r for r in c_to_asm[4] if r in win.line_to_addr)
     addr = win.line_to_addr[row]
     c_line = addr_to_c_line(addr, win.addr_to_line, win._asm_to_c)
-    win._select(c_line=c_line, addr=addr, mem_selected_addr=addr)
+    win._select(c_line=c_line, addr=addr, mem_selected_addr=addr, from_c=False)
 
     sel_c, sel_rows, sel_addrs = win._selection_sets()
     assert sel_c == {4}
     assert addr in sel_addrs
+    assert sel_rows == {row}             # only the clicked cell's row
     assert win.btn_edit.isEnabled()      # a memory click enables Edit
 
 
@@ -313,3 +329,42 @@ def test_store_propagates_red_to_asm_and_c(build_debugger):
     # the red is per-step: once stopped (or after the cell is cleared) it's gone.
     win.stopped = True
     assert win._change_sets() == (set(), set())
+
+
+def test_pc_highlights_c_line(build_debugger):
+    """The current PC's asm row maps up to its C line, which the C column shows
+    in the PC colour (HL_PC) — so the user sees roughly what's executing in C."""
+    from pytoy.simulator import HL_PC, addr_to_c_line
+    win = build_debugger()
+    _load_c(win, PROG)
+
+    # step until the PC sits on a C-attributed instruction, then check the C
+    # panel paints that C line with HL_PC. Cap the loop so a bug can't hang.
+    for _ in range(200):
+        pc_c = addr_to_c_line(win.pc, win.addr_to_line, win._asm_to_c)
+        if pc_c is not None:
+            break
+        if win.stopped:
+            break
+        win.step()
+    assert pc_c is not None, "PC never reached a C-attributed instruction"
+    win.refresh()
+    assert HL_PC in win.c_view.toHtml()
+
+
+def test_from_asm_click_scrolls_c_panel_to_statement(build_debugger):
+    """A click in the asm column scrolls the C panel so the owning statement is
+    visible (scroll-to-selection), not left at the top."""
+    win = build_debugger()
+    c_to_asm, asm_to_c = _load_c(win, PROG)
+
+    # pick an asm row whose C line is well past the first visible line.
+    cl = max(c_to_asm)                       # the last mapped C statement
+    row = next(r for r in c_to_asm[cl] if r in win.line_to_addr)
+    addr = win.line_to_addr[row]
+    win._select(c_line=asm_to_c.get(row), addr=addr, from_c=False)
+
+    # the C view's text cursor now sits on that C line (0-based block).
+    assert win.c_view.textCursor().blockNumber() == cl - 1
+    # and the asm view's cursor sits on the clicked row.
+    assert win.source_view.textCursor().blockNumber() == row

@@ -144,9 +144,13 @@ def test_read_then_write_echo():
     assert "".join(chr(c) for c in _io(mem, 3)) == "Yo!"
 
 
-def test_read_clears_ready_so_poll_is_clean():
-    # Even if ready is non-zero at start (stale), read clears it first and waits
-    # for a fresh value, so the count reflects the injected input, not the stale.
+def test_read_uses_preset_ready_single_shot():
+    # read() does NOT clear ready: a value set BEFORE the program runs is the
+    # input. This matches the GUI "set io cells + ready, then Run" flow and the
+    # hand-written asm I/O examples (pin_check.toys), so .toyc and .toys behave
+    # the same. (The old behaviour cleared ready first; that hung in the GUI
+    # because the user's pre-set ready was wiped before the poll — see
+    # doc/design/pin-security.md and the compiler gen_read() comment.)
     src = """
     int main(void) {
         int data[16];
@@ -154,10 +158,13 @@ def test_read_clears_ready_so_poll_is_clean():
     }
     """
     mem = _assemble(src)
-    mem[IO_READY] = 99          # stale value present before the program runs
-    acc, _, mem = _run(mem, on_ready=lambda: {
-        IO_BASE + 0: 7, IO_BASE + 1: 8, IO_READY: 2})
-    assert acc == 2             # not 99
+    # seed the input up front, exactly like the GUI does before Run
+    mem[IO_BASE + 0] = 7
+    mem[IO_BASE + 1] = 8
+    mem[IO_READY] = 2
+    acc, _, mem = _run(mem)     # no mid-run injection needed any more
+    assert acc == 2             # read saw the pre-set ready=2
+    assert _io(mem, 2) == [7, 8]
 
 
 def test_read_with_pointer_offset_argument():

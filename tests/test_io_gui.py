@@ -122,16 +122,16 @@ def test_io_widgets_offscreen():
     win._apply_font_scale(2)
     assert panel._cells[0]["text"].font().pointSize() > base
 
-    # The 'set ready' input row is hidden by default, toggled from the View menu.
-    assert not panel.in_row_widget.isVisible()
-    panel.set_input_row_visible(True)
-    assert panel.in_row_widget.isVisible() or True
-
-    # Clicking an io cell edits it exactly like the memory panel (routes through
-    # the debugger's _edit_cell). set_input_byte still writes mem[255].
-    win.set_input_byte(65)
-    assert win.mem[iofmt.IO_READY] == 65
-    assert iofmt.IO_READY in win.touched
+    # The panel's own format combo offers the active FORMATS and drives the
+    # format (no separate 'set ready' input row any more — the ready register is
+    # edited by clicking it like any other cell).
+    assert [panel.fmt_combo.itemText(i)
+            for i in range(panel.fmt_combo.count())] == list(iofmt.FORMATS)
+    panel.fmt_combo.setCurrentText("binary")
+    assert panel._fmt == "binary"                 # combo drives the format
+    panel.set_output_format("hex")
+    assert panel.fmt_combo.currentText() == "hex"  # and stays in sync the other way
+    panel.set_output_format("decimal")
 
     # Edit default format: an io cell (240..254) follows the panel's current
     # format; ready (255) and ordinary memory are always decimal.
@@ -152,3 +152,62 @@ def test_io_widgets_offscreen():
     assert win.windowTitle() == "pytoy — greet_name.toys"
 
     win.close()
+
+
+def test_value_dialog_note_depends_on_format(build_debugger):
+    """The edit dialog's range note is format-aware: integer formats note the
+    0–255 mod-256 wrap; ascii notes a single character (wrap is meaningless)."""
+    from PySide6.QtWidgets import QDialog
+
+    win = build_debugger()
+
+    # capture the ValueDialog _edit_cell creates (it's closure-local) by
+    # intercepting exec(); inspect its note for the opened format, then cancel.
+    captured = {}
+    orig_exec = QDialog.exec
+
+    def grab_exec(self):
+        captured["note"] = self.note.text()
+        captured["fmt"] = self.fmt_combo.currentText()
+        # also flip to ascii and back to decimal to check the live update.
+        self.fmt_combo.setCurrentText("ascii")
+        captured["ascii_note"] = self.note.text()
+        self.fmt_combo.setCurrentText("decimal")
+        captured["decimal_note"] = self.note.text()
+        return QDialog.Rejected   # cancel: no value written
+
+    QDialog.exec = grab_exec
+    try:
+        win._edit_cell(0)          # ordinary memory -> opens in decimal
+    finally:
+        QDialog.exec = orig_exec
+
+    assert captured["fmt"] == "decimal"
+    assert "wraps mod 256" in captured["decimal_note"]
+    assert "mod 256" not in captured["ascii_note"]
+    assert "character" in captured["ascii_note"]
+
+
+def test_io_format_combo_and_menu_stay_in_sync(build_debugger):
+    """The I/O panel's format combo and the View-menu radio group drive the same
+    format and stay in sync whichever one the user changes."""
+    win = build_debugger()
+    panel = win.io_widget
+
+    # combo -> menu: picking in the combo checks the matching menu action.
+    panel.fmt_combo.setCurrentText("hex")
+    assert panel._fmt == "hex"
+    assert win._io_fmt_actions["hex"].isChecked()
+
+    # menu -> combo: triggering a menu action updates the combo and the panel.
+    win._io_fmt_actions["binary"].trigger()
+    assert panel._fmt == "binary"
+    assert panel.fmt_combo.currentText() == "binary"
+
+
+def test_io_default_format_is_ascii(build_debugger):
+    """With no `output=` directive the I/O panel defaults to ascii."""
+    win = build_debugger()                 # fixture passes no io_config
+    assert win.io_widget._fmt == "ascii"
+    assert win.io_widget.fmt_combo.currentText() == "ascii"
+    assert win._io_fmt_actions["ascii"].isChecked()

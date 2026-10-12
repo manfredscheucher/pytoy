@@ -408,30 +408,38 @@ def addr_to_c_line(addr, addr_to_line, asm_to_c):
     return asm_to_c.get(row)
 
 def transitive_selection(c_line, addr, c_to_asm, asm_to_c,
-                         line_to_addr, addr_to_line):
+                         line_to_addr, addr_to_line, from_c=True):
     """Resolve a selection (a C line and/or a byte address) into the full set of
     highlighted things across all three columns.
 
-    Either anchor may be None; whichever is given is expanded through both maps:
-      - a C line expands down to its asm rows and their byte addresses;
-      - a byte address expands up to its asm row and that row's C line, then back
-        down so the C line's *sibling* asm rows / bytes also light up (one C
-        statement normally owns several asm lines — selecting one lights the set).
+    `from_c` says where the click came from, which decides how far it fans:
 
-    Returns (c_lines, asm_rows, addrs): sets of highlighted 1-based C lines,
-    0-based asm rows, and byte addresses. Pure — no Qt."""
+      from_c=True  — a click in the C column. The C line fans DOWN to ALL its
+                     asm rows and their bytes (one C statement owns several asm
+                     lines; clicking the C line lights the whole set).
+
+      from_c=False — a click in the asm or memory column. It highlights ONLY the
+                     clicked asm row + its own bytes, and resolves UP to its C
+                     line (so the C column shows which statement it belongs to),
+                     but does NOT fan back out to the C line's sibling asm rows.
+
+    Either anchor may be None. Returns (c_lines, asm_rows, addrs): sets of
+    highlighted 1-based C lines, 0-based asm rows, and byte addresses. Pure."""
     c_lines = set()
     if c_line is not None:
         c_lines.add(c_line)
-    # a byte selection resolves up to its C line so the whole statement lights up
+    # a byte selection resolves up to its C line so the statement lights up
     up_c = addr_to_c_line(addr, addr_to_line, asm_to_c)
     if up_c is not None:
         c_lines.add(up_c)
 
     asm_rows = set()
-    for cl in c_lines:
-        asm_rows |= c_line_to_asm_rows(cl, c_to_asm)
-    # an asm row owning the selected byte, even when no C line attributes it
+    if from_c:
+        # C-column click: fan down to every asm row the C line(s) own.
+        for cl in c_lines:
+            asm_rows |= c_line_to_asm_rows(cl, c_to_asm)
+    # the asm row owning the selected byte (always — for a from-asm/mem click
+    # this is the ONLY asm row; for a from-C click it's already in the set).
     if addr is not None and addr in addr_to_line:
         asm_rows.add(addr_to_line[addr])
 
@@ -508,14 +516,27 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                QPainter, QColor, QPolygonF, QAction,
                                QActionGroup)
 
-    FORMATS = iofmt.FORMATS   # ('decimal','binary','hex','ascii','7segment')
+    FORMATS = iofmt.FORMATS   # ('decimal', 'binary', 'hex', 'ascii')
 
     class ValueDialog(QDialog):
         """Ask the user for a byte value in a chosen format. A format combo
         (decimal default) + a line edit + OK/Cancel. On accept the text is
         parsed via iofmt.parse_input(); a parse error keeps the dialog open with
         a small warning. exec_value() returns the 0..255 byte, or None if the
-        user cancelled."""
+        user cancelled.
+
+        A note under the field explains the accepted range for the SELECTED
+        format: integer formats (decimal/hex/binary) note "0–255, wraps mod 256";
+        ascii notes "a single character" (the mod-256 wrap note is meaningless
+        for a character). It updates live when the format combo changes."""
+
+        @staticmethod
+        def _note_for_fmt(fmt):
+            """The range note for a format: wrap note for the integer formats,
+            a character note for ascii."""
+            if fmt == "ascii":
+                return "Enter a single character."
+            return "Value 0–255 (wraps mod 256)."
 
         def __init__(self, parent=None, title="Enter value", prompt="Value:",
                      default_fmt="decimal", initial_text=""):
@@ -535,6 +556,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.edit = QLineEdit(initial_text)
             row.addWidget(self.edit, stretch=1)
             layout.addLayout(row)
+
+            # format-dependent range note, refreshed whenever the format changes
+            self.note = QLabel(self._note_for_fmt(self.fmt_combo.currentText()))
+            layout.addWidget(self.note)
+            self.fmt_combo.currentTextChanged.connect(
+                lambda f: self.note.setText(self._note_for_fmt(f)))
 
             self.hint = QLabel("")
             layout.addWidget(self.hint)
@@ -1054,19 +1081,41 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         (addresses 240..254) plus the ready register (255) as a 16th cell, laid
         out in a single row (two rows under binary, where each value is 8 chars
         wide). Clicking a cell edits it exactly like the memory panel's Edit.
-        The display format and the optional 'set ready' input row are driven from
-        the View menu, not from controls in this widget."""
+        A small format combo in the panel picks the display format; it stays in
+        sync with the View menu's I/O-format group (changing one updates the
+        other). The ready register is set like any other cell: click it."""
 
-        def __init__(self, debugger, default_output="decimal", parent=None):
+        def __init__(self, debugger, default_output="ascii", parent=None):
             super().__init__(parent)
             self._debugger = debugger
-            self._fmt = default_output if default_output in FORMATS else "decimal"
+            self._fmt = default_output if default_output in FORMATS else "ascii"
+            # guard against the combo's signal looping back while we sync it
+            self._syncing_combo = False
 
             self._mono = QFont("Menlo, Courier New, monospace")
             self._mono.setStyleHint(QFont.Monospace)
 
             outer = QVBoxLayout(self)
             outer.setContentsMargins(4, 4, 4, 4)
+
+            # Format picker, right in the panel (mirrors the View menu's I/O
+            # format group; either one drives set_output_format and both stay in
+            # sync). Only the active FORMATS are offered (7segment is disabled).
+            fmt_row = QHBoxLayout()
+            fmt_row.setContentsMargins(0, 0, 0, 0)
+            fmt_lbl = QLabel("format:")
+            fmt_lbl.setFont(self._mono)
+            fmt_row.addWidget(fmt_lbl)
+            self.fmt_combo = QComboBox()
+            self.fmt_combo.setFont(self._mono)
+            self.fmt_combo.addItems(FORMATS)
+            self.fmt_combo.setCurrentText(self._fmt)
+            self.fmt_combo.setToolTip("How the I/O cells are displayed "
+                                      "(decimal, binary, hex, ascii)")
+            self.fmt_combo.currentTextChanged.connect(self._combo_changed)
+            fmt_row.addWidget(self.fmt_combo)
+            fmt_row.addStretch(1)
+            outer.addLayout(fmt_row)
 
             # All 16 cells (io0..io14 + ready). Each gets a name label, a text
             # value label and a 7-seg widget; they are (re)placed into the grid by
@@ -1098,37 +1147,36 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self._ready_style_normal = ""
             self._ready_style_polling = "background-color: red; color: white;"
 
-            # Optional 'set ready' input row — hidden by default (toggled from the
-            # View menu). The io cells themselves are edited by clicking them.
-            self.in_row_widget = QWidget()
-            in_row = QHBoxLayout(self.in_row_widget)
-            in_row.setContentsMargins(0, 0, 0, 0)
-            in_row.addWidget(QLabel("set ready (255):"))
-            self.in_edit = QLineEdit()
-            self.in_edit.setFont(self._mono)
-            self.in_edit.setToolTip("Decimal value to write into mem[255]")
-            in_row.addWidget(self.in_edit, stretch=1)
-            self.btn_set_in = QPushButton("Set")
-            self.btn_set_in.setToolTip("Write the decimal value into mem[255]")
-            self.btn_set_in.clicked.connect(self._set_input)
-            self.in_edit.returnPressed.connect(self._set_input)
-            in_row.addWidget(self.btn_set_in)
-            outer.addWidget(self.in_row_widget)
-            self.in_row_widget.setVisible(False)
-
             self._relayout()
 
         def _edit_cell(self, addr):
             """A cell was clicked: edit it exactly like the memory panel does."""
             self._debugger._edit_cell(addr)
 
-        def set_input_row_visible(self, visible):
-            self.in_row_widget.setVisible(bool(visible))
+        def _combo_changed(self, fmt):
+            """The panel's own format combo was used: apply it (and let the
+            debugger keep the View-menu radio group in sync). Guarded so the
+            View menu syncing the combo back doesn't loop."""
+            if self._syncing_combo:
+                return
+            self._debugger._set_io_format(fmt)
+
+        def sync_combo(self, fmt):
+            """Set the combo to `fmt` without re-triggering _combo_changed —
+            used when the View menu (or a program directive) changes the format."""
+            if fmt not in FORMATS:
+                return
+            self._syncing_combo = True
+            try:
+                self.fmt_combo.setCurrentText(fmt)
+            finally:
+                self._syncing_combo = False
 
         def set_output_format(self, fmt):
             if fmt not in FORMATS:
                 return
             self._fmt = fmt
+            self.sync_combo(fmt)
             self._relayout()
             self.update_from_mem(self._debugger.mem)
 
@@ -1175,15 +1223,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                         else self._ready_style_normal)
                 else:
                     c["text"].setText(iofmt.format_byte(v, self._fmt))
-
-        def _set_input(self):
-            try:
-                val = iofmt.parse_input(self.in_edit.text(), "decimal") & 0xFF
-            except ValueError as e:
-                QMessageBox.warning(self, "Invalid input",
-                                    f"Could not parse that as decimal: {e}")
-                return
-            self._debugger.set_input_byte(val)
 
     class ToyDebugger(QMainWindow):
         def __init__(self, mem_original, listing, syms, data_addrs, code_guard,
@@ -1396,12 +1435,16 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             _io_layout = QVBoxLayout(self.io_box)
             _io_layout.setContentsMargins(4, 4, 4, 4)
             self.io_widget = IOPanel(
-                self, default_output=self.io_config.get("output", "decimal"))
+                self, default_output=self.io_config.get("output", "ascii"))
             _io_layout.addWidget(self.io_widget)
             main_layout.addWidget(self.io_box)
             # The I/O box is always visible in the memory-mapped I/O model.
 
-            # bottom bar
+            # bottom bar. Order, left to right:
+            #   Load Examples Reload | Step Run | steps/sec | Undo Reset
+            #   ···· (stretch) ···· Edit
+            # Edit is pushed to the far right edge by a stretch, since it acts on
+            # whatever is selected in the memory panel, not on the run controls.
             bottom = QHBoxLayout()
             main_layout.addLayout(bottom)
 
@@ -1431,7 +1474,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             bottom.addWidget(self.btn_reload)
             self.btn_reload.clicked.connect(self._reload_clicked)
 
-            bottom.addStretch(1)
+            # a little breathing room before the run controls (no big gap)
+            bottom.addSpacing(16)
 
             self.btn_step = QPushButton("Step")
             self.btn_run = QPushButton("Run")
@@ -1452,16 +1496,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             bottom.addWidget(self.spin_speed)
             self.spin_speed.valueChanged.connect(self._speed_changed)
 
-            # Edit the value at the cell selected in the memory panel (same as
-            # right-clicking it); enabled only when such a cell is selected.
-            self.btn_edit = QPushButton("Edit")
-            self.btn_edit.setToolTip("Edit the value at the address selected in "
-                                     "the CPU & memory panel")
-            self.btn_edit.setEnabled(False)
-            bottom.addWidget(self.btn_edit)
-
-            # Undo and Reset sit together on the right: Undo (one step/edit back)
-            # left of Reset (restart from step 0).
+            # Undo and Reset: Undo (one step/edit back) left of Reset (restart
+            # from step 0).
             self.btn_back = QPushButton("Undo")
             self.btn_reset = QPushButton("Reset")
             self.btn_back.setToolTip("Undo the last step or edit (Backspace)")
@@ -1469,6 +1505,17 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                       "restoring the original file (Esc)")
             bottom.addWidget(self.btn_back)
             bottom.addWidget(self.btn_reset)
+
+            # push Edit to the far right edge
+            bottom.addStretch(1)
+
+            # Edit the value at the cell selected in the memory panel (same as
+            # right-clicking it); enabled only when such a cell is selected.
+            self.btn_edit = QPushButton("Edit")
+            self.btn_edit.setToolTip("Edit the value at the address selected in "
+                                     "the CPU & memory panel")
+            self.btn_edit.setEnabled(False)
+            bottom.addWidget(self.btn_edit)
 
             for btn in (self.btn_edit, self.btn_back, self.btn_step,
                         self.btn_run, self.btn_reset):
@@ -1516,10 +1563,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.act_show_asm = toggle_action("Assembly panel", self.source_box)
             self.act_show_mem = toggle_action("CPU & memory panel", self.mem_box)
             self.act_show_io = toggle_action("I/O panel", self.io_box)
-            act_show_ready = QAction("'set ready' input", self, checkable=True)
-            act_show_ready.setChecked(False)
-            act_show_ready.toggled.connect(self.io_widget.set_input_row_visible)
-            view.addAction(act_show_ready)
 
             view.addSeparator()
 
@@ -1546,21 +1589,36 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             view.addSeparator()
 
-            # — I/O display format — same set the old dropdown had; picking one
-            # also changes how a clicked cell's current value is shown for editing.
+            # — I/O display format — same set the panel's own combo offers;
+            # picking one here also changes how a clicked cell's current value is
+            # shown for editing. The menu radios and the panel combo stay in sync
+            # (both route through _set_io_format), so either one drives the other.
             fmt_menu = view.addMenu("I/O format")
             fmt_group = QActionGroup(self)
             fmt_group.setExclusive(True)
-            current = self.io_config.get("output", "decimal")
+            current = self.io_config.get("output", "ascii")
+            self._io_fmt_actions = {}
             for fmt in FORMATS:
                 act = QAction(fmt, self, checkable=True)
                 act.setChecked(fmt == current)
                 act.triggered.connect(
-                    lambda _checked, f=fmt: self.io_widget.set_output_format(f))
+                    lambda _checked, f=fmt: self._set_io_format(f))
                 fmt_group.addAction(act)
                 fmt_menu.addAction(act)
+                self._io_fmt_actions[fmt] = act
 
             self._build_help_menu()
+
+        def _set_io_format(self, fmt):
+            """Apply an I/O display format and keep the View-menu radio group and
+            the panel's own combo in sync. Called from both the menu actions and
+            the panel combo; the combo's guard stops it looping back."""
+            if fmt not in FORMATS:
+                return
+            act = self._io_fmt_actions.get(fmt)
+            if act is not None and not act.isChecked():
+                act.setChecked(True)
+            self.io_widget.set_output_format(fmt)
 
         def _build_file_menu(self):
             """File menu: Load / Reload / Save, with the usual shortcuts. Load and
@@ -1636,6 +1694,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.arg_addr = None
             self.selected_addr = None
             self.selected_c_line = None   # C line picked (1-based), for highlight
+            self.selected_from_c = True   # did the selection come from the C column?
             self.mem_selected_addr = None   # cell picked in the memory panel (Edit)
             self.changed_cell = None    # cell written in the last step (blue)
             self.changed_cell_prev = None # that cell's value before the write
@@ -1723,7 +1782,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # Memory-mapped I/O is pure busy-polling now: the program just reads
             # the io cells / ready register (255) as ordinary memory. The user
             # provides input by editing those cells via the memory panel's Edit
-            # mechanism (or the IOPanel's "set ready" field). No dialog hook here.
+            # mechanism (ready is an ordinary cell, edited like any other). No
+            # dialog hook here.
             # remember the cell's value before a STORE overwrites it, so the
             # memory panel can show "# old: N" for this one step (decode above
             # already resolved arg_addr; execute_one re-resolves it identically).
@@ -1746,7 +1806,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         # visible are mutable containers (History copies them); the rest scalars.
         _SNAPSHOT_FIELDS = ("mem", "touched", "visible", "acc", "pc", "stopped",
                             "step_count", "arg_addr", "selected_addr",
-                            "selected_c_line",
+                            "selected_c_line", "selected_from_c",
                             "changed_cell", "changed_cell_prev",
                             "acc_written", "overwrite_ok",
                             "_has_live_edits")
@@ -2206,15 +2266,22 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 return
             self.step()
 
-        def _select(self, c_line=None, addr=None, mem_selected_addr=None):
+        def _select(self, c_line=None, addr=None, mem_selected_addr=None,
+                    from_c=True):
             """Set the shared cross-column selection from a clicked anchor (a C
             line and/or a byte address) and refresh. Passing both as None (an
             unmapped/blank click) clears everything, so no leftover highlight
             lingers after a deselect. mem_selected_addr is tracked separately so
-            only a memory-panel click enables the Edit button."""
+            only a memory-panel click enables the Edit button.
+
+            from_c says the click origin: a C-column click (True) fans down to
+            all the statement's asm rows + bytes; an asm/memory click (False)
+            lights only the clicked row + its bytes and resolves up to its C line
+            without fanning back to sibling asm rows (see transitive_selection)."""
             self.selected_c_line = c_line
             self.selected_addr = addr
             self.mem_selected_addr = mem_selected_addr
+            self.selected_from_c = from_c
             self.refresh()
 
         def _c_clicked(self, event):
@@ -2239,10 +2306,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             line = cursor.blockNumber()
             addr = self.line_to_addr.get(line)
             # Clicking an unmapped row (comment/blank) deselects everything.
-            # a source-line selection resolves up to its C line (if any) so the C
-            # column lights up too; it never enables Edit (mem_selected_addr=None).
+            # An asm-line selection resolves up to its C line (if any) so the C
+            # column lights up too, but it lights ONLY this one asm row + its
+            # bytes (from_c=False — no fan-out to the statement's sibling rows).
+            # It never enables Edit (mem_selected_addr=None).
             c_line = self._asm_to_c.get(line)
-            self._select(c_line=c_line, addr=addr)
+            self._select(c_line=c_line, addr=addr, from_c=False)
 
         def _mem_clicked(self, event):
             QTextEdit.mouseReleaseEvent(self.mem_view, event)
@@ -2255,10 +2324,13 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 if addr is not None:      # ignore right-clicks on header/blank
                     self._edit_cell(addr)
                 return
-            # resolve the byte up to its C line so the C column lights up too;
-            # a click on an unmapped/blank row clears the whole selection.
+            # resolve the byte up to its C line so the C column lights up too,
+            # but light only this cell's owning asm row + its bytes (from_c=False
+            # — no fan-out to the statement's sibling rows). An unmapped/blank row
+            # clears the whole selection.
             c_line = addr_to_c_line(addr, self.addr_to_line, self._asm_to_c)
-            self._select(c_line=c_line, addr=addr, mem_selected_addr=addr)
+            self._select(c_line=c_line, addr=addr, mem_selected_addr=addr,
+                         from_c=False)
 
         def _edit_selected(self):
             """Edit the value at the address selected in the memory panel (the
@@ -2279,13 +2351,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
         def _edit_cell(self, addr):
             """Live-edit the value of the clicked memory cell. Asks only for the
             value (the address comes from the right-clicked row) via a
-            ValueDialog with a format selector. The entered value wraps mod 256,
-            which we point out. The edit is undoable (snapshotted like a step)
-            and Reset restores the file."""
+            ValueDialog with a format selector. The dialog shows a
+            format-appropriate note (the "wraps mod 256" note only makes sense for
+            the integer formats, not ascii). An integer value that overflows wraps
+            mod 256, which we point out. The edit is undoable (snapshotted like a
+            step) and Reset restores the file."""
             a = addr
             dlg = ValueDialog(
                 self, title=f"Enter new value for address {a}",
-                prompt="Value (0–255, wraps mod 256):",
+                prompt="New value:",
                 default_fmt=self._edit_default_fmt(a),
                 initial_text=str(self.mem[a]))
             # ValueDialog already parses+masks to a byte; to keep the explicit
@@ -2295,7 +2369,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 return
             # iofmt.parse_input already masks to a byte; to keep the explicit
             # wrap message, recover the unmasked number for the numeric formats
-            # (decimal/hex/binary) via parse_val. ascii/7segment can't overflow.
+            # (decimal/hex/binary) via parse_val. ascii can't overflow.
             fmt = dlg.fmt_combo.currentText()
             raw = value
             if fmt in ("decimal", "hex", "binary"):
@@ -2320,24 +2394,12 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.acc_written = False
             self.selected_addr = a
             # resolve the edited byte up to its C line so the C column highlights
-            # the owning statement too (consistent with a memory-panel click).
+            # the owning statement too (consistent with a memory-panel click:
+            # only this cell's row, no fan-out to sibling asm rows).
             self.selected_c_line = addr_to_c_line(a, self.addr_to_line,
                                                   self._asm_to_c)
+            self.selected_from_c = False
             self._has_live_edits = True  # a Load/Reload now warns before discard
-            self._mark_dirty()
-            self.refresh()
-
-        def set_input_byte(self, value):
-            """Write a byte into mem[255] (the ready register), undoably. Used by
-            the IOPanel's 'Set' button."""
-            value &= 0xFF
-            self._push_history()
-            self.mem[iofmt.IO_READY] = value
-            self.touched.add(iofmt.IO_READY)
-            self.visible.add(iofmt.IO_READY)
-            self.changed_cell = iofmt.IO_READY
-            self.acc_written = False
-            self._has_live_edits = True
             self._mark_dirty()
             self.refresh()
 
@@ -2348,7 +2410,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             return transitive_selection(
                 self.selected_c_line, self.selected_addr,
                 self._c_to_asm, self._asm_to_c,
-                self.line_to_addr, self.addr_to_line)
+                self.line_to_addr, self.addr_to_line,
+                from_c=self.selected_from_c)
 
         def _change_sets(self):
             """The transitive "changed" sets (STORE → red up): the asm row(s) and
@@ -2377,10 +2440,57 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.io_widget.update_from_mem(self.mem)
             # Edit is available only when a cell is selected in the memory panel
             self.btn_edit.setEnabled(self.mem_selected_addr is not None)
+            # bring the selected line into view (centered) in every column, so a
+            # click in one panel scrolls the others to the matching line instead
+            # of leaving them scrolled elsewhere.
+            self._scroll_to_selection()
+
+        @staticmethod
+        def _center_on_block(view, block_index):
+            """Scroll a QTextEdit so the given 0-based block (line) is centered.
+            Moves a cursor to that block, makes it visible, then nudges the
+            vertical scrollbar so the line sits mid-viewport (QTextEdit has no
+            centerCursor() — that's QPlainTextEdit — so we center by hand)."""
+            if block_index is None or block_index < 0:
+                return
+            doc = view.document()
+            block = doc.findBlockByNumber(block_index)
+            if not block.isValid():
+                return
+            cursor = view.textCursor()
+            cursor.setPosition(block.position())
+            view.setTextCursor(cursor)
+            view.ensureCursorVisible()
+            # center: shift the scrollbar by the cursor's offset from the middle.
+            bar = view.verticalScrollBar()
+            rect = view.cursorRect()
+            delta = rect.top() - view.viewport().height() // 2
+            bar.setValue(max(bar.minimum(),
+                             min(bar.maximum(), bar.value() + delta)))
+
+        def _scroll_to_selection(self):
+            """Center each column on the first line of the current selection: the
+            C column on the first selected C line, the asm column on the first
+            selected asm row, the memory column on the first selected address'
+            row. A no-op when nothing is selected (so the asm panel's own PC
+            auto-scroll keeps running during stepping)."""
+            sel_c, sel_rows, sel_addrs = self._selection_sets()
+            if sel_c and self.has_c_source and self._c_text is not None:
+                self._center_on_block(self.c_view, min(sel_c) - 1)
+            if sel_rows:
+                self._center_on_block(self.source_view, min(sel_rows))
+            if sel_addrs:
+                # map the first selected address back to its memory-panel row.
+                rows = [line for line, a in self._mem_line_addrs.items()
+                        if a in sel_addrs]
+                if rows:
+                    self._center_on_block(self.mem_view, min(rows))
 
         def _refresh_c(self):
             """Render the C column: the C source with a line-number gutter, the
-            selected statement in orange and a STORE-changed statement in red.
+            selected statement in orange, the current PC's statement in yellow
+            (mapping the PC's asm row up to its C line, so the user sees roughly
+            what's executing in the C view), and a STORE-changed statement in red.
             A no-op when no C program is loaded (the column is hidden)."""
             if not self.has_c_source or self._c_text is None:
                 return
@@ -2388,12 +2498,15 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             gutter_width = len(str(len(c_lines))) if c_lines else 1
             sel_c, _, _ = self._selection_sets()
             changed_c, _ = self._change_sets()
+            # the C line of the current instruction: PC addr -> asm row -> C line.
+            pc_c_line = addr_to_c_line(self.pc, self.addr_to_line, self._asm_to_c)
             rendered = []
             for i, text in enumerate(c_lines):
                 c_line = i + 1          # 1-based, matching the markers
                 colours = []
-                if c_line in sel_c:      colours.append(HL_SELECTED)
-                if c_line in changed_c:  colours.append(HL_CODE)
+                if c_line in sel_c:        colours.append(HL_SELECTED)
+                if c_line == pc_c_line:    colours.append(HL_PC)
+                if c_line in changed_c:    colours.append(HL_CODE)
                 gutter = f"{i + 1:>{gutter_width}} | " if self._line_numbers else ""
                 rendered.append(highlight_row(gutter + text, colours))
             html = '<pre style="margin:0;">' + '\n'.join(rendered) + '</pre>'

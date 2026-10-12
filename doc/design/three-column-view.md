@@ -122,3 +122,60 @@ Tests: `tests/test_three_column.py` (pure transitive mapping + headless
 debugger: adaptive visibility for .toyo/.toys/.toyc, C/asm/memory click
 resolution, deselect-clears, STORE change propagation). The earlier
 `tests/test_casm_window.py` C|asm window tests still pass unchanged.
+
+## GUI follow-up fixes (Manfred, round 2)
+
+A batch of UI fixes requested after using the three-column view:
+
+- **A. Format picker in the I/O panel.** The IOPanel now has its own format
+  combo (decimal/binary/hex/ascii = `iofmt.FORMATS`, 7segment disabled). It and
+  the View-menu "I/O format" radio group drive the same format and stay in sync:
+  both route through `ToyDebugger._set_io_format`, which checks the matching
+  menu action and calls `io_widget.set_output_format`; `set_output_format` syncs
+  the combo back via `sync_combo` (guarded by `_syncing_combo` so it can't loop).
+
+- **B. Removed the 'set ready' input row.** The ready register (255) is set like
+  any other cell — click it. Dropped `in_row_widget` + `in_edit` + `btn_set_in` +
+  `IOPanel._set_input`, the View-menu `'set ready' input` toggle + its
+  `set_input_row_visible`, and `ToyDebugger.set_input_byte` (now dead; only the
+  removed row and its test called it).
+
+- **B/C. Default I/O format = ascii.** `format._DEFAULTS["output"]` is now
+  `ascii` (single source of truth; `io_config["output"]` is GUI-only). A program
+  with no `# pytoy: output=` directive shows its I/O as characters; an explicit
+  directive still wins. The two GUI fallbacks (`get("output", "ascii")`) match.
+
+- **C. Edit-dialog note is format-aware.** `ValueDialog` shows a note that
+  depends on the selected format and updates live: integer formats (decimal/hex/
+  binary) note "Value 0–255 (wraps mod 256)."; ascii notes "Enter a single
+  character." (the mod-256 wrap note is meaningless for a character).
+  `_edit_cell` now passes a neutral "New value:" prompt and lets the dialog own
+  the note.
+
+- **D. Bottom bar order.** `Load Examples Reload` · (small spacing) · `Step Run`
+  · `steps/sec` · `Undo Reset` · (stretch) · **Edit** pushed to the far right.
+
+- **E. Selection fan direction.** A click in the **C column** fans DOWN to all of
+  the statement's asm rows + their bytes (as before). A click in the **asm** or
+  **memory** column now highlights ONLY that one row + its bytes and resolves UP
+  to its C line, without fanning back out to the statement's sibling asm rows.
+  `transitive_selection` gained a `from_c` flag; `_select` tracks the origin
+  (`selected_from_c`, also snapshotted for undo); `_source_clicked`,
+  `_mem_clicked` and `_edit_cell` pass `from_c=False`, `_c_clicked` keeps True.
+
+- **F. PC highlight in the C column.** `_refresh_c` maps the current PC's asm row
+  up to its C line (`addr_to_c_line`) and paints that C line yellow (HL_PC), so
+  the C view shows roughly what's executing.
+
+- **G. Scroll-to-selection (centered).** On every `refresh()`,
+  `_scroll_to_selection` centers each column (`_center_on_block`) on the first
+  line of the current selection: the C panel on the first selected C line, the
+  asm panel on the first selected row, the memory panel on the first selected
+  address' row. A no-op when nothing is selected, so the asm panel's own PC
+  auto-scroll keeps running while stepping. (QTextEdit has no `centerCursor()`;
+  we center by nudging the vertical scrollbar by the cursor's offset from mid.)
+
+Tests: extended `tests/test_three_column.py` (no-sibling-fanout for asm/mem
+clicks, PC highlights the C line, from-asm click scrolls the C panel) and
+`tests/test_io_gui.py` (format combo ↔ menu sync, ascii default, format-aware
+edit note). `tests/test_format.py` updated for the ascii default.

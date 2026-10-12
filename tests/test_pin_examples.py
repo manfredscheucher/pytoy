@@ -72,6 +72,16 @@ def _compile_c():
     return asm
 
 
+def _run_c(pin, path=C_PIN):
+    """Compile the C pin_check, seed the PIN into io0.. + ready, run to STOP.
+    Possible now that read() no longer clears ready (single-shot GUI flow)."""
+    asm = compile_source(open(path).read(), "pin_check.toyc")
+    mem, listing, syms, data_addrs, errors, _ds = assemble(asm)
+    assert not errors, errors
+    _seed(mem, pin)
+    return simulate(mem, syms, data_addrs)
+
+
 def test_asm_correct_pin_reveals_42():
     assert _run_asm(CORRECT) == ANSWER
 
@@ -82,15 +92,23 @@ def test_asm_wrong_pin_returns_0():
     assert _run_asm("7331") == 0
 
 
-# The C read() CLEARS ready before it polls (see the I/O chapter), so headless
-# it spins to the step cap — busy-poll only makes sense with the GUI re-setting
-# ready. We therefore can't run the C version headless; verify it compiles and
-# that the success path returns the secret 42 (the asm test above exercises the
-# identical digit-by-digit compare logic end to end).
-def test_c_compiles_and_returns_42_on_success():
+# read() no longer clears ready (single-shot GUI flow), so the C version runs
+# headless end to end with a pre-seeded PIN — exactly like the asm version.
+def test_c_correct_pin_reveals_42():
+    assert _run_c(CORRECT) == ANSWER
+
+
+def test_c_wrong_pin_returns_0():
+    assert _run_c("0000") == 0
+    assert _run_c("1336") == 0
+    assert _run_c("1137") == 0
+
+
+def test_c_read_does_not_clear_ready():
+    # guard the fix: the compiled read() must NOT store 0 into ready before the
+    # poll, or the GUI "set ready, then Run" flow hangs.
     asm = _compile_c()
-    assert "42" in asm              # the success path loads the secret
-    assert "store ready" in asm     # read() clears ready, then busy-polls
+    assert "store ready" not in asm
 
 
 # ── hardened (constant-time) variant ──────────────────────────────────────
