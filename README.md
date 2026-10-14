@@ -1,6 +1,3 @@
-<img src="doc/images/screenshot.png" alt="pytoy" width="100%"/>
-
-
 # pytoy
 
 A Python toolbox for the [Toy CPU](https://github.com/freedosproject/toycpu): an
@@ -14,6 +11,8 @@ CLI, plus a small C compiler on top.
 
 It's deliberately simple, readable Python (standard library plus PySide6),
 because the point is to *see* how a CPU works.
+
+<img src="doc/images/screenshot.png" alt="pytoy" width="100%"/>
 
 ## The package and entry point
 
