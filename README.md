@@ -10,9 +10,30 @@ CPU but replaces the binary switch input with readable assembly, a GUI, and a
 CLI, plus a small C compiler on top.
 
 It's deliberately simple, readable Python (standard library plus PySide6),
-because the point is to *see* how a CPU works.
+because the point is to *see* how a CPU works: while a program runs, the
+simulator highlights the current bytecode in memory next to the matching
+assembly instruction.
 
 <img src="doc/images/screenshot.png" alt="pytoy" width="100%"/>
+
+## Videos
+
+I'm making a video series on the Toy CPU and these tools — the basic instruction
+set, more advanced programs, the small C compiler, and more. Tutorials and demos:
+
+▶ [YouTube playlist](https://www.youtube.com/watch?v=vQxGXtlf5c4&list=PLU1OJ36r4v_c)
+
+## pytoy and ktoy
+
+pytoy is the original implementation — Python, for the desktop (Windows, Linux,
+macOS). [**ktoy**](https://github.com/manfredscheucher/ktoy) is a Kotlin
+Multiplatform + Compose rewrite that covers more: the same desktop, plus **web,
+Android and iOS**. Over time ktoy is meant to become the main front end, while
+pytoy stays the reference (it's the source of truth for the CPU semantics and the
+examples, which ktoy is generated from) and keeps working.
+
+Try ktoy in the browser (live once GitHub Pages is enabled):
+<https://manfredscheucher.github.io/ktoy/>
 
 ## The package and entry point
 
