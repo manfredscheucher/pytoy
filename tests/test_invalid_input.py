@@ -6,10 +6,16 @@ The contract these pin down:
   * all errors in a file are collected, not just the first.
   * mem is always 256 bytes even on failure (no IndexError on overflow).
   * empty / comment-only input is valid (no errors).
-  * parse_toyo() tolerates garbage and returns a 256-byte image.
+  * parse_toyo() rejects garbage and returns a 256-byte image otherwise.
 
 Run: python3 -m pytest tests/test_invalid_input.py -q
 """
+
+import os
+import subprocess
+import sys
+
+import pytest
 
 from pytoy.assembler import assemble
 from pytoy.simulator import parse_toyo
@@ -138,15 +144,35 @@ def test_assemble_never_raises_and_mem_is_always_256():
         assert len(mem) == 256
 
 
-# ── .toyo loader tolerates garbage ──────────────────────────────────────────
+# ── .toyo loader rejects garbage ────────────────────────────────────────────
 
-def test_parse_toyo_tolerates_garbage():
-    mem = parse_toyo("this is not a toyo listing\n@@@\n123 abc")
-    assert len(mem) == 256
-    assert all(b == 0 for b in mem)   # nothing parseable -> all zero
+@pytest.mark.parametrize("bad", ["this is not a toyo listing\n@@@\n123 abc",
+                                 "20\n6\n-1\n", "20\nabc\n", "0x14\n", "20 6\n"])
+def test_parse_toyo_rejects_garbage(bad):
+    with pytest.raises(ValueError):
+        parse_toyo(bad)
+
+
+def test_parse_toyo_empty_or_comments_only_is_all_zero():
+    assert parse_toyo("") == [0] * 256
+    assert parse_toyo("# nothing here\n\n") == [0] * 256
 
 
 def test_parse_toyo_reads_valid_data_lines():
     # a real .toyo data line: "  ADDR   BYTE  source"
     mem = parse_toyo("  5   00010100  load a\ngarbage line")
     assert mem[5] == 0b00010100
+
+
+@pytest.mark.parametrize("name, content", [
+    ("garbage.toyo", b"abc\n"), ("two.toyo", b"20 6\n"), ("big.toyo", b"300\n"),
+    ("binary.toyo", b"\x00\x01\xff\xfe"),
+])
+def test_cli_rejects_a_broken_toyo_with_a_message(tmp_path, name, content):
+    path = tmp_path / name
+    path.write_bytes(content)
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    r = subprocess.run([sys.executable, os.path.join(root, "run.py"), "sim", str(path), "--cli", "--run"],
+                       capture_output=True, text=True, timeout=10)
+    assert r.returncode != 0
+    assert str(path) in r.stderr and "Traceback" not in r.stderr

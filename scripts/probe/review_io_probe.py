@@ -3,7 +3,7 @@
 case-collision, the sign-bit copy-loop for large/zero counts, and a few
 compile paths for the new builtins and && / ||."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy.compiler import compile_source, _const_name
 from pytoy.assembler import assemble

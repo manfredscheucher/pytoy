@@ -1,7 +1,7 @@
 """The refactored unary minus in toycc now routes through _gen_diff((num,0),x).
 Check 0 - x mod 256 for a few values, compact and non-compact."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import compiler
 from pytoy.assembler import assemble

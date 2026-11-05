@@ -220,7 +220,10 @@ def parse_toyo(text):
     Byte listing: the '  ADDR   BYTES  SOURCE' data lines (see export()): a line
     whose first token is a decimal address, followed by one or two 8-bit binary
     byte-strings. Comment lines (starting with '#') and blanks are ignored, so
-    the '# SYMBOLS' section is skipped."""
+    the '# SYMBOLS' section is skipped.
+
+    Text that is neither raises ValueError; an empty or comment-only file is an
+    all-zero program."""
     rows = [line.split('#')[0].strip() for line in text.splitlines()]
     rows = [r for r in rows if r]
     if rows and all(r.isdecimal() for r in rows):
@@ -230,6 +233,7 @@ def parse_toyo(text):
                              f"{len(values)} values, largest {max(values)}")
         return values + [0] * (256 - len(values))
     mem = [0] * 256
+    found = False
     for line in text.splitlines():
         s = line.strip()
         if not s or s.startswith('#'):
@@ -245,8 +249,11 @@ def parse_toyo(text):
                 if 0 <= addr + offset < 256:
                     mem[addr + offset] = int(t, 2)
                 offset += 1
+                found = True
             else:
                 break   # first non-byte token starts the source text
+    if rows and not found:
+        raise ValueError("not a bytecode file (one integer 0..255 per line) or byte listing")
     return mem
 
 def _compile_c(src, compiler, source_name, annotate_c_lines=False):
@@ -1768,6 +1775,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 # Undoable like any step; the PC stays on the STOP.
                 self._push_history()
                 self.step_count += 1
+                self._mark_dirty()
                 self._halt()
                 return
 

@@ -1,7 +1,7 @@
 """More minicc probes: bare call as if-condition, call result as array index,
 callstmt as last statement of main, helper whose only path is a loop-return."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import minicc
 from pytoy.assembler import assemble

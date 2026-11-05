@@ -148,19 +148,46 @@ python3 run.py sim examples/asm/03-programs/max_array.toyo --cli --run
 The final line reports the result in the accumulator in binary, hex, and
 decimal.
 
-Two ready-made `.toyo` examples are checked in under `examples/toyo/`
-(`sum3.toyo` and `fibonacci.toyo`), so you can try loading a compiled byte
+Three ready-made `.toyo` examples are checked in under `examples/toyo/`
+(`sum3.toyo`, `fibonacci.toyo` and `multiply_repeated.toyo`), so you can try loading a compiled byte
 listing without assembling one first. They were generated from the matching
 assembly sources with `run.py asm`:
 
 ```bash
 python3 run.py asm examples/asm/03-programs/sum3.toys      -o examples/toyo/sum3.toyo
 python3 run.py asm examples/asm/03-programs/fibonacci_iter.toys -o examples/toyo/fibonacci.toyo
+python3 run.py asm examples/asm/02-extended/multiply_repeated.toys -o examples/toyo/multiply_repeated.toyo
 ```
 
 Loading a `.toyo` shows only the memory panel — a compiled listing carries no
 re-runnable source. (Most `.toyo` files are build artifacts and git-ignored;
-these two are committed on purpose as examples.)
+these three are committed on purpose as examples.)
+
+== Bytecode files and minisim
+
+A `.toyo` comes in two formats, and pytoy tells them apart by content. `run.py asm`
+writes the byte listing described above. Save -> Bytecode in the GUI writes only
+the values: one integer (0--255) per line, up to the last non-zero cell. The
+remaining cells are 0, so a program with values in addresses 0 to 6 is 7 lines.
+You can add comments after a `#`. It holds the program as built plus your hand
+edits, and nothing a run stored.
+
+`pytoy/minisim.py` is a tiny standalone simulator for such a file, short enough to
+read in one go. It imports nothing from the rest of pytoy and has no I/O:
+
+```bash
+python3 pytoy/minisim.py tests/fixtures/fibonacci.txt
+```
+
+```
+step=1 acc=0 pc=0 op=20
+...
+step=81 acc=13 pc=26 op=0
+stopped after 81 steps, acc=13
+```
+
+Each line shows the state before that step runs. With `-v` every step also prints
+the memory, 16 cells per line.
 
 == Memory limits and code-overwrite detection
 

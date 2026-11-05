@@ -28,9 +28,9 @@ line-number toggle. ktoy is to get the same menus afterwards (pytoy first).
 - **Save…** (`Cmd/Ctrl+S`) — `_save_clicked`. Asks **which format** to export,
   then where. The formats offered are **dynamic** (`_save_formats()`): only the
   ones that fit the loaded program.
-  - `.toyo` (bytecode) — **always** available. Writes the *live* compiled byte
-    image via `assembler.export(self.listing, self.syms, self.mem, path)`, so it
-    reflects runtime state and any hand edits.
+  - `.toyo` (bytecode) — **always** available. Writes only the values, one integer
+    per line up to the last non-zero cell (`assembler.bytecode_text`): the program
+    as built plus hand edits, nothing a run stored.
   - `.toys` (assembly) — when `self._asm_text` is present. Writes the current
     (possibly GUI-edited) assembly source.
   - `.toyc` (C) — only when `self._c_text is not None`, i.e. a C program was

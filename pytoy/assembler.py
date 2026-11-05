@@ -228,11 +228,8 @@ def bytecode_text(mem):
 def export(listing, syms, mem, path, quiet=False):
     """Write the compiled byte listing to `path` as a .toyo file.
 
-    `quiet` suppresses the "exported → …" stdout line — the GUI Save passes it so
-    the file write produces no console noise. (`mem` is unused here; the bytes
-    come from `listing`. The GUI builds `listing` from its live memory before
-    calling, so a saved .toyo reflects runtime/hand edits — see simulator
-    `_save_clicked`.)"""
+    `quiet` suppresses the "exported → …" stdout line. (`mem` is unused here; the
+    bytes come from `listing`.) The GUI's Save writes bytecode_text() instead."""
     rsym = {v: k for k, v in syms.items()}
     out  = ["# Toy CPU – compiled listing", "#",
             f"# {'ADDR':>4}  {'BYTES':<22}  SOURCE", "# " + "─"*56]

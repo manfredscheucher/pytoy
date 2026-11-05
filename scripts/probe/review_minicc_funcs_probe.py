@@ -4,7 +4,7 @@ Exercises calls end-to-end: basic, multi-site, call-as-argument, and the
 nested same-function case f(y, f(x)) that the arg-spill ordering claims to fix.
 """
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy.minicc import compile_source
 from pytoy.assembler import assemble

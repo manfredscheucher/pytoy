@@ -3,7 +3,7 @@
 
 Compiles + simulates tricky C programs through the real pipeline
 (compile_source -> assemble -> simulate) and checks ACC against
-hand-computed expected values. Run: python3 scripts/review_inliner_probe.py
+hand-computed expected values. Run: python3 scripts/probe/review_inliner_probe.py
 """
 import io
 import os
@@ -11,7 +11,7 @@ import sys
 import contextlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 
 from pytoy.assembler import assemble

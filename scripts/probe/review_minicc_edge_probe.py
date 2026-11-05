@@ -2,7 +2,7 @@
 arrays across functions, callstmt vs expression call, fall-through return,
 and the safe_compare path in the full toycc (compiler.py)."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import minicc
 from pytoy import compiler

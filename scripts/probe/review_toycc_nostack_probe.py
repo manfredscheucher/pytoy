@@ -2,7 +2,7 @@
 sp byte dropped (no_stack) and still run correctly, confirming non-recursive
 callers never emit push/pop that would reference an undefined sp."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import compiler
 from pytoy.assembler import assemble

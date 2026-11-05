@@ -4,7 +4,8 @@ import sys
 
 
 def load(text):
-    mem = [int(t) for line in text.splitlines() for t in line.split("#")[0].split()]
+    rows = [line.split("#")[0].strip() for line in text.splitlines()]
+    mem = [int(r) for r in rows if r]
     if len(mem) > 256 or not all(0 <= x <= 255 for x in mem):
         raise ValueError("expected at most 256 integers 0..255")
     return mem + [0] * (256 - len(mem))

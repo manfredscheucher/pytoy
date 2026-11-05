@@ -50,7 +50,7 @@ def test_load_allows_comments_and_fills_with_zeros():
     assert mem[:2] == [20, 6] and len(mem) == 256 and not any(mem[2:])
 
 
-@pytest.mark.parametrize("bad", ["1\n" * 257, "256\n", "-1\n", "abc\n"])
+@pytest.mark.parametrize("bad", ["1\n" * 257, "256\n", "-1\n", "abc\n", "20 6\n"])
 def test_load_rejects_bad_files(bad):
     with pytest.raises(ValueError):
         load(bad)

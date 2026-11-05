@@ -7,7 +7,7 @@ ktoy: 8-char 0/1 -> base 2; else lowercases and handles 0x/-0x/0b/-0b
 prefixes, otherwise toInt(10). Divergences below change data-byte / operand
 values or turn a valid token into an error (value 0).
 
-Run: python3 tests/review_parseval_check.py
+Run: python3 scripts/probe/review_parseval_check.py
 """
 
 

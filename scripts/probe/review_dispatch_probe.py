@@ -3,14 +3,14 @@
 compiler/toycc.py. Compiles each C program, assembles+simulates via toyasm,
 and checks the final ACC against the expected value.
 
-Run: python3 tests/review_dispatch_probe.py
+Run: python3 scripts/probe/review_dispatch_probe.py
 """
 import os
 import sys
 import io
 import contextlib
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
 from pytoy.assembler import assemble

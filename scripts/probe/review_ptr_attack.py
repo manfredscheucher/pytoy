@@ -1,11 +1,11 @@
 """Skeptical fresh-eyes attack probes for the pointer feature in toycc.
 
 Uses the `stopped` flag from execute_one (robust) rather than mem[pc]==0.
-Run:  python3 tests/review_ptr_attack.py
+Run:  python3 scripts/probe/review_ptr_attack.py
 """
 import os, sys
 
-_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _root)
 from pytoy.assembler import assemble
 from pytoy.core import execute_one

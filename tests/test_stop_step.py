@@ -39,6 +39,7 @@ def test_gui_stop_counts_keeps_pc_and_undoes(build_debugger):
     assert win.stopped
     assert win.step_count == 1
     assert win.pc == 0
+    assert win.btn_back.isEnabled() and win.btn_reset.isEnabled()
     win.step_back()
     assert not win.stopped
     assert win.step_count == 0

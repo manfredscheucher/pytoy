@@ -4,12 +4,12 @@
 Compiles small C programs, simulates them on the Toy CPU, and checks the
 returned ACC (and optionally array bytes) against hand-derived expected values.
 
-Run: python3 tests/array_review_probe.py
+Run: python3 scripts/probe/array_review_probe.py
 """
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
 from pytoy import assembler as toyasm

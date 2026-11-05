@@ -2,7 +2,7 @@
 marker-dispatch must return each call to its own continuation across caller
 boundaries."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import minicc
 from pytoy.assembler import assemble

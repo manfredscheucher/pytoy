@@ -47,6 +47,8 @@ Try ktoy in the browser (live once GitHub Pages is enabled):
 - `pytoy/core.py` — the CPU core (opcodes, decode/execute). A library the others
   import.
 - `pytoy/compiler.py` — the C compiler (`run.py cc`).
+- `pytoy/minisim.py` — [minisim](#minisim), a tiny standalone simulator. It
+  imports nothing from the others.
 
 ## Quick start
 
@@ -74,7 +76,7 @@ options.
 
 `pytoy/minisim.py` is a tiny standalone simulator: it reads a bytecode file (Save
 -> Bytecode: one integer per line), runs it to STOP and prints every step, with
-`-v` also a memory dump. No I/O.
+`-v` also a memory dump. No I/O. Same program as ktoy's `MiniSim.kt`.
 
 ```bash
 python3 pytoy/minisim.py tests/fixtures/fibonacci.txt -v

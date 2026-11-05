@@ -6,7 +6,7 @@ which ranks by SequenceMatcher.ratio() = 2*M/T (M = matching chars, T = total
 length of both strings). ktoy Assembler.didYouMean uses a Levenshtein ratio
 1 - dist/max(len). Different algorithms -> can disagree on the suggestion.
 
-Run: python3 tests/review_didyoumean_check.py
+Run: python3 scripts/probe/review_didyoumean_check.py
 Prints every input where the two suggestions differ.
 """
 import difflib

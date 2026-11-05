@@ -1,7 +1,7 @@
 """Check minicc's call-graph cycle detection: reject self/mutual/indirect
 recursion, accept a DAG/diamond (no false positive)."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import minicc
 

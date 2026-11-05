@@ -8,7 +8,7 @@ Patches the data bytes (a/b) of the 02-extended arithmetic examples and the
 Each example runs in a subprocess with a short timeout so a non-terminating
 loop shows up as TIMEOUT instead of hanging the probe.
 
-Run: python3 scripts/review_arith_probe.py
+Run: python3 scripts/probe/review_arith_probe.py
 """
 import io
 import os
@@ -17,7 +17,7 @@ import sys
 import contextlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 
 from pytoy.assembler import assemble

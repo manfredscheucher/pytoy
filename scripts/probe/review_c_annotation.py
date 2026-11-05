@@ -9,13 +9,13 @@ For several programs and option sets, this checks that:
   - it prints, for the recursive toycc case, every code-section instruction line
     and whether it carries a marker (to spot missing/wrong tags by eye).
 
-Run: python3 scripts/review_c_annotation.py
+Run: python3 scripts/probe/review_c_annotation.py
 """
 import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import compiler as toycc
 from pytoy import minicc

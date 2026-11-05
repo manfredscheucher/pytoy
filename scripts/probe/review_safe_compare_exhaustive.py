@@ -2,7 +2,7 @@
 operand pairs that are >=128 apart (where the bit-7 trick is known wrong).
 Compiles one program per op with constant operands and runs it."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pytoy import compiler
 from pytoy.assembler import assemble

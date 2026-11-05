@@ -2,11 +2,11 @@
 Each PROBE compiles a small C program that SHOULD work per the spec, runs it
 on the Toy CPU, and checks the result. Kept as a durable regression file.
 
-Run:  python3 tests/probe_pointer_review.py
+Run:  python3 scripts/probe/probe_pointer_review.py
 """
 import io, os, sys, contextlib
 
-_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _root)
 from pytoy.assembler import assemble
 from pytoy.core import execute_one

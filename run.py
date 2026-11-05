@@ -52,6 +52,8 @@ def cmd_sim(args):
         src = open(args.file).read()
     except OSError:
         sys.exit(f"File not found: {args.file}")
+    except UnicodeDecodeError:
+        sys.exit(f"Not a text file: {args.file}")
 
     is_toyo = args.file.lower().endswith('.toyo')
 
