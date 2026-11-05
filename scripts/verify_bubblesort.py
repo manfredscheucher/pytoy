@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 from pytoy import assembler as toyasm
 from pytoy import core as toycpu
 
-TOYS = os.path.join(ROOT, "examples", "asm", "sort_array.toys")
+TOYS = os.path.join(ROOT, "examples", "asm", "03-programs", "sort_array_inline.toys")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 N = len(EXPECTED)
 MAX_STEPS = 1_000_000  # safety cap; the program halts well before this

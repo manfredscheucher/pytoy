@@ -3,7 +3,7 @@
 pytoy — single entry point.
 
 Subcommands:
-    sim <file> [--cli --run --quiet -x -d]   simulate a .toys/.toyo (GUI default)
+    sim <file> [--cli --run --quiet -d]      simulate a .toys/.toyo (GUI default)
     asm <file.toys> [-o out.toyo]            assemble to a .toyo object file
     cc  <file.toyc> [-o out.toys] [--run] [-O]   compile C to assembly
 
@@ -22,14 +22,10 @@ import os
 import sys
 import argparse
 
-# Make the pytoy package importable when run from anywhere.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-
 # ── sim ──────────────────────────────────────────────────────────────────────
 
 def cmd_sim(args):
-    from pytoy.assembler import assemble, show_assembly, export
+    from pytoy.assembler import assemble
     from pytoy.simulator import simulate, parse_toyo, gui_main, empty_gui
 
     # No file: open the GUI empty so a newcomer can just load an example.
@@ -80,11 +76,6 @@ def cmd_sim(args):
         syms = {}
         data_addrs = set(range(256))
         data_start = None
-        # verbose/step output and --export need source we don't have here.
-        if args.export:
-            print("NOTE: nothing to export from a .toyo (no source); "
-                  "skipping --export.", file=sys.stderr)
-            args.export = False
         # In the terminal there is no per-line source to explain, so force the
         # compact output. (Only affects CLI mode; the GUI is unaffected.)
         if not use_gui:
@@ -110,20 +101,12 @@ def cmd_sim(args):
               file=sys.stderr)
 
     if use_gui:
-        if is_toyo:
-            # bytecode has no re-runnable assembly source to edit
-            gui_main(mem, listing, syms, data_addrs, guard, has_source=False,
-                     source_path=args.file, io_config=io_config)
-        else:
-            # pass the .toys source so right-click "edit asm" works right away
-            gui_main(mem, listing, syms, data_addrs, guard,
-                     source_path=args.file, io_config=io_config, asm_text=src)
+        # bytecode has no assembly source; a .toys passes it so right-click
+        # "edit asm" works right away
+        gui_main(mem, listing, syms, data_addrs, guard, has_source=not is_toyo,
+                 source_path=args.file, io_config=io_config,
+                 asm_text=None if is_toyo else src)
         return
-
-    if args.export:
-        print("─" * 62)
-        show_assembly(listing, syms, mem)
-        export(listing, syms, mem, args.file.rsplit('.', 1)[0] + '.toyo')
 
     # build addr→original source map for verbose mode
     addr_orig = {}
@@ -136,12 +119,10 @@ def cmd_sim(args):
                 addr_orig[addr + 1] = ''
 
     print("─" * 62)
-    if args.export:
-        print("execution:\n")
     # Memory-mapped I/O is GUI-only; the headless runner treats 240..255 as
     # ordinary memory (no io_config).
     acc = simulate(mem, syms, data_addrs, step=not args.run,
-                   show_mem=not args.quiet, verbose=not args.quiet,
+                   verbose=not args.quiet,
                    addr_orig=addr_orig, code_guard=guard)
     print("─" * 62)
     print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")
@@ -163,14 +144,14 @@ def cmd_asm(args):
     except OSError as e:
         sys.exit(f"cannot read {args.file}: {e}")
 
-    mem, listing, syms, _data_addrs, errors, _data_start = assemble(src)
+    _mem, listing, syms, _data_addrs, errors, _data_start = assemble(src)
     if errors:
         for e in errors:
             print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
     out_path = args.output or (os.path.splitext(args.file)[0] + '.toyo')
-    export(listing, syms, mem, out_path)
+    export(listing, syms, out_path)
 
 
 # ── cc ───────────────────────────────────────────────────────────────────────
@@ -208,8 +189,6 @@ def build_parser():
                        help='run to the end in the terminal (implies --cli)')
     p_sim.add_argument('-q', '--quiet', action='store_true',
                        help='compact one-line-per-step output (implies --cli)')
-    p_sim.add_argument('-x', '--export', action='store_true',
-                       help='export compiled listing to .toyo')
     p_sim.add_argument('-c', '--cli', action='store_true',
                        help='run in the terminal instead of the GUI')
     p_sim.add_argument('-d', '--detect-code-overwrite', action='store_true',

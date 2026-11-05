@@ -176,47 +176,6 @@ def _resolve(op, syms, ctx, errors, lineno, orig):
 
 # ── Assembly listing (interactive) ────────────────────────────────────────
 
-def show_assembly(listing, syms, mem):
-    """Walk through each source line and show original + compiled bytes."""
-    rsym = {v: k for k, v in syms.items()}
-    def sym(a): return rsym.get(a, str(a))
-
-    print("assembly:\n")
-    for addr, blist, orig, is_data in listing:
-        if addr is None:
-            # comment-only or blank line
-            stripped = orig.rstrip()
-            if stripped:
-                print(f"  {stripped}")
-            continue
-
-        # source line
-        src_line = orig.rstrip()
-        print(f"  {src_line}")
-
-        # indent -> line to match source indentation (min 6 to stay readable)
-        indent = max(6, len(src_line) - len(src_line.lstrip()) + 2)  # +2 for outer indent
-
-        # compiled translation
-        if is_data:
-            label = rsym.get(addr, '')
-            lbl = f"{label} = " if label else ""
-            v = blist[0]
-            print(f"{' '*indent}-> {lbl}{v} ({v:08b}) at addr {addr}")
-        else:
-            opc = blist[0]
-            desc, _ = _describe(opc,
-                                blist[1] if len(blist) > 1 else None,
-                                sym, mem)
-            bs = "  ".join(f"{b:08b}" for b in blist)
-            print(f"{' '*indent}-> [{bs}] at addr {addr}  =  {desc}")
-
-    # symbols table
-    print(f"\nsymbols:")
-    for name, a in sorted(syms.items(), key=lambda x: x[1]):
-        print(f"  {name:<12} = {a:3d} ({a:08b})")
-    print()
-
 # ── Export ─────────────────────────────────────────────────────────────────
 
 def bytecode_text(mem):
@@ -225,12 +184,9 @@ def bytecode_text(mem):
     last = max((a for a, v in enumerate(mem) if v), default=-1)
     return "".join(f"{v}\n" for v in mem[:last + 1])
 
-def export(listing, syms, mem, path, quiet=False):
-    """Write the compiled byte listing to `path` as a .toyo file.
-
-    `quiet` suppresses the "exported → …" stdout line. (`mem` is unused here; the
-    bytes come from `listing`.) The GUI's Save writes bytecode_text() instead."""
-    rsym = {v: k for k, v in syms.items()}
+def export(listing, syms, path):
+    """Write the compiled byte listing to `path` as a .toyo file. (The GUI's Save
+    writes bytecode_text() instead.)"""
     out  = ["# Toy CPU – compiled listing", "#",
             f"# {'ADDR':>4}  {'BYTES':<22}  SOURCE", "# " + "─"*56]
     for addr, blist, orig, is_data in listing:
@@ -244,5 +200,4 @@ def export(listing, syms, mem, path, quiet=False):
         out.append(f"#   {name:<15} = {addr:3d}  ({addr:08b})")
     with open(path, 'w') as f:
         f.write("\n".join(out) + "\n")
-    if not quiet:
-        print(f"exported → {path}\n")
+    print(f"exported → {path}\n")

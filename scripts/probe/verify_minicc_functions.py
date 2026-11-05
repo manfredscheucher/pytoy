@@ -5,14 +5,14 @@ Compiles each listed example with minicc, runs it on the Toy CPU simulator, and
 checks the ACC against the file's `// expect:` value. Also checks that recursive
 examples are rejected and that undefined-call / wrong-arg-count errors fire.
 
-Run: python3 scripts/verify_minicc_functions.py
+Run: python3 scripts/probe/verify_minicc_functions.py
 (from the repo root). Prints PASS/FAIL per case and a final summary.
 """
 import os
 import re
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
 from pytoy.minicc import compile_source, MiniError

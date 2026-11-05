@@ -74,7 +74,7 @@ def main():
     from pytoy.assembler import parse_source
     from pytoy.core import OPCODES, has_operand
     addr = 0
-    for label, mn, _op, _orig in parse_source(asm):
+    for label, mn, _op, _orig, _lineno in parse_source(asm):
         if mn is None:
             continue
         addr += 2 if (mn in OPCODES and has_operand(OPCODES[mn])) else 1

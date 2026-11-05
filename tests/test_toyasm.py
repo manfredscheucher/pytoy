@@ -532,7 +532,7 @@ z:      0
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "prog.toyo")
         with contextlib.redirect_stdout(io.StringIO()):
-            export(listing, syms, mem, path)
+            export(listing, syms, path)
         parsed = parse_toyo(open(path).read())
     assert parsed == mem
 

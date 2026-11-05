@@ -13,7 +13,7 @@ import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
                    _describe, _esc, WRITES_ACC, has_operand, _INSTR)
-from .assembler import assemble, show_assembly, bytecode_text
+from .assembler import assemble, bytecode_text
 from . import format as iofmt
 
 
@@ -77,7 +77,7 @@ def _warn_continue(msg):
     except EOFError:
         return False
 
-def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False,
+def simulate(mem_in, syms, data_addrs, step=False, verbose=False,
              addr_orig=None, code_guard=None, max_steps=1_000_000):
     # code_guard: if set (an address), warn when a STORE writes below it, i.e.
     # into the code region. None disables the check.
@@ -104,7 +104,7 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             parts.append(f"{name}={mem[i]}")
         return "  mem: " + ", ".join(parts) if parts else "  mem: (empty)"
 
-    def vertical_mem(cur_pc, cur_acc, step_num=0, cmd_desc="", cmd_bytes="", cur_arg=None, stopped=False, dump=False):
+    def vertical_mem(cur_pc, cur_acc, step_num=0, cmd_desc="", cmd_bytes="", cur_arg=None, stopped=False):
         lines = []
         if stopped:
             lines.append(f"Stopped after {step_num} steps.")
@@ -132,11 +132,9 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             orig = addr_orig.get(a, '')
             orig_str = f"  {orig}" if orig else ""
             lines.append(f"  {marker} {a:3d}=b{a:08b}  {v:3d}=b{v:08b}{orig_str}")
-        # optional mem dump
-        if dump:
-            lines.append("")
-            lines.append("memory dump:")
-            lines.append(f"  {mem_dump()}")
+        lines.append("")
+        lines.append("memory dump:")
+        lines.append(f"  {mem_dump()}")
         return "\n".join(lines)
 
     def emit_verbose_frame(cur_pc, stopped=False):
@@ -144,12 +142,12 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         mode, wait for Enter. When stopped, describe the halted machine."""
         if stopped:
             print(vertical_mem(cur_pc, acc, step_num=step_num,
-                               cmd_bytes="b00000000", stopped=True, dump=show_mem))
+                               cmd_bytes="b00000000", stopped=True))
             return
         ins, arg, _ = decode(mem, cur_pc)
         d, bs = _describe(ins, arg, sym, mem)
         print(vertical_mem(cur_pc, acc, step_num=step_num, cmd_desc=d,
-                           cmd_bytes=bs, cur_arg=arg, dump=show_mem))
+                           cmd_bytes=bs, cur_arg=arg))
         print()
         if step:
             try: input("[Enter] > ")
@@ -167,7 +165,6 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             line = f"PC={pc:3d}  ACC={acc:3d}  {desc}"
             if step:
                 print(f"\n{line}")
-                if show_mem: print(mem_dump())
                 try: input("       [Enter] > ")
                 except EOFError: pass
 
@@ -198,7 +195,6 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
             emit_verbose_frame(next_pc)
         elif not step:
             print(line)
-            if show_mem: print(mem_dump())
 
         pc = next_pc
 
@@ -207,7 +203,6 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
         emit_verbose_frame(pc, stopped=True)
     else:
         print(f"\nPC={pc:3d}  ACC={acc:3d}  STOP")
-        if show_mem: print(mem_dump())
     return acc
 
 def parse_toyo(text):
@@ -394,8 +389,6 @@ def parse_c_line_map(asm_text):
         c_line = int(m.group(1))
         asm_to_c[idx] = c_line
         c_to_asm.setdefault(c_line, []).append(idx)
-    for c_line in c_to_asm:
-        c_to_asm[c_line].sort()
     return c_to_asm, asm_to_c
 
 # ── Transitive C ↔ asm ↔ bytecode selection ─────────────────────────────────
@@ -473,14 +466,14 @@ def transitive_selection(c_line, addr, c_to_asm, asm_to_c,
 class History:
     """A stack of machine-state snapshots for the debugger's step-back (undo).
 
-    A snapshot is a plain dict of field-name -> value. The caller lists which
-    fields are mutable containers (mem, touched, visible) so History copies them
-    on push and on pop — the machine keeps mutating its own mem/sets, so both
-    directions must copy or the snapshot would alias the live state. Pure Python,
-    no Qt, so the undo logic is testable without a GUI."""
+    A snapshot is a plain dict of field-name -> value. mem, touched and visible
+    are copied on push because the machine keeps mutating its own; a popped
+    snapshot has left the stack, so the caller owns it. Pure Python, no Qt, so
+    the undo logic is testable without a GUI."""
 
-    def __init__(self, mutable_fields=("mem", "touched", "visible")):
-        self._mutable = tuple(mutable_fields)
+    _MUTABLE = ("mem", "touched", "visible")
+
+    def __init__(self):
         self._stack = []
 
     def __len__(self):
@@ -489,29 +482,13 @@ class History:
     def clear(self):
         self._stack.clear()
 
-    @staticmethod
-    def _copy_value(v):
-        if isinstance(v, list):
-            return list(v)
-        if isinstance(v, (set, frozenset)):
-            return set(v)
-        return v
-
     def push(self, state):
         """Snapshot `state` (a dict of field -> value), copying mutable ones."""
-        snap = {}
-        for k, v in state.items():
-            snap[k] = self._copy_value(v) if k in self._mutable else v
-        self._stack.append(snap)
+        self._stack.append({k: v.copy() if k in self._MUTABLE else v for k, v in state.items()})
 
     def pop(self):
-        """Return the most recent snapshot (mutable fields copied again so the
-        caller can mutate freely), or None if the stack is empty."""
-        if not self._stack:
-            return None
-        snap = self._stack.pop()
-        return {k: (self._copy_value(v) if k in self._mutable else v)
-                for k, v in snap.items()}
+        """Return the most recent snapshot, or None if the stack is empty."""
+        return self._stack.pop() if self._stack else None
 
 # ── GUI Debugger ──────────────────────────────────────────────────────────
 
@@ -531,10 +508,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                                    QGroupBox, QComboBox, QInputDialog,
                                    QDialog, QLineEdit, QDialogButtonBox,
                                    QGridLayout, QTreeWidget, QTreeWidgetItem)
-    from PySide6.QtCore import Qt, QTimer, QPointF
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import (QFont, QTextCursor, QShortcut, QKeySequence,
-                               QPainter, QColor, QPolygonF, QAction,
-                               QActionGroup)
+                               QAction, QActionGroup)
 
     FORMATS = iofmt.FORMATS   # ('decimal', 'binary', 'hex', 'ascii')
 
@@ -1023,79 +999,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 self._on_click(self._addr)
             super().mouseReleaseEvent(event)
 
-    class SevenSegDisplay(QWidget):
-        """DISABLED / parked — not instantiated anywhere right now (see
-        format.FORMATS). It also renders the OLD, wrong model (low nibble -> hex
-        digit via iofmt.seven_segment, which is commented out); the intended
-        model is one bit per segment + bit 7 = dot. Kept as a starting point for
-        a future redo. Until then nothing calls it, so it is effectively dead.
-
-        A tiny seven-segment display widget. Renders the 7 segments (a..g) plus a
-        decimal point for a byte, lit/unlit from iofmt.seven_segment()."""
-
-        ON  = QColor("#ff3030")
-        OFF = QColor("#3a2020")
-        BG  = QColor("#101010")
-
-        def __init__(self, value=0, parent=None):
-            super().__init__(parent)
-            self._value = value & 0xFF
-            self.setFixedSize(34, 54)
-
-        def set_value(self, value):
-            self._value = value & 0xFF
-            self.update()
-
-        def paintEvent(self, event):
-            segs, dot = iofmt.seven_segment(self._value)
-            p = QPainter(self)
-            p.setRenderHint(QPainter.Antialiasing)
-            p.fillRect(self.rect(), self.BG)
-
-            w, h = self.width(), self.height()
-            m = 5            # outer margin
-            t = 4            # segment thickness
-            x0, x1 = m, w - m
-            y0, ymid, y1 = m, h / 2.0, h - m
-
-            def horiz(cx0, cx1, cy):
-                return QPolygonF([
-                    QPointF(cx0 + t, cy - t / 2.0),
-                    QPointF(cx1 - t, cy - t / 2.0),
-                    QPointF(cx1,     cy),
-                    QPointF(cx1 - t, cy + t / 2.0),
-                    QPointF(cx0 + t, cy + t / 2.0),
-                    QPointF(cx0,     cy),
-                ])
-
-            def vert(cx, cy0, cy1):
-                return QPolygonF([
-                    QPointF(cx - t / 2.0, cy0 + t),
-                    QPointF(cx,           cy0),
-                    QPointF(cx + t / 2.0, cy0 + t),
-                    QPointF(cx + t / 2.0, cy1 - t),
-                    QPointF(cx,           cy1),
-                    QPointF(cx - t / 2.0, cy1 - t),
-                ])
-
-            polys = {
-                "a": horiz(x0, x1, y0),
-                "b": vert(x1, y0, ymid),
-                "c": vert(x1, ymid, y1),
-                "d": horiz(x0, x1, y1),
-                "e": vert(x0, ymid, y1),
-                "f": vert(x0, y0, ymid),
-                "g": horiz(x0, x1, ymid),
-            }
-            p.setPen(Qt.NoPen)
-            for name, poly in polys.items():
-                p.setBrush(self.ON if segs[name] else self.OFF)
-                p.drawPolygon(poly)
-            # decimal point bottom-right
-            p.setBrush(self.ON if dot else self.OFF)
-            p.drawEllipse(QPointF(x1 + 1, y1), t / 2.0, t / 2.0)
-            p.end()
-
     class IOPanel(QWidget):
         """The friendly memory-mapped I/O view: the 15 I/O cells io0..io14
         (addresses 240..254) plus the ready register (255) as a 16th cell, laid
@@ -1297,7 +1200,6 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             left source panel and shows only memory."""
             self.mem_original = list(mem_original)
             self.listing = listing
-            self.syms = syms
             self.data_addrs = set(data_addrs)
             self.code_guard = code_guard   # data-region start, or None
             self.rsym = {v: k for k, v in syms.items()}
@@ -2211,6 +2113,9 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 return False
             self.load_program(mem, listing, syms, data_addrs,
                               code_guard=None, has_source=True)
+            # a `# pytoy: output=` line sets the I/O format, like on the command line
+            if "pytoy:" in text:
+                self._set_io_format(iofmt.parse_directives(text)["output"])
             # keep the source so right-click can re-open it for editing
             self._asm_text = text
             # a fresh assemble-and-load: the loaded asm now matches its source,

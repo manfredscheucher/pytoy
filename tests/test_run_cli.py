@@ -18,7 +18,7 @@ import run  # noqa: E402
 def _sim_args(file):
     """A minimal args namespace for cmd_sim with everything else defaulted off."""
     return types.SimpleNamespace(
-        file=file, cli=True, run=False, quiet=True, export=False,
+        file=file, cli=True, run=False, quiet=True,
         detect_code_overwrite=False)
 
 

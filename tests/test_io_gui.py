@@ -205,6 +205,15 @@ def test_io_format_combo_and_menu_stay_in_sync(build_debugger):
     assert panel.fmt_combo.currentText() == "binary"
 
 
+def test_an_output_directive_sets_the_format_on_load(build_debugger):
+    win = build_debugger()
+    assert win._load_asm_text("# pytoy: output=hex\nstop\n", "p.toys")
+    assert win.io_widget._fmt == "hex"
+    # a program without a directive leaves the choice alone
+    assert win._load_asm_text("stop\n", "p.toys")
+    assert win.io_widget._fmt == "hex"
+
+
 def test_io_default_format_is_ascii(build_debugger):
     """With no `output=` directive the I/O panel defaults to ascii."""
     win = build_debugger()                 # fixture passes no io_config

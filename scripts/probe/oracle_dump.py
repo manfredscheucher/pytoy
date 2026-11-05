@@ -2,12 +2,12 @@
 """Dump reference toycc assembly for a set of example C programs.
 
 Used to cross-check the Kotlin port (ktoy) against the Python compiler oracle.
-Run from the pytoy repo root:  python3 scripts/oracle_dump.py
+Run from the pytoy repo root:  python3 scripts/probe/oracle_dump.py
 """
 import os
 import sys
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, HERE)
 
 from pytoy.compiler import compile_source, Opts

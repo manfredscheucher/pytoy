@@ -21,7 +21,7 @@ from pytoy import assembler as toyasm
 from pytoy import core as toycpu
 from pytoy.compiler import compile_source
 
-TOYC = os.path.join(ROOT, "examples", "c", "sort_array_inline.toyc")
+TOYC = os.path.join(ROOT, "examples", "c", "03-programs", "sort_array_inline.toyc")
 EXPECTED = [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
 N = len(EXPECTED)
 MAX_STEPS = 1_000_000  # safety cap; the program halts well before this

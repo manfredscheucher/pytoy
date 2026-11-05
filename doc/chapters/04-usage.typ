@@ -126,7 +126,6 @@ advance each instruction.
   [`-c`, `--cli`],    [Run in the terminal instead of the GUI],
   [`-r`, `--run`],    [Run all steps without pausing],
   [`-q`, `--quiet`],  [Compact, one line per step],
-  [`-x`, `--export`], [Also write the compiled listing to a `.toyo` file],
 )
 
 Run `python3 run.py sim -h` for the full list.

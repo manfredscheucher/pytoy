@@ -20,7 +20,7 @@ avoids that entirely.
 import io, sys, contextlib
 
 import os
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
 from pytoy.compiler import compile_source, Opts

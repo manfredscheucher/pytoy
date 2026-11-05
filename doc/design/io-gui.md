@@ -78,9 +78,8 @@ the low nibble to a hex digit (`0`..`9`, `A`..`F`). The intended model is one bi
 per segment: the byte *is* the segment pattern (7 segments a..g + bit 7 = the
 dot, which you can toggle). Rather than ship the wrong one, `7segment` is removed
 from the active `FORMATS`, so it never appears in the View menu or in a `# pytoy:
-output=` directive. The `seven_segment()` helper (commented out in `format.py`)
-and the `SevenSegDisplay` widget (no longer instantiated) are kept as a starting
-point if it is redone later. The `numbers_7seg` example was dropped with it.
+output=` directive. The first attempt's code is gone (see git history), and the
+`numbers_7seg` example was dropped with it.
 
 ## Examples
 

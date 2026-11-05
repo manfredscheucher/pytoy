@@ -6,9 +6,6 @@ rest (commit sha, dirty flag, commit date) is read from git *at runtime*, since
 pytoy runs straight from the checkout — no build step to bake it in. Everything
 degrades gracefully when git or the VERSION file is missing (e.g. installed as a
 plain package), so About always shows *something*.
-
-Mirrors hex610's version-info convention (version / commit / dirty / commitDate)
-so the two projects report their build identity the same way.
 """
 import os
 import subprocess
@@ -40,36 +37,14 @@ def _git(*args):
         return None
 
 
-def version_info():
-    """A dict describing this build. Keys always present; values may be
-    'unknown' / None when git or the VERSION file is unavailable.
-
-      version    : release number from ./VERSION
-      commit     : short git SHA (or None)
-      dirty      : True if tracked files have uncommitted changes (None if unknown)
-      commitDate : author date of HEAD, ISO-8601 (or None)
-    """
-    commit = _git("rev-parse", "--short", "HEAD")
-    status = _git("status", "--porcelain", "--untracked-files=no")
-    dirty = None if status is None else bool(status)
-    commit_date = _git("show", "-s", "--format=%cI", "HEAD")
-    return {
-        "version": _read_version_file(),
-        "commit": commit,
-        "dirty": dirty,
-        "commitDate": commit_date,
-    }
-
-
 def version_lines():
-    """version_info() formatted as display lines for the About dialog."""
-    info = version_info()
-    lines = [f"pytoy {info['version']}"]
-    if info["commit"]:
-        commit = info["commit"]
-        if info["dirty"]:
-            commit += " (modified)"
-        lines.append(f"commit {commit}")
-    if info["commitDate"]:
-        lines.append(f"committed {info['commitDate']}")
+    """The build identity as display lines for the About dialog."""
+    lines = [f"pytoy {_read_version_file()}"]
+    commit = _git("rev-parse", "--short", "HEAD")
+    if commit:
+        dirty = _git("status", "--porcelain", "--untracked-files=no")
+        lines.append(f"commit {commit}" + (" (modified)" if dirty else ""))
+    commit_date = _git("show", "-s", "--format=%cI", "HEAD")
+    if commit_date:
+        lines.append(f"committed {commit_date}")
     return lines

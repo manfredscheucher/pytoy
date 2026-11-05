@@ -18,31 +18,24 @@ from pytoy import simulator
 
 # ── version helper (pure) ──────────────────────────────────────────────────
 
-def test_version_info_keys_present():
-    info = ver.version_info()
-    assert set(info) == {"version", "commit", "dirty", "commitDate"}
+def _version_file():
+    return open(os.path.join(os.path.dirname(__file__), "..", "VERSION")).read().strip()
 
 
-def test_version_reads_version_file():
-    # the repo ships a VERSION file, so this is a concrete value, not 'unknown'
-    assert ver.version_info()["version"] != "unknown"
-    assert ver.version_info()["version"] == open(
-        os.path.join(os.path.dirname(__file__), "..", "VERSION")).read().strip()
+def test_version_lines_start_with_the_version_file():
+    assert ver.version_lines()[0] == f"pytoy {_version_file()}"
 
 
-def test_version_lines_start_with_pytoy():
-    lines = ver.version_lines()
-    assert lines[0].startswith("pytoy ")
+def test_version_lines_show_commit_and_modified(monkeypatch):
+    answers = {"rev-parse": "abc123", "status": " M x", "show": "2026-11-05"}
+    monkeypatch.setattr(ver, "_git", lambda *a: answers[a[0]])
+    assert ver.version_lines()[1:] == ["commit abc123 (modified)", "committed 2026-11-05"]
 
 
 def test_version_helper_degrades_without_git(monkeypatch):
-    # when git is unavailable every git-derived field is None, version still reads
+    # without git only the VERSION file is left
     monkeypatch.setattr(ver, "_git", lambda *a: None)
-    info = ver.version_info()
-    assert info["commit"] is None
-    assert info["dirty"] is None
-    assert info["commitDate"] is None
-    assert info["version"] != ""  # VERSION file still read
+    assert ver.version_lines() == [f"pytoy {_version_file()}"]
 
 
 # ── reference text (pure) ──────────────────────────────────────────────────

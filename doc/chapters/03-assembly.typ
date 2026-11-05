@@ -76,5 +76,5 @@ b:      20          # addr 6
 compiles to the bytes `20, 5, 22, 6, 0, 10, 20` at addresses 0--6. The label
 `a` resolves to `5` and `b` to `6`, which is why `load a` becomes `20, 5`.
 
-You can see this layout for any program with the CLI's export option
-(`--cli --export`) or in the GUI's memory panel.
+You can see this layout for any program with `run.py asm`, which writes it to a
+`.toyo` listing, or in the GUI's memory panel.

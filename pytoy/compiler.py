@@ -762,11 +762,6 @@ class CodeGen:
         self.array_data.append((data_label, vals, base_label))
         return data_label
 
-    def array_info(self, name):
-        if name not in self.arrays:
-            raise CompileError(f"use of undeclared array {name!r}")
-        return self.arrays[name]
-
     def add_global_slot(self, label, init=0):
         """Register a fixed data byte for the global-slots call scheme (param,
         return-value or marker slot). Its variable name maps to itself, so the
@@ -2851,6 +2846,5 @@ def compile_file(in_path, out_path=None, opts=None, run=False):
         # Run in-process via the simulator (no subprocess, no fragile path).
         from .simulator import simulate
         print(f"running {out_path}")
-        acc = simulate(mem, syms, data_addrs, step=False, show_mem=False,
-                       verbose=False)
+        acc = simulate(mem, syms, data_addrs, step=False, verbose=False)
         print(f"Result:  ACC = {acc}  ({acc:08b}  0x{acc:02x}  dec {acc})")

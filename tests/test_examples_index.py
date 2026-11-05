@@ -91,6 +91,13 @@ def test_compiler_detection_accepts_simple_for_both():
     assert sum3.compilers == ["minicc", "toycc"], sum3.compilers
 
 
+def test_minicc_rejects_what_compiles_but_does_not_fit():
+    c = [e for e in ei.list_examples() if e.category == "c"]
+    bigint = next(e for e in c if e.display_name == "bigint_add")
+    # minicc compiles it, but the inlined result overflows 240 bytes
+    assert bigint.compilers == ["toycc"], bigint.compilers
+
+
 def test_detect_compilers_neither_accepts(tmp_path):
     # A source neither compiler accepts -> empty list (the GUI's _load_toyc
     # turns this into its "Neither minicc nor toycc accepts" error). Previously

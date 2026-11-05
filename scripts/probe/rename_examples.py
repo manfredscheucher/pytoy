@@ -2,8 +2,8 @@
 """One-shot example renamer (C + asm), aligning names between the two sets and
 replacing vague/misleading names with clearer ones. Run once from the repo root:
 
-    python3 scripts/rename_examples.py            # dry run (prints the plan)
-    python3 scripts/rename_examples.py --apply    # actually `git mv` the files
+    python3 scripts/probe/rename_examples.py            # dry run (prints the plan)
+    python3 scripts/probe/rename_examples.py --apply    # actually `git mv` the files
 
 Kept as a durable record of the rename (per the project's durable-scripts rule).
 The naming convention it encodes:
@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # (relative path from repo root) old -> new, basename only (same folder).
 # Only files that CHANGE are listed.

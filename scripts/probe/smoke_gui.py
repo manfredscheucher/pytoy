@@ -3,13 +3,13 @@
 no-op'd, like tests/conftest.py's build_debugger) and exercise the round-2 GUI
 fixes so a crash surfaces immediately. Run:
 
-    QT_QPA_PLATFORM=offscreen python3 scripts/smoke_gui.py
+    QT_QPA_PLATFORM=offscreen python3 scripts/probe/smoke_gui.py
 """
 import os
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from PySide6.QtWidgets import QApplication
 from pytoy import simulator, format as iofmt

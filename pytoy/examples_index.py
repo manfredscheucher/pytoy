@@ -1,234 +1,107 @@
-"""Runtime enumeration of the examples/ folder.
+"""Runtime enumeration of the examples/ folder, so a GUI can render a grouped
+"Examples" browser without hard-coding any example.
 
-Scans the on-disk examples/ directory and returns a structured list of the
-available examples, so a GUI can render a grouped "Examples" browser without
-any example being hard-coded. New files on disk appear automatically.
+Three categories (see `Example.category`):
 
-Three separate categories (see `Example.category`):
-
-  - "asm"  — assembly sources (*.toys), grouped by their subfolder
-             (01-basics, 02-extended, 03-programs, 04-io). To load: assemble.
-  - "c"    — C sources (*.toyc). To load they must be COMPILED first. Each C
-             example records which compiler(s) accept it in `compilers`
-             ("minicc" and/or "toycc"); minicc rejects recursion and other
-             syntax it does not support. To load: compile with a chosen
-             compiler, then assemble.
+  - "asm"  — assembly sources (*.toys) by subfolder. To load: assemble.
+  - "c"    — C sources (*.toyc) by subfolder. To load: compile with one of
+             `compilers`, then assemble.
   - "toyo" — pre-compiled bytecode listings (*.toyo). To load: parse directly.
 
-Compiler compatibility for C examples is detected by ACTUALLY trying to compile
-the source with each compiler and catching its error (accurate, not a
-heuristic). It is lazy and cached per source text, so merely listing examples
-is cheap — compilation only happens the first time `compilers` is needed.
+Which compilers accept a C example is detected by actually compiling it. That is
+lazy and cached per source text, so listing examples stays cheap.
 """
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
-# ── locating the examples/ root ──────────────────────────────────────────────
 # examples/ sits at the repo root, a sibling of the pytoy/ package directory.
-# Resolve it relative to this file so it is found no matter the cwd.
-
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 EXAMPLES_ROOT = os.path.normpath(os.path.join(_PACKAGE_DIR, os.pardir, "examples"))
-
-# Known asm subfolders, in teaching order. Any other subfolder found on disk is
-# appended after these (sorted), so new groups still show up automatically.
-_ASM_SUBFOLDER_ORDER = ["01-basics", "02-extended", "03-programs", "04-io"]
-
-# The C sources live under these subfolders. We deliberately ignore loose .toys
-# files sitting directly in examples/c/ (those are compiled outputs, not C).
-_C_SUBFOLDER_ORDER = ["01-basics", "02-extended", "03-programs", "04-io"]
-
-ALL_COMPILERS = ("minicc", "toycc")
 
 
 @dataclass
 class Example:
     """One example the GUI can offer.
 
-    Fields a GUI needs to render a menu entry and act on a selection:
-
       path         absolute path to the source/listing file on disk
-      display_name human-friendly name (the file's base name, no extension)
-      category     "asm" | "c" | "toyo" — decides how to LOAD it:
-                     asm  -> assemble(source)
-                     c    -> compile(source, compiler) then assemble
-                     toyo -> parse_toyo(listing)
+      display_name the file's base name, no extension
+      category     "asm" | "c" | "toyo"
       subfolder    the grouping bucket, e.g. "01-basics" (asm/c) or "" (toyo)
-
-    C-only (empty/ignored for asm and toyo):
-      _source      lazily-read source text, used to probe compilers
-      _compilers   cached result of probing; None until first asked
     """
 
     path: str
     display_name: str
     category: str
     subfolder: str = ""
-    _source: "str | None" = field(default=None, repr=False)
-    _compilers: "list[str] | None" = field(default=None, repr=False)
 
     @property
     def compilers(self):
         """For C examples: the compilers that accept this source, a subset of
-        ("minicc", "toycc") in that order. Empty for asm/toyo examples.
-
-        Lazily probed on first access and cached, so enumerating examples does
-        not pay the compile cost until the GUI actually needs it.
-        """
-        if self.category != "c":
-            return []
-        if self._compilers is None:
-            self._compilers = _detect_compilers(self.path)
-        return list(self._compilers)
+        ("minicc", "toycc") in that order. Empty for asm/toyo examples."""
+        return list(_detect_compilers(self.path)) if self.category == "c" else []
 
 
-# ── compiler probing (lazy, cached) ──────────────────────────────────────────
-# Cache keyed by the source TEXT, so two files with identical content (or the
-# same file probed twice) share one result.
+# ── compiler probing (lazy, cached by source text) ───────────────────────────
 
 _compiler_cache: "dict[str, list[str]]" = {}
 
 
-def _assembles_and_fits(asm):
-    """Compiling without error is not enough — minicc inlines everything and can
-    overflow the 240-byte program region (0..239; 240..255 are reserved I/O).
-    A program that won't assemble can't be offered to the user, so probe the
-    assembler and reject if it reports any error (the too-big case lands here)."""
+def _accepts(compile_source, src):
+    """Compiling is not enough: minicc inlines everything and can overflow the
+    240-byte program region, so the assembler must accept the result too."""
+    from pytoy.assembler import assemble
     try:
-        from pytoy.assembler import assemble
-        _mem, _listing, _syms, _data_addrs, errors, _data_start = assemble(asm)
-        return not errors
+        errors = assemble(compile_source(src, "probe"))[4]
     except Exception:
         return False
-
-
-def _minicc_accepts(src):
-    from pytoy.minicc import compile_source, MiniError
-    try:
-        asm = compile_source(src, "probe")
-    except MiniError:
-        return False
-    except Exception:
-        # Any other failure means the source is not usable with minicc.
-        return False
-    return _assembles_and_fits(asm)
-
-
-def _toycc_accepts(src):
-    from pytoy.compiler import compile_source, CompileError
-    try:
-        asm = compile_source(src, "probe")
-    except CompileError:
-        return False
-    except Exception:
-        return False
-    return _assembles_and_fits(asm)
+    return not errors
 
 
 def _detect_compilers(path):
-    """Return the list of compilers that successfully compile `path`, trying
-    minicc first then toycc. Cached by source text."""
+    """The compilers that accept the source at `path`, minicc first."""
+    from pytoy import compiler, minicc
     try:
         with open(path, "r") as f:
             src = f.read()
     except OSError:
         return []
-    if src in _compiler_cache:
-        return _compiler_cache[src]
-    result = []
-    if _minicc_accepts(src):
-        result.append("minicc")
-    if _toycc_accepts(src):
-        result.append("toycc")
-    _compiler_cache[src] = result
-    return result
+    if src not in _compiler_cache:
+        _compiler_cache[src] = [name for name, mod in (("minicc", minicc), ("toycc", compiler))
+                                if _accepts(mod.compile_source, src)]
+    return _compiler_cache[src]
 
 
 # ── scanning ──────────────────────────────────────────────────────────────────
 
-def _ordered_subfolders(base, order):
-    """Subfolders of `base` that exist on disk, the known ones in `order` first,
-    then any extras sorted alphabetically (so new groups appear automatically)."""
+def _scan(category, ext, subfolders):
+    """The `ext` files of examples/<category>/, per subfolder (sorted), or
+    directly in it without `subfolders`. Loose .toys files in examples/c/ are
+    compiled outputs and so never picked up."""
+    base = os.path.join(EXAMPLES_ROOT, category)
     if not os.path.isdir(base):
         return []
-    present = {d for d in os.listdir(base)
-               if os.path.isdir(os.path.join(base, d))}
-    known = [d for d in order if d in present]
-    extra = sorted(present - set(order))
-    return known + extra
+    subs = [""]
+    if subfolders:
+        subs = sorted(d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d)))
+    return [Example(path=os.path.join(base, sub, name),
+                    display_name=os.path.splitext(name)[0],
+                    category=category, subfolder=sub)
+            for sub in subs
+            for name in sorted(os.listdir(os.path.join(base, sub)))
+            if name.endswith(ext)]
 
 
-def _files_with_ext(folder, ext):
-    if not os.path.isdir(folder):
-        return []
-    names = [n for n in os.listdir(folder) if n.endswith(ext)]
-    return [os.path.join(folder, n) for n in sorted(names)]
+def list_examples():
+    """Every example on disk, in display order: asm, then C, then toyo."""
+    return _scan("asm", ".toys", True) + _scan("c", ".toyc", True) + _scan("toyo", ".toyo", False)
 
 
-def _base_name(path):
-    return os.path.splitext(os.path.basename(path))[0]
-
-
-def scan_asm(root=None):
-    """All .toys examples under examples/asm/, grouped by subfolder."""
-    root = root or EXAMPLES_ROOT
-    base = os.path.join(root, "asm")
-    out = []
-    for sub in _ordered_subfolders(base, _ASM_SUBFOLDER_ORDER):
-        for p in _files_with_ext(os.path.join(base, sub), ".toys"):
-            out.append(Example(path=p, display_name=_base_name(p),
-                               category="asm", subfolder=sub))
-    return out
-
-
-def scan_c(root=None):
-    """All .toyc examples under examples/c/<subfolder>/, grouped by subfolder.
-
-    Loose .toys files directly in examples/c/ are compiled outputs and ignored.
-    """
-    root = root or EXAMPLES_ROOT
-    base = os.path.join(root, "c")
-    out = []
-    for sub in _ordered_subfolders(base, _C_SUBFOLDER_ORDER):
-        for p in _files_with_ext(os.path.join(base, sub), ".toyc"):
-            out.append(Example(path=p, display_name=_base_name(p),
-                               category="c", subfolder=sub))
-    return out
-
-
-def scan_toyo(root=None):
-    """All .toyo pre-compiled listings under examples/toyo/."""
-    root = root or EXAMPLES_ROOT
-    base = os.path.join(root, "toyo")
-    out = []
-    for p in _files_with_ext(base, ".toyo"):
-        out.append(Example(path=p, display_name=_base_name(p),
-                           category="toyo", subfolder=""))
-    return out
-
-
-def list_examples(root=None):
-    """Enumerate every example on disk, in display order (asm, then C, then
-    toyo). Returns a flat list of `Example` records; group by `.category` and
-    `.subfolder` for a menu. Compiler compatibility for C examples is NOT
-    computed here — access `Example.compilers` to probe it lazily.
-    """
-    root = root or EXAMPLES_ROOT
-    return scan_asm(root) + scan_c(root) + scan_toyo(root)
-
-
-def grouped_examples(root=None):
-    """Convenience view for a GUI: a nested dict
-
-        { "asm":  { "01-basics": [Example, ...], ... },
-          "c":    { "02-extended": [...], ... },
-          "toyo": { "": [Example, ...] } }
-
-    preserving the display order of categories and subfolders.
-    """
+def grouped_examples():
+    """The examples as { category: { subfolder: [Example, ...] } }, in display
+    order. The toyo category has the one subfolder ""."""
     out = {"asm": {}, "c": {}, "toyo": {}}
-    for ex in list_examples(root):
+    for ex in list_examples():
         out[ex.category].setdefault(ex.subfolder, []).append(ex)
     return out
