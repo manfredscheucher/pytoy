@@ -2,7 +2,9 @@
 #
 # ADDR  BYTES                   SOURCE
 # ────────────────────────────────────────────────────────
-#                                # fibonacci.toys
+#                                # result: 13
+#                                # steps: 81
+#                                # fibonacci_iter.toys
 #                                # Computes the n-th Fibonacci number
 #                                # Result ends up in the accumulator
 #                                #
@@ -11,6 +13,9 @@
 #                                #   for i in range(n):
 #                                #       b = a + b
 #                                #       a = b - a   (= old b, no temp needed)
+#                                #
+#                                # The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
+#                                # fib(6)=8, fib(7)=13. Here n = 7, so ACC = 13.
 #                                #
 #                                # Note: fib(14) = 377 > 255, so n > 13 causes overflow
 #                                #
@@ -52,3 +57,19 @@
 #   a               =  28  (00011100)
 #   b               =  29  (00011101)
 #   one             =  30  (00011110)
+#   io0             = 240  (11110000)
+#   io1             = 241  (11110001)
+#   io2             = 242  (11110010)
+#   io3             = 243  (11110011)
+#   io4             = 244  (11110100)
+#   io5             = 245  (11110101)
+#   io6             = 246  (11110110)
+#   io7             = 247  (11110111)
+#   io8             = 248  (11111000)
+#   io9             = 249  (11111001)
+#   io10            = 250  (11111010)
+#   io11            = 251  (11111011)
+#   io12            = 252  (11111100)
+#   io13            = 253  (11111101)
+#   io14            = 254  (11111110)
+#   ready           = 255  (11111111)

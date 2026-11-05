@@ -1,6 +1,7 @@
 // expect: 1
+// steps: toycc 47, minicc 64
 /*
- * sort3.c - sort three values and return the smallest.
+ * sort3.toyc - sort three values and return the smallest.
  *
  * sort3(a, b, c) orders a <= b <= c with a few compare-and-swap steps (the same
  * idea as bubble sort, but on three named variables instead of an array), then

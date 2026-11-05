@@ -60,7 +60,8 @@ def run_program(mem_in, data_addrs, max_steps=MAX_STEPS):
 
     while True:
         instr, arg_addr, _ = decode(mem, pc)
-        if instr == 0:  # STOP
+        if instr == 0:  # STOP counts as a step
+            steps += 1
             break
         if steps >= max_steps:
             hit_cap = True

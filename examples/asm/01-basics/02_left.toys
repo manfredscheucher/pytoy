@@ -1,3 +1,5 @@
+# result: 8
+# steps: 3
 # LEFT (00000010) — shift accumulator left by 1
 # 00000100 (4) becomes 00001000 (8).
 

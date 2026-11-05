@@ -2,7 +2,7 @@
 # Same bytes as numbers.toys, but the I/O panel opens in ascii mode. Codes 0..14
 # are control characters (no visible glyph) — this file is here to show that the
 # raw bytes are unchanged; only the display format differs. Switch the
-# View → I/O format menu to decimal/hex/7segment to read them.
+# View → I/O format menu to decimal/binary/hex to read them.
 #
 # pytoy: output=ascii
 

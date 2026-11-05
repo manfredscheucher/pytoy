@@ -1,6 +1,7 @@
 // expect: 5
+// steps: toycc 15, minicc 24
 /*
- * ifelse.c - simple if/else demonstration.
+ * if_then_else.toyc - simple if/else demonstration.
  *
  * a = 7, b = 12. Since a < b, the result is b - a = 5.
  *

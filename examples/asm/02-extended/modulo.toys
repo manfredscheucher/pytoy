@@ -1,3 +1,5 @@
+# result: 2
+# steps: 30
 # modulo: a % b by repeated subtraction  (20 % 6 = 2)
 # subtract b from a until a-b goes negative; a is then the remainder.
 # valid for a in 0..127 (msb is the sign).

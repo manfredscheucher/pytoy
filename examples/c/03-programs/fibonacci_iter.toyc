@@ -1,11 +1,16 @@
-// expect: 55
+// expect: 13
+// steps: toycc 117, minicc 215
 /*
- * fibonacci_iter.c - the n-th Fibonacci number, ITERATIVE.
+ * fibonacci_iter.toyc - the n-th Fibonacci number, ITERATIVE.
  *
- * The recursive version is in fibonacci_rec.toyc; both compute fib(10) = 55.
+ * fib(0) = 0, fib(1) = 1, fib(n) = fib(n-1) + fib(n-2).
+ * The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
+ * fib(6)=8, fib(7)=13.
+ *
+ * The recursive version is in fibonacci_rec.toyc; both compute fib(7) = 13.
  * (8-bit values wrap mod 256, so fib(14) = 377 would overflow.)
  *
- * Expected result: ACC = 55
+ * Expected result: ACC = 13
  */
 
 int fibonacci_iter(int n) {
@@ -20,5 +25,5 @@ int fibonacci_iter(int n) {
 }
 
 int main(void) {
-    return fibonacci_iter(10);
+    return fibonacci_iter(7);
 }

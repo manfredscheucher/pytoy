@@ -12,7 +12,7 @@
 #                   then      = '!'
 #
 # The name is copied to scratch FIRST, because writing "hallo " clobbers
-# io0..io5 (which may still hold name characters when N > 6).
+# io0..io5, which still hold the first name characters.
 #
 # (A '.'-terminated variant is possible — read until a '.' appears — but passing
 #  the length in `ready` is cleaner and needs no sentinel, so we use that.)
@@ -21,7 +21,7 @@
 # Result: io0..io9 = h,a,l,l,o,space,M,a,x,!  i.e. "hallo Max!".
 #
 # Self-modifying code (patched LOAD/STORE address bytes) indexes the io cells by
-# the runtime count N, same technique as sort.toys / sum_array.toys.
+# the runtime count N, same technique as sort_array_io.toys / sum_array.toys.
 #
 # pytoy: output=ascii
 

@@ -13,7 +13,7 @@ import sys
 
 from .core import (decode, execute_one, is_code_store, _overwrite_msg,
                    _describe, _esc, WRITES_ACC, has_operand, _INSTR)
-from .assembler import assemble, show_assembly, export
+from .assembler import assemble, show_assembly, bytecode_text
 from . import format as iofmt
 
 
@@ -171,7 +171,8 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
                 try: input("       [Enter] > ")
                 except EOFError: pass
 
-        if instr == 0:  # STOP
+        if instr == 0:  # STOP counts as a step; the PC stays on it
+            step_num += 1
             break
 
         # safety cap: a runaway loop (e.g. a GUI I/O example's busy-poll run
@@ -210,12 +211,24 @@ def simulate(mem_in, syms, data_addrs, step=False, show_mem=False, verbose=False
     return acc
 
 def parse_toyo(text):
-    """Parse an exported .toyo byte listing back into a 256-byte memory image.
+    """Parse a .toyo file into a 256-byte memory image. Returns mem[256].
 
-    Reads the '  ADDR   BYTES  SOURCE' data lines (see export()): a line whose
-    first token is a decimal address, followed by one or two 8-bit binary
+    Two formats. Bytecode (see bytecode_text()): only one integer per line, at
+    most 256, cells after the last line are 0, '#' starts a comment; a value out
+    of range or too many lines raises ValueError.
+
+    Byte listing: the '  ADDR   BYTES  SOURCE' data lines (see export()): a line
+    whose first token is a decimal address, followed by one or two 8-bit binary
     byte-strings. Comment lines (starting with '#') and blanks are ignored, so
-    the '# SYMBOLS' section is skipped. Returns mem[256]."""
+    the '# SYMBOLS' section is skipped."""
+    rows = [line.split('#')[0].strip() for line in text.splitlines()]
+    rows = [r for r in rows if r]
+    if rows and all(r.isdecimal() for r in rows):
+        values = [int(r) for r in rows]
+        if len(values) > 256 or max(values) > 255:
+            raise ValueError(f"expected at most 256 integers 0..255, got "
+                             f"{len(values)} values, largest {max(values)}")
+        return values + [0] * (256 - len(values))
     mem = [0] * 256
     for line in text.splitlines():
         s = line.strip()
@@ -1701,6 +1714,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             self.acc_written = False     # did the last step write ACC?
             self.overwrite_ok = False   # re-arm the code-overwrite prompt
             self._has_live_edits = False # any right-click edits since load/reset?
+            self.hand_edits = {}        # addr -> value: cells edited by hand, not by a run
             self._mem_line_addrs = {}
             self._history = History()   # snapshots for step-back (undo)
             self.timer.stop()
@@ -1751,6 +1765,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 # "Stopped after N steps" line would be short by one (the halt
                 # itself). The code-overwrite abort path below does NOT run an
                 # instruction, so it correctly leaves the counter unchanged.
+                # Undoable like any step; the PC stays on the STOP.
+                self._push_history()
                 self.step_count += 1
                 self._halt()
                 return
@@ -1809,7 +1825,7 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                             "selected_c_line", "selected_from_c",
                             "changed_cell", "changed_cell_prev",
                             "acc_written", "overwrite_ok",
-                            "_has_live_edits")
+                            "_has_live_edits", "hand_edits")
 
         def _push_history(self):
             """Save the current machine state onto the undo stack."""
@@ -1934,12 +1950,19 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
                 formats.append(("C source (.toyc)", ".toyc"))
             return formats
 
+        def _bytecode_text(self):
+            """The bytecode file: the program as built plus the hand edits."""
+            image = list(self.mem_original)
+            for a, v in self.hand_edits.items():
+                image[a] = v
+            return bytecode_text(image)
+
         def _save_clicked(self):
             """Save the current program. Asks which format to export (only the
             ones that fit the loaded program), then where to write it.
 
-            - .toyo writes the live compiled byte image (reflects runtime/hand
-              edits via self.mem), using the assembler's export().
+            - .toyo writes the bytecode (_bytecode_text): the program as built
+              plus the hand edits, without what a run stored.
             - .toys / .toyc write the current (possibly GUI-edited) source text."""
             formats = self._save_formats()
             labels = [lbl for lbl, _ext in formats]
@@ -1966,20 +1989,8 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
 
             try:
                 if ext == ".toyo":
-                    # Export the LIVE bytes: re-read each listing row's bytes from
-                    # self.mem so hand edits (right-click) and runtime stores are
-                    # saved, not the stale assembled image. Source text/labels in
-                    # each row are kept for the listing comments. quiet=True keeps
-                    # the console clean (no "exported → …" from a GUI action).
-                    live = []
-                    for addr, blist, orig, is_data in self.listing:
-                        if addr is None:
-                            live.append((addr, blist, orig, is_data))
-                        else:
-                            bytes_now = [self.mem[(addr + k) % 256]
-                                         for k in range(len(blist))]
-                            live.append((addr, bytes_now, orig, is_data))
-                    export(live, self.syms, self.mem, path, quiet=True)
+                    with open(path, "w") as f:
+                        f.write(self._bytecode_text())
                 else:
                     text = self._asm_text if ext == ".toys" else self._c_text
                     with open(path, "w") as f:
@@ -2388,6 +2399,10 @@ def gui_main(mem, listing, syms, data_addrs, code_guard=None, has_source=True,
             # snapshot so the edit can be undone with Undo, exactly like a step
             self._push_history()
             self.mem[a] = value
+            if a < iofmt.IO_BASE:
+                self.hand_edits = {**self.hand_edits, a: value}
+                if value == self.mem_original[a]:
+                    del self.hand_edits[a]
             self.touched.add(a)
             self.visible.add(a)
             self.changed_cell = a       # highlight the edited cell (blue)

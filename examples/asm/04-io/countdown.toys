@@ -1,6 +1,6 @@
 # countdown.toys — count down from 10 to 1, writing each step to an out cell.
 # io0=10, io1=9, ... io9=1  (decimal).
-# Same self-modifying output-pointer trick as fibonacci.toys.
+# Same self-modifying output-pointer trick as fibonacci_io.toys.
 #
 # pytoy: output=decimal
 

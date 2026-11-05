@@ -7,7 +7,7 @@
 // doc/design/pin-security.md.
 //
 // GUI usage (ascii input): type the four digits into io0..io3 (e.g. '1','3',
-// '3','7'), then set `ready` to a non-zero value to submit. The program reads
+// '3','7'), then set `ready` to 4 (read() takes it as the count) to submit. The program reads
 // the digits, compares them to "1337", and writes back "succ" or "fail" while
 // the return value (the accumulator at STOP) is 42 on success, 0 on failure.
 //

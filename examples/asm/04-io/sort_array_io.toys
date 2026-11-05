@@ -1,4 +1,4 @@
-# sort.toys — read up to 15 numbers, sort them ascending, write them back.
+# sort_array_io.toys — read up to 15 numbers, sort them ascending, write them back.
 #
 # GUI usage:
 #   1. type the array values into io0, io1, io2, ... — one number per cell.
@@ -10,7 +10,7 @@
 # Example: user types io0..io3 = 5,3,8,1 and ready=4.
 # Result: io0..io3 = 1,3,5,8.
 #
-# Compare trick (same as 03-programs/sort_array.toys): (b - a) mod 256, bit 7
+# Compare trick (same as 03-programs/sort_array_inline.toys): (b - a) mod 256, bit 7
 # set  =>  b < a  =>  swap. Unambiguous as long as any two values differ by
 # less than 128 (true for the small inputs here).
 #
@@ -55,7 +55,8 @@ wrarg:  0                    # ← arr slot, patched each pass
 cpdone:
 
 # ── 3. bubble sort arr[0..n-1] ascending ───────────────────────────────────
-# outer runs n-1 passes; inner compares adjacent pairs, n-1 of them per pass.
+# outer runs n-1 passes; each pass compares npass adjacent pairs (n-1, then
+# n-2, ..., 1), since every pass moves the largest remaining value to the end.
         load  n
         sub   one
         store npass          # npass = n - 1 outer passes

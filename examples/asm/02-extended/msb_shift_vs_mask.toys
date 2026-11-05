@@ -1,3 +1,5 @@
+# result: 0
+# steps: 18
 # MSB of x: two ways, same answer.  x=200 -> msb=1
 # shift: 7x RIGHT.  mask: AND 128 then branch (no shifting).
         load  x

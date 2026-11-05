@@ -1,6 +1,7 @@
 // expect: 4
+// steps: toycc 39, minicc 52
 /*
- * max3.c - the largest of three values a, b, c.
+ * max3.toyc - the largest of three values a, b, c.
  *
  * A helper function max3(a, b, c) using only the `>` comparison. The three
  * values are the first three digits of pi (3, 1, 4). For the maximum of a whole

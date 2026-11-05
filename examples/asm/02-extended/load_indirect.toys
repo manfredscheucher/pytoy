@@ -1,3 +1,5 @@
+# result: 9
+# steps: 5
 # load indirect: read data[i] into acc  (i=5 -> pi digit 9)
         load  base
         add   i

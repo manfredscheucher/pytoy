@@ -1,9 +1,9 @@
 # numbers.toys — write 0,1,2,...,14 into the output cells io0..io14.
 # The simplest I/O program: just stores to the memory-mapped output region.
 #
-# Try the View → I/O format menu (decimal / binary / hex / ascii / 7segment)
-# to see the same bytes displayed different ways. numbers_hex / numbers_ascii /
-# numbers_7seg are the same program opened in those other formats.
+# Try the View → I/O format menu (decimal / binary / hex / ascii)
+# to see the same bytes displayed different ways. numbers_hex / numbers_ascii
+# are the same program opened in those other formats.
 #
 # pytoy: output=decimal
 

@@ -1,6 +1,7 @@
 // expect: 25
+// steps: toycc 143, minicc 140
 /*
- * functions.c - small helper functions that call each other.
+ * sum_of_squares.toyc - small helper functions that call each other.
  *
  * Demonstrates toycc's function support: functions with parameters, called
  * from main and from one another. The Toy CPU has no call/return instruction,

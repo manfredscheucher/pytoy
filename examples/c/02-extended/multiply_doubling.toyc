@@ -1,6 +1,7 @@
 // expect: 42
+// steps: toycc 76, minicc 98
 /*
- * multiply_doubling.c - a * b by double-and-add, using +, shifts and a bit test.
+ * multiply_doubling.toyc - a * b by double-and-add, using +, shifts and a bit test.
  *
  * One step per BIT of b instead of per unit: add a when b's low bit is set,
  * then double a and halve b. b has at most 8 bits, so at most 8 steps -- so
@@ -8,7 +9,7 @@
  *
  * b = 110 binary = 4 + 2, so 7*6 = 7*4 + 7*2 = 28 + 14 = 42.
  *
- * This is the method the '*' operator compiles to. C analogue of
+ * This is the method toycc compiles '*' to (minicc uses repeated addition). C analogue of
  * examples/asm/02-extended/multiply_doubling.toys.
  */
 int main(void) {

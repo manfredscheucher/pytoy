@@ -1,3 +1,5 @@
+# result: 102
+# steps: 3
 # XOR (00010011) — bitwise XOR of accumulator with a memory value
 # 11001100 XOR 10101010 = 01100110.
 

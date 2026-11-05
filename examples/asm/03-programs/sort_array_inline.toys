@@ -1,4 +1,6 @@
-# sort_array.toys
+# result: 1
+# steps: 1956
+# sort_array_inline.toys
 # ---------------------------------------------------------------------------
 # Bubble sort of 10 bytes, in place, ascending.
 #
@@ -7,13 +9,13 @@
 #
 # The Toy CPU has no index register, no compare, no multiply. We reach the
 # array elements with SELF-MODIFYING CODE: a bare opcode byte followed by a
-# patchable address byte (exactly the sum.toys / max.toys trick). Four such
+# patchable address byte (exactly the sum_array.toys / max_array.toys trick). Four such
 # "indirect" instructions are used, all patched from one running pointer `j`:
 #
-#   iload_j:  LOAD arr[j]        (opcode 20 + addr byte)
-#   iload_j1: LOAD arr[j+1]      (opcode 20 + addr byte)
-#   istore_j: STORE arr[j]       (opcode 21 + addr byte)
-#   istr_j1:  STORE arr[j+1]     (opcode 21 + addr byte)
+#   ldj_arg:  LOAD arr[j]        (opcode 20 + addr byte)
+#   ldj1_arg: LOAD arr[j+1]      (opcode 20 + addr byte)
+#   stj_arg:  STORE arr[j]       (opcode 21 + addr byte)
+#   stj1_arg: STORE arr[j+1]     (opcode 21 + addr byte)
 #
 # Loop structure (fixed passes, always correct):
 #   for pass in 0..8:                 # outer, 9 passes
@@ -23,7 +25,7 @@
 #           if a > b: swap            # bit 7 of (b - a) set  =>  b < a  => swap
 #           j = j + 1
 #
-# Compare trick (from max.toys): compute (b - a) mod 256. If a > b then b - a
+# Compare trick (from max_array.toys): compute (b - a) mod 256. If a > b then b - a
 # underflows and bit 7 is set. We test bit 7 with `and mask(128)`:
 #     acc==0  -> bit clear -> b >= a -> already ordered, no swap
 #     acc!=0  -> bit set   -> b <  a -> swap

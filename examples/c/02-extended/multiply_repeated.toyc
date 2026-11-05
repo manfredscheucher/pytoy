@@ -1,11 +1,12 @@
 // expect: 42
+// steps: toycc 79, minicc 145
 /*
- * multiply_repeated.c - a * b by repeated addition, using only '+'.
+ * multiply_repeated.toyc - a * b by repeated addition, using only '+'.
  *
  * Add a to the result b times. Simple, but slow: the loop runs b times, so
  * 255 * 255 would do 255 additions. multiply_doubling.toyc does the same in
- * about 8 steps. (The '*' operator itself compiles to the doubling method;
- * this file spells out the naive one by hand.)
+ * at most 8 loop passes. (toycc compiles '*' to the doubling method, minicc to
+ * this naive one; this file spells it out by hand.)
  *
  * C analogue of examples/asm/02-extended/multiply_repeated.toys.
  * With a = 7, b = 6: result = 42.

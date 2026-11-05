@@ -1,3 +1,5 @@
+# result: 42
+# steps: 3
 # SUB (00010111) — subtract a memory value from the accumulator
 # 50 - 8 = 42.
 

@@ -1,3 +1,5 @@
+# result: 1
+# steps: 20
 # sort3.toys
 # Sorts three named values a, b, c ascending, then returns the smallest.
 #

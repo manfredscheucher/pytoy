@@ -1,3 +1,5 @@
+# result: 0
+# steps: 3
 # IFZERO (00011001) — jump to an address only if the accumulator is zero
 # x is 0, so the jump to `done` is taken and `LOAD y` is skipped; acc stays 0.
 

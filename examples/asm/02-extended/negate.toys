@@ -1,3 +1,5 @@
+# result: 251
+# steps: 3
 # negate: 0 - x  (two's complement)  x=5 -> 251 (= -5 mod 256)
         load  zero
         sub   x

@@ -1,3 +1,5 @@
+# result: 3
+# steps: 39
 # divide: a / b by repeated subtraction  (20 / 6 = 3)
 # count how often b fits in a; stop when a-b goes negative (msb set).
 # valid for a in 0..127 (msb is the sign).

@@ -1,6 +1,7 @@
 // expect: 1
+// steps: toycc 2116
 /*
- * sort_array_function.c - bubble sort where the array is passed to a FUNCTION
+ * sort_array_fn.toyc - bubble sort where the array is passed to a FUNCTION
  * (see sort_array_inline.toyc for the version that sorts inline in main).
  *
  * The array decays to a pointer at the call: bubblesort() receives main's

@@ -1,3 +1,5 @@
+# result: 238
+# steps: 3
 # OR (00010010) — bitwise OR of accumulator with a memory value
 # 11001100 OR 10101010 = 11101110.
 

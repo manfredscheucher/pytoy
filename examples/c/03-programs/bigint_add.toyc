@@ -1,4 +1,5 @@
 // expect: 0
+// steps: toycc 99
 /*
  * bigint_add.toyc - add two numbers wider than one byte.
  *

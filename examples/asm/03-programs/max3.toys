@@ -1,10 +1,12 @@
+# result: 4
+# steps: 15
 # max3.toys
 # Largest of three named values a, b, c.
 #
 # The three values are the first three digits of pi (a=3, b=1, c=4),
 # so the expected result is max(3, 1, 4) = 4.
 #
-# Compare trick (same idea as max.toys, but on named values, not an
+# Compare trick (same idea as max_array.toys, but on named values, not an
 # array): to test "x > best", compute x - best. If that subtraction
 # underflows (bit 7 set), then x < best; otherwise x >= best.
 #

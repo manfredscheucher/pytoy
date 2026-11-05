@@ -9,8 +9,9 @@
 # Fix: never branch on a single digit. For each digit compute
 # (entered XOR expected) — which is 0 exactly when the digit matches — and OR
 # all four together into `diff`. `diff` is 0 iff every digit matched. Only ONE
-# conditional, at the very end. Every run executes the same instructions in the
-# same order regardless of input, so the timing no longer depends on the PIN.
+# conditional, at the very end. Up to that branch every run executes the same
+# instructions in the same order, so the timing no longer reveals which digit
+# was wrong.
 #
 #   right PIN -> "succ", acc = 42   (the Answer, revealed)
 #   wrong PIN -> "fail", acc = 0

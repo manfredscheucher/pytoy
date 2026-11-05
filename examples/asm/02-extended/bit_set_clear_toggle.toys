@@ -1,3 +1,5 @@
+# result: 1
+# steps: 10
 # set / clear / toggle bit 3 (mask 00001000) of x
 # x=00000001 -> set:00001001 -> toggle:00000001 -> stored in results
         load  x

@@ -1,3 +1,5 @@
+# result: 42
+# steps: 3
 # STORE (00010101) — copy the accumulator into a memory address
 # Watch address `dst` change from 0 to 42 in the memory panel.
 

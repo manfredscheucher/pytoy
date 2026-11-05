@@ -1,9 +1,9 @@
-// greet_name — read a name, write back "Hallo NAME!".
+// greet_name — read a name, write back "Hallo NAME".
 //
 // The greeting "Hallo " (6 characters) is placed at the front of the buffer.
 // read(data + 6) busy-polls `ready`, then reads the name into data[6..] and
 // returns its length k. We write k + 6 bytes out, so the greeting and the name
-// (plus whatever trailing character the user supplied) go to the io cells.
+// go to the io cells. No '!' is appended (unlike greet_name.toys).
 //
 // In the GUI: type one character per cell (io0, io1, ...), set `ready` to the
 // number of characters, and the program greets you. ascii view by default.

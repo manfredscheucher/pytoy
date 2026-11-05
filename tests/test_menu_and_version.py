@@ -126,23 +126,13 @@ def test_save_formats_with_c(build_debugger):
     assert set(exts) == {".toyo", ".toys", ".toyc"}
 
 
-def test_toyo_save_reflects_live_memory(build_debugger, tmp_path, monkeypatch):
-    """A .toyo Save must write the LIVE bytes, so a hand-edited cell is saved —
-    not the stale assembled image. Build the .toyo listing from self.mem (what
-    _save_clicked does) and check the edited byte is present."""
+def test_toyo_save_holds_hand_edits_not_run_stores(build_debugger):
+    """A .toyo Save writes the program as built plus the hand edits, as plain
+    integers; what a run stored stays out."""
     win = build_debugger()
-    win.mem[7] = 123                     # simulate a hand edit / runtime store
-    # mirror _save_clicked's .toyo branch: re-read listing bytes from live mem
-    live = []
-    for addr, blist, orig, is_data in win.listing:
-        if addr is None:
-            live.append((addr, blist, orig, is_data))
-        else:
-            live.append((addr, [win.mem[(addr + k) % 256]
-                                 for k in range(len(blist))], orig, is_data))
-    from pytoy.assembler import export
-    out = tmp_path / "out.toyo"
-    export(live, win.syms, win.mem, str(out), quiet=True)
-    text = out.read_text()
-    # address 7 now holds 123 = 0b01111011; its row must show that byte
-    assert "01111011" in text, "edited byte not in saved .toyo"
+    win.mem[7] = 123                     # a run stored this
+    win.hand_edits = {9: 77}             # a hand edit
+    values = [int(x) for x in win._bytecode_text().split()]
+    assert values[9] == 77
+    assert len(values) == 10
+    assert values[7] == win.mem_original[7]

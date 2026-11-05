@@ -1,7 +1,9 @@
-# gcd.toys
+# result: 12
+# steps: 32
+# gcd_iter.toys
 # Greatest common divisor by subtraction (Euclid):
 #   while a != b: if a > b: a -= b  else: b -= a
-# gcd(48, 36) = 12.  Values 0..127 (msb is used as the sign for a > b).
+# gcd(48, 36) = 12.  Values 1..127 (msb is used as the sign for a > b).
 
 loop:   load  a
         sub   b

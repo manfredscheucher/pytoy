@@ -1,3 +1,5 @@
+# result: 240
+# steps: 3
 # NOT (00001111) — bitwise NOT of the accumulator
 # 00001111 (15) becomes 11110000 (240).
 

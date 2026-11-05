@@ -1,4 +1,5 @@
 // expect: 0
+// steps: toycc 24, minicc 27
 /*
  * msb_shift_vs_mask.toyc - two ways to read the top bit (bit 7) of a byte.
  *

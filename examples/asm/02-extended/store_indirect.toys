@@ -1,3 +1,5 @@
+# result: 42
+# steps: 6
 # store indirect: write val into data[i]  (watch data[3]: 0 -> 42)
         load  base
         add   i

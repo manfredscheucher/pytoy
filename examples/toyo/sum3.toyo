@@ -2,6 +2,8 @@
 #
 # ADDR  BYTES                   SOURCE
 # ────────────────────────────────────────────────────────
+#                                # result: 8
+#                                # steps: 4
 #                                # sum3.toys
 #                                # Adds three named values: a + b + c.
 #                                #
@@ -9,7 +11,7 @@
 #                                # so the expected result is 3 + 1 + 4 = 8.
 #                                #
 #                                # No loop needed -- just load the first, add the other two.
-#                                # (For summing a whole array, see sum.toys.)
+#                                # (For summing a whole array, see sum_array.toys.)
 #                                
      0   00010100  00000111              load  a         # acc = a
      2   00010110  00001000              add   b         # acc = a + b
@@ -25,3 +27,19 @@
 #   a               =   7  (00000111)
 #   b               =   8  (00001000)
 #   c               =   9  (00001001)
+#   io0             = 240  (11110000)
+#   io1             = 241  (11110001)
+#   io2             = 242  (11110010)
+#   io3             = 243  (11110011)
+#   io4             = 244  (11110100)
+#   io5             = 245  (11110101)
+#   io6             = 246  (11110110)
+#   io7             = 247  (11110111)
+#   io8             = 248  (11111000)
+#   io9             = 249  (11111001)
+#   io10            = 250  (11111010)
+#   io11            = 251  (11111011)
+#   io12            = 252  (11111100)
+#   io13            = 253  (11111101)
+#   io14            = 254  (11111110)
+#   ready           = 255  (11111111)

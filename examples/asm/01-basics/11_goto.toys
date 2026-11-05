@@ -1,3 +1,5 @@
+# result: 42
+# steps: 3
 # GOTO (00011000) — unconditional jump to a program address
 # Jumps over the middle LOAD, so acc ends up 42, not 99.
 

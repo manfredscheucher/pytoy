@@ -1,4 +1,6 @@
-# fibonacci.toys
+# result: 13
+# steps: 81
+# fibonacci_iter.toys
 # Computes the n-th Fibonacci number
 # Result ends up in the accumulator
 #
@@ -7,6 +9,9 @@
 #   for i in range(n):
 #       b = a + b
 #       a = b - a   (= old b, no temp needed)
+#
+# The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
+# fib(6)=8, fib(7)=13. Here n = 7, so ACC = 13.
 #
 # Note: fib(14) = 377 > 255, so n > 13 causes overflow
 #

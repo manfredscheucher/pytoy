@@ -70,6 +70,16 @@ example via the Load button. Pass a `.toys` and it assembles first; pass a
 instead — that mode needs no PySide6. Run `python3 run.py sim -h` for all
 options.
 
+## minisim
+
+`pytoy/minisim.py` is a tiny standalone simulator: it reads a bytecode file (Save
+-> Bytecode: one integer per line), runs it to STOP and prints every step, with
+`-v` also a memory dump. No I/O.
+
+```bash
+python3 pytoy/minisim.py tests/fixtures/fibonacci.txt -v
+```
+
 ## A taste of the syntax
 
 ```

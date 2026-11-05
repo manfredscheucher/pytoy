@@ -1,18 +1,22 @@
-// expect: 55
+// expect: 13
+// steps: toycc 2121
 /*
- * fibonacci_rec.c - the n-th Fibonacci number, RECURSIVE.
+ * fibonacci_rec.toyc - the n-th Fibonacci number, RECURSIVE.
  *
  * fibonacci_rec(n) = n                              if n < 2
  *                  = fibonacci_rec(n-1) + fibonacci_rec(n-2)   otherwise
  *
- * The iterative version is in fibonacci_iter.toyc; both compute fib(10) = 55.
+ * The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
+ * fib(6)=8, fib(7)=13.
+ *
+ * The iterative version is in fibonacci_iter.toyc; both compute fib(7) = 13.
  *
  * The Toy CPU has no call/return and no stack, yet toycc compiles this real
  * recursion by giving each function fixed global slots and bracketing every
  * call with save/restore of the caller's live-across slots on a stack that
- * grows down from the top of memory (see the manual).
+ * grows down from address 239, just below the I/O region (see the manual).
  *
- * Expected result: ACC = 55
+ * Expected result: ACC = 13
  */
 
 int fibonacci_rec(int n) {
@@ -23,5 +27,5 @@ int fibonacci_rec(int n) {
 }
 
 int main(void) {
-    return fibonacci_rec(10);
+    return fibonacci_rec(7);
 }

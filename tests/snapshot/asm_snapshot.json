@@ -7,7 +7,7 @@
       "x": 42,
       "y": 99
     },
-    "steps": 1
+    "steps": 2
   },
   "01-basics/01_right": {
     "assembled": true,
@@ -16,7 +16,7 @@
     "memory": {
       "x": 4
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/02_left": {
     "assembled": true,
@@ -25,7 +25,7 @@
     "memory": {
       "x": 4
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/03_not": {
     "assembled": true,
@@ -34,7 +34,7 @@
     "memory": {
       "x": 15
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/04_and": {
     "assembled": true,
@@ -44,7 +44,7 @@
       "x": 204,
       "y": 170
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/05_or": {
     "assembled": true,
@@ -54,7 +54,7 @@
       "x": 204,
       "y": 170
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/06_xor": {
     "assembled": true,
@@ -64,7 +64,7 @@
       "x": 204,
       "y": 170
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/07_load": {
     "assembled": true,
@@ -73,7 +73,7 @@
     "memory": {
       "x": 42
     },
-    "steps": 1
+    "steps": 2
   },
   "01-basics/08_store": {
     "assembled": true,
@@ -83,7 +83,7 @@
       "dst": 42,
       "x": 42
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/09_add": {
     "assembled": true,
@@ -93,7 +93,7 @@
       "x": 40,
       "y": 2
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/10_sub": {
     "assembled": true,
@@ -103,7 +103,7 @@
       "x": 50,
       "y": 8
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/11_goto": {
     "assembled": true,
@@ -113,7 +113,7 @@
       "x": 42,
       "y": 99
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/12_ifzero": {
     "assembled": true,
@@ -123,7 +123,7 @@
       "x": 0,
       "y": 99
     },
-    "steps": 2
+    "steps": 3
   },
   "01-basics/13_nop": {
     "assembled": true,
@@ -132,7 +132,7 @@
     "memory": {
       "x": 42
     },
-    "steps": 2
+    "steps": 3
   },
   "02-extended/bit_set_clear_toggle": {
     "assembled": true,
@@ -146,7 +146,7 @@
       "r_toggle": 1,
       "x": 1
     },
-    "steps": 9
+    "steps": 10
   },
   "02-extended/compare_less": {
     "assembled": true,
@@ -159,7 +159,7 @@
       "sign": 128,
       "zero": 0
     },
-    "steps": 5
+    "steps": 6
   },
   "02-extended/divide": {
     "assembled": true,
@@ -172,7 +172,7 @@
       "q": 3,
       "sign": 128
     },
-    "steps": 38
+    "steps": 39
   },
   "02-extended/load_indirect": {
     "assembled": true,
@@ -194,7 +194,7 @@
       "load": 20,
       "patch": 16
     },
-    "steps": 4
+    "steps": 5
   },
   "02-extended/modulo": {
     "assembled": true,
@@ -205,7 +205,7 @@
       "b": 6,
       "sign": 128
     },
-    "steps": 29
+    "steps": 30
   },
   "02-extended/msb_shift_vs_mask": {
     "assembled": true,
@@ -219,7 +219,7 @@
       "x": 200,
       "zero_v": 0
     },
-    "steps": 17
+    "steps": 18
   },
   "02-extended/multiply_doubling": {
     "assembled": true,
@@ -231,7 +231,7 @@
       "one": 1,
       "res": 42
     },
-    "steps": 42
+    "steps": 43
   },
   "02-extended/multiply_repeated": {
     "assembled": true,
@@ -243,7 +243,7 @@
       "one": 1,
       "res": 42
     },
-    "steps": 59
+    "steps": 60
   },
   "02-extended/negate": {
     "assembled": true,
@@ -253,7 +253,7 @@
       "x": 5,
       "zero": 0
     },
-    "steps": 2
+    "steps": 3
   },
   "02-extended/store_indirect": {
     "assembled": true,
@@ -271,7 +271,7 @@
       "store": 21,
       "val": 42
     },
-    "steps": 5
+    "steps": 6
   },
   "02-extended/switch": {
     "assembled": true,
@@ -284,7 +284,7 @@
       "x": 2,
       "zero": 0
     },
-    "steps": 9
+    "steps": 10
   },
   "03-programs/fibonacci_iter": {
     "assembled": true,
@@ -296,22 +296,22 @@
       "n": 0,
       "one": 1
     },
-    "steps": 80
+    "steps": 81
   },
   "03-programs/fibonacci_rec": {
     "assembled": true,
-    "final_acc": 3,
+    "final_acc": 13,
     "hit_cap": false,
     "memory": {
       "198": 2,
-      "199": 2,
-      "200": 1,
+      "199": 5,
+      "200": 3,
       "201": 2,
-      "202": 0,
-      "203": 0,
-      "204": 0,
-      "205": 0,
-      "206": 0,
+      "202": 3,
+      "203": 1,
+      "204": 2,
+      "205": 1,
+      "206": 2,
       "207": 0,
       "208": 0,
       "209": 0,
@@ -324,40 +324,40 @@
       "216": 0,
       "217": 0,
       "fret1": 1,
-      "fscr": 1,
-      "input": 4,
+      "fscr": 5,
+      "input": 7,
       "lo6": 20,
       "lo7": 20,
       "lop": 20,
       "lop2": 20,
       "mk": 0,
-      "nloc": 0,
+      "nloc": 1,
       "nm1": 1,
-      "nm2": 0,
+      "nm2": 1,
       "one": 1,
-      "pa1": 200,
-      "pa2": 201,
-      "pa3": 200,
-      "pa4": 201,
-      "pa5": 202,
+      "pa1": 205,
+      "pa2": 206,
+      "pa3": 203,
+      "pa4": 204,
+      "pa5": 205,
       "pa6": 197,
       "pa7": 195,
-      "pka": 202,
-      "pka2": 199,
-      "result": 3,
+      "pka": 205,
+      "pka2": 202,
+      "result": 13,
       "seedm": 0,
-      "seedn": 4,
+      "seedn": 7,
       "so1": 21,
       "so2": 21,
       "so3": 21,
       "so4": 21,
       "so5": 21,
       "sp": 195,
-      "stackbase": 2,
+      "stackbase": 8,
       "two": 2,
       "zero": 0
     },
-    "steps": 446
+    "steps": 2145
   },
   "03-programs/gcd_iter": {
     "assembled": true,
@@ -368,7 +368,7 @@
       "b": 12,
       "sign": 128
     },
-    "steps": 31
+    "steps": 32
   },
   "03-programs/max3": {
     "assembled": true,
@@ -381,7 +381,7 @@
       "c": 4,
       "mask": 128
     },
-    "steps": 14
+    "steps": 15
   },
   "03-programs/max_array": {
     "assembled": true,
@@ -404,7 +404,7 @@
       "one": 1,
       "ptr": 47
     },
-    "steps": 114
+    "steps": 115
   },
   "03-programs/sort3": {
     "assembled": true,
@@ -417,7 +417,7 @@
       "mask": 128,
       "t": 3
     },
-    "steps": 19
+    "steps": 20
   },
   "03-programs/sort_array_inline": {
     "assembled": true,
@@ -453,7 +453,7 @@
       "stj1_arg": 98,
       "stj_arg": 97
     },
-    "steps": 1955
+    "steps": 1956
   },
   "03-programs/sum3": {
     "assembled": true,
@@ -464,7 +464,7 @@
       "b": 1,
       "c": 4
     },
-    "steps": 3
+    "steps": 4
   },
   "03-programs/sum_array": {
     "assembled": true,
@@ -485,7 +485,7 @@
       "ptr": 35,
       "result": 25
     },
-    "steps": 89
+    "steps": 90
   },
   "03-programs/times7_doubling": {
     "assembled": true,
@@ -496,7 +496,7 @@
       "b": 8,
       "c": 16
     },
-    "steps": 9
+    "steps": 10
   },
   "04-io/countdown": {
     "assembled": true,
@@ -518,7 +518,7 @@
       "n": 0,
       "one": 1
     },
-    "steps": 113
+    "steps": 114
   },
   "04-io/fibonacci_io": {
     "assembled": true,
@@ -548,7 +548,7 @@
       "next": 98,
       "one": 1
     },
-    "steps": 270
+    "steps": 271
   },
   "04-io/hello_world": {
     "assembled": true,
@@ -580,7 +580,7 @@
       "sp": 32,
       "w": 119
     },
-    "steps": 24
+    "steps": 25
   },
   "04-io/numbers": {
     "assembled": true,
@@ -618,7 +618,7 @@
       "io8": 8,
       "io9": 9
     },
-    "steps": 30
+    "steps": 31
   },
   "04-io/numbers_ascii": {
     "assembled": true,
@@ -656,7 +656,7 @@
       "io8": 8,
       "io9": 9
     },
-    "steps": 30
+    "steps": 31
   },
   "04-io/numbers_hex": {
     "assembled": true,
@@ -694,6 +694,6 @@
       "io8": 8,
       "io9": 9
     },
-    "steps": 30
+    "steps": 31
   }
 }

@@ -1,3 +1,5 @@
+# result: 136
+# steps: 3
 # AND (00010001) — bitwise AND of accumulator with a memory value
 # 11001100 AND 10101010 = 10001000.
 

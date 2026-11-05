@@ -1,6 +1,7 @@
 // expect: 10
+// steps: toycc 421
 /*
- * count_rec.c - count up to 10 RECURSIVELY.
+ * count_rec.toyc - count up to 10 RECURSIVELY.
  *
  * f(n) = 0            if n == 0
  *      = f(n - 1) + 1 otherwise

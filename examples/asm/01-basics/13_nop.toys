@@ -1,3 +1,5 @@
+# result: 42
+# steps: 3
 # NOP (10000000) — do nothing, just advance to the next instruction
 
         load  x         # acc = 42

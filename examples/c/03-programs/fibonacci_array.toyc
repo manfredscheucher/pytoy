@@ -1,6 +1,7 @@
 // expect: 34
+// steps: toycc 278, minicc 392
 /*
- * fibonacci_array.c - fill an array with the first 10 Fibonacci numbers.
+ * fibonacci_array.toyc - fill an array with the first 10 Fibonacci numbers.
  *
  * a[0]=0, a[1]=1, then a[i] = a[i-1] + a[i-2]. The array ends up holding
  * 0 1 1 2 3 5 8 13 21 34, and main returns the last one, a[9] = 34.

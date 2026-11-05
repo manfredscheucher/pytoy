@@ -1,6 +1,7 @@
 // expect: 8
+// steps: toycc 28, minicc 33
 /*
- * sum3.c - add three values a + b + c.
+ * sum3.toyc - add three values a + b + c.
  *
  * The simplest possible use of a helper function: sum3(a, b, c) returns their
  * sum. The three values are the first three digits of pi (3, 1, 4). For summing

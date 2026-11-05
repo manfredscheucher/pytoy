@@ -1,3 +1,5 @@
+# result: 42
+# steps: 2
 # STOP (00000000) — halt execution
 # The CPU runs until STOP. Everything after it is never executed.
 

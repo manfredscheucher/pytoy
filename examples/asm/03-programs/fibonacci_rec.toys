@@ -1,8 +1,13 @@
+# result: 13
+# steps: 2145
 # Recursive Fibonacci, Toy CPU. fib(n)=n if n<2 else fib(n-1)+fib(n-2) mod 256.
 # Real stack via sp + self-modifying indirect load/store.
 # Frame (pushed by caller): [marker][n]. markers: 0=top,1=after fib(n-1),2=after fib(n-2).
 # The top frame is pre-allocated as data; the entry code seeds its n from
 # `input`, so you only set `input` to choose which fib(n) to compute.
+# Here input = 7, so ACC = fib(7) = 13.
+# The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
+# fib(6)=8, fib(7)=13.
 
 # ---------------- entry: seed the top frame's n from input ----------------
         load  input
@@ -129,7 +134,7 @@ top:    load  result
 zero:   0
 one:    1
 two:    2
-input:  4
+input:  7
 result: 0
 mk:     0
 nloc:   0

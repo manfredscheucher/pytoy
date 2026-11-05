@@ -1,6 +1,7 @@
 // expect: 12
+// steps: toycc 175
 /*
- * gcd_rec.c - greatest common divisor, RECURSIVE (subtraction algorithm).
+ * gcd_rec.toyc - greatest common divisor, RECURSIVE (subtraction algorithm).
  *
  * The iterative version is in gcd_iter.toyc; both compute the same result.
  * toycc compiles recursion with a self-modifying-code stack (see the manual).

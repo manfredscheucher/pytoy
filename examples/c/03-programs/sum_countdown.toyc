@@ -1,6 +1,7 @@
 // expect: 15
+// steps: toycc 66
 /*
- * countdown.c - count down from 5 and accumulate the sum 5+4+3+2+1.
+ * sum_countdown.toyc - count down from 5 and accumulate the sum 5+4+3+2+1.
  *
  * Demonstrates a while loop with a decrementing counter and +=.
  * 5 + 4 + 3 + 2 + 1 = 15.

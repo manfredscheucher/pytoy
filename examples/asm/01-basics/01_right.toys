@@ -1,3 +1,5 @@
+# result: 2
+# steps: 3
 # RIGHT (00000001) — shift accumulator right by 1
 # 00000100 (4) becomes 00000010 (2).
 

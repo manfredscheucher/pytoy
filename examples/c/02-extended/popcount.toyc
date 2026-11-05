@@ -1,6 +1,7 @@
 // expect: 3
+// steps: toycc 120, minicc 163
 /*
- * popcount.c - count the set bits (1-bits) of a number.
+ * popcount.toyc - count the set bits (1-bits) of a number.
  *
  * Look at the lowest bit, add it to the count, then shift right; repeat until
  * the number is zero. The lowest bit is x & 1 (the Toy CPU has no `%`, but

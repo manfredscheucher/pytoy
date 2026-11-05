@@ -1,4 +1,4 @@
-# fibonacci.toys — compute fib(0..13) and write them to io0..io13 (decimal).
+# fibonacci_io.toys — compute fib(0..13) and write them to io0..io13 (decimal).
 # fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2).  fib(13)=233 is the largest that
 # still fits in one byte (fib(14)=377 would overflow).
 #

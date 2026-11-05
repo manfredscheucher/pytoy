@@ -219,6 +219,12 @@ def show_assembly(listing, syms, mem):
 
 # ── Export ─────────────────────────────────────────────────────────────────
 
+def bytecode_text(mem):
+    """The bytecode file for a memory image: one integer per line, up to the last
+    non-zero cell (cells after that are 0). What the GUI's Save writes."""
+    last = max((a for a, v in enumerate(mem) if v), default=-1)
+    return "".join(f"{v}\n" for v in mem[:last + 1])
+
 def export(listing, syms, mem, path, quiet=False):
     """Write the compiled byte listing to `path` as a .toyo file.
 
