@@ -19,7 +19,7 @@ def run(mem, verbose=False):
         print(f"step={steps} acc={acc} pc={pc} op={op}")
         if verbose:
             for i in range(0, 256, 16):
-                print(f"x_{i:03}...x_{i + 15:03}:" + "".join(f" {x:3}" for x in mem[i:i + 16]))
+                print(f"x_{i:03}...x_{i + 15:03}: " + "".join(f"{mem[a]:3}{'*' if a == pc else ' '}" for a in range(i, i + 16)))
         if op == 0:
             print(f"stopped after {steps} step{'' if steps == 1 else 's'}, acc={acc}")
             return acc, steps

@@ -36,13 +36,14 @@ def test_one_step_is_singular(capsys):
     assert capsys.readouterr().out.endswith("stopped after 1 step, acc=0\n")
 
 
-def test_verbose_dumps_16_rows_of_78_chars(capsys):
+def test_verbose_dumps_16_rows_and_marks_the_pc(capsys):
     run(load(PROGRAM), verbose=True)
     lines = capsys.readouterr().out.splitlines()
-    assert lines[1] == "x_000...x_015:  20   6   3  22   6   0  21" + "   0" * 9
-    assert lines[16] == "x_240...x_255:" + "   0" * 16
-    assert all(len(l) == 78 for l in lines[1:17])
+    assert lines[1] == "x_000...x_015:  20*  6   3  22   6   0  21 " + "  0 " * 9
+    assert lines[16] == "x_240...x_255: " + "  0 " * 16
+    assert all(len(l) == 79 for l in lines[1:17])
     assert lines[17].startswith("step=2 ")
+    assert lines[18] == "x_000...x_015:  20   6   3* 22   6   0  21 " + "  0 " * 9
 
 
 def test_load_allows_comments_and_fills_with_zeros():
