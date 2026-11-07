@@ -11,7 +11,7 @@
         store patch
 
         load  val
-store:  21                # store opcode
+        21                # store opcode
 patch:  0                 # <- address of data[i], patched above
         stop
 

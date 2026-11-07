@@ -1,9 +1,8 @@
 // example: greet by name
-// description: Reads a name from the io cells and writes "Hallo NAME" back.
+// description: Reads a name and writes "Hallo NAME" back. Names over 9 characters overflow.
 // pytoy: output=ascii
 
 // Input: type one character per cell into io0, io1, ..., then set ready (mem[255]) to the count.
-// The output needs 6 + n of the 15 io cells, so names fit up to 9 characters.
 
 int main(void) {
     int data[16];

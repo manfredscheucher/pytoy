@@ -1,6 +1,6 @@
 # example: recursive Fibonacci
 # description: Computes fib(7) recursively on a self-modifying-code stack.
-# steps: 2145
+# steps: 2004
 # result: 13
 
 # Frame, pushed by the caller: [marker][n]. Marker: 0 = top, 1 = after fib(n-1), 2 = after fib(n-2).
@@ -15,7 +15,7 @@
 fib:    load  sp
         sub   one           # address of this frame's n
         store pka
-lop:    20                  # load opcode
+        20                  # load opcode
 pka:    0                   # <- address of n, patched above
         store nloc          # nloc = n
 
@@ -30,15 +30,12 @@ r1:     load  one
 rec:    load  nloc
         sub   one
         store nm1           # nm1 = n-1
-        load  nloc
-        sub   two
-        store nm2           # nm2 = n-2
 
         # push marker=1
         load  sp
         store pa1
         load  one
-so1:    21                  # store opcode
+        21                  # store opcode
 pa1:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
@@ -47,7 +44,7 @@ pa1:    0                   # <- address of the stack top, patched above
         load  sp
         store pa2
         load  nm1
-so2:    21                  # store opcode
+        21                  # store opcode
 pa2:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
@@ -60,8 +57,7 @@ r1site: store fret1         # acc = fib(n-1); safe in a global, no call before t
         load  sp
         sub   one
         store pka2
-        load  zero
-lop2:   20                  # load opcode
+        20                  # load opcode
 pka2:   0                   # <- address of n, patched above
         sub   two
         store nm2           # nm2 = n-2
@@ -69,7 +65,7 @@ pka2:   0                   # <- address of n, patched above
         load  sp
         store pa3
         load  fret1
-so3:    21                  # store opcode
+        21                  # store opcode
 pa3:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
@@ -78,7 +74,7 @@ pa3:    0                   # <- address of the stack top, patched above
         load  sp
         store pa4
         load  two
-so4:    21                  # store opcode
+        21                  # store opcode
 pa4:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
@@ -87,7 +83,7 @@ pa4:    0                   # <- address of the stack top, patched above
         load  sp
         store pa5
         load  nm2
-so5:    21                  # store opcode
+        21                  # store opcode
 pa5:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
@@ -99,8 +95,7 @@ r2site: store fscr          # acc = fib(n-2)
         sub   one
         store sp            # pop
         store pa6
-        load  zero
-lo6:    20                  # load opcode
+        20                  # load opcode
 pa6:    0                   # <- address of saved fib(n-1), patched above
         add   fscr          # fib(n-1)+fib(n-2)
 
@@ -110,8 +105,7 @@ ret:    store result
         sub   two           # pop n and marker
         store sp
         store pa7           # sp points at the marker
-        load  zero
-lo7:    20                  # load opcode
+        20                  # load opcode
 pa7:    0                   # <- address of the marker, patched above
         store mk
         ifzero top          # marker 0 -> top level
@@ -128,7 +122,6 @@ top:    load  result
         stop
 
 # data
-zero:   0
 one:    1
 two:    2
 input:  7
@@ -142,7 +135,7 @@ fscr:   0
 sp:     stackbase
 # The top frame sits just below stackbase: [marker=0][n=input].
 # sp = stackbase points at the next free slot; sp-1 is n.
-seedm:  0            # top-frame marker (stackbase-2)
+        0            # top-frame marker (stackbase-2)
 seedn:  0            # top-frame n, set from `input` at entry (stackbase-1)
 stackbase: 0
         0

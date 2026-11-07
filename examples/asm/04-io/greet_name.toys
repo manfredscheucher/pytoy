@@ -1,10 +1,9 @@
 # example: greet by name
-# description: Reads a name from the io cells and writes "hallo NAME!" back.
+# description: Reads a name and writes "hallo NAME!" back. Names over 8 characters overflow.
 # pytoy: output=ascii
 
 # Input: type one character per cell into io0, io1, ..., then set ready (mem[255]) to the count.
 # The name goes to scratch first because writing "hallo " overwrites io0..io5.
-# The output needs 6 + n + 1 of the 15 io cells, so names fit up to 8 characters.
 
         # busy-poll until ready != 0, then n = ready
 wait:   load  ready
@@ -93,7 +92,6 @@ bangarg: 0                   # <- address of io[6+n], patched above
         stop
 
 # data
-zero:    0
 one:     1
 n:       0
 cnt:     0

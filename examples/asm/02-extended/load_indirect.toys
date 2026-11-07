@@ -9,7 +9,7 @@
         add   i
         store patch
 
-load:   20                # load opcode
+        20                # load opcode
 patch:  0                 # <- address of data[i], patched above
         stop
 

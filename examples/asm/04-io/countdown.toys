@@ -7,7 +7,7 @@ wloop:  load  n
 
         # write n to io[i] via a patched store
         load  n
-iop:    21                # store opcode
+        21                # store opcode
 iarg:   240               # <- address of io[i], patched each pass (starts at io0)
 
         load  iarg

@@ -4,14 +4,12 @@
 
 # fib(14) = 377 does not fit in a byte, so the output stops at fib(13) = 233.
 
-        load  a
 wloop:  load  count
         ifzero done
 
         # write a to io[i] via a patched store
         load  a
-        store ival        # never read: the patched store writes acc
-iop:    21                # store opcode
+        21                # store opcode
 iarg:   240               # <- address of io[i], patched each pass (starts at io0)
 
         load  iarg
@@ -41,4 +39,3 @@ b:     1            # fib(i+1)
 next:  0
 count: 14           # values left to write
 one:   1
-ival:  0

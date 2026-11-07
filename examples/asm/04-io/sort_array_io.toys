@@ -1,5 +1,5 @@
 # example: sort numbers from input
-# description: Reads up to 15 numbers from the io cells and writes them back sorted.
+# description: Reads up to 15 numbers and writes them back sorted. More than 15 overflow.
 # pytoy: output=decimal
 
 # Input: type the values into io0, io1, ..., then set ready (mem[255]) to their count.
@@ -140,7 +140,6 @@ done:   load  arr            # smallest value
         stop
 
 # data
-zero:     0
 one:      1
 mask:     128          # 10000000
 iobase:   240          # io0

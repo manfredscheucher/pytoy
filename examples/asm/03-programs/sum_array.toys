@@ -13,7 +13,7 @@
 loop:   load  count
         ifzero done
 
-iop:    20                # load opcode
+        20                # load opcode
 iarg:   0                 # <- address of arr[i], patched each pass
         add   result
         store result      # result += arr[i]
