@@ -1,39 +1,18 @@
-# pin_check_hardened.toys — the 1337 PIN check, made constant-time.
-#
-# The naive pin_check (see pin_check.toys) bails on the first wrong digit with
-# an IFZERO/GOTO per digit. That early-out leaks timing: a wrong first digit
-# stops sooner than a wrong last digit, so an attacker measuring steps can
-# recover the PIN digit by digit — 4*10 tries instead of 10^4. See the security
-# slides and doc/design/pin-security.md.
-#
-# Fix: never branch on a single digit. For each digit compute
-# (entered XOR expected) — which is 0 exactly when the digit matches — and OR
-# all four together into `diff`. `diff` is 0 iff every digit matched. Only ONE
-# conditional, at the very end. Up to that branch every run executes the same
-# instructions in the same order, so the timing no longer reveals which digit
-# was wrong.
-#
-#   right PIN -> "succ", acc = 42   (the Answer, revealed)
-#   wrong PIN -> "fail", acc = 0
-#
-# Residual weakness (slides): the single final `ifzero` is now the one spot a
-# fault-injection attack targets — before, skipping the check meant beating
-# four separate compares; now there is just one. Constant time kills the timing
-# channel, it does not make the check fault-proof.
-#
-# GUI usage (ASCII input): type the four digits into io0..io3, then set `ready`
-# (255) to any non-zero value to submit.
-#
+# example: constant-time PIN check
+# description: Checks the PIN in io0..io3 against 1337 with no per-digit branch.
 # pytoy: output=ascii
 
-# ── 1. busy-poll until the user submits (ready != 0) ──────────────
+# Input: type the digits into io0..io3 as ASCII, then set ready (mem[255]) to non-zero.
+# Every digit is always compared, so between polling and the final ifzero all runs take the same steps.
+# That one ifzero is the single target for fault injection. See doc/design/pin-security.md.
+
+        # busy-poll until ready != 0
 wait:   load  ready
         ifzero wait
 
-# ── 2. constant-time compare: diff = OR over (io[k] XOR pin[k]) ────
-#    No per-digit branch. Every digit is always compared and folded in.
+        # constant-time compare: diff = or over (io[k] xor pin[k])
         load  io0
-        xor   pin0         # 0 iff digit 0 matches
+        xor   pin0         # 0 exactly when digit 0 matches
         store diff         # diff = (io0 ^ pin0)
 
         load  io1
@@ -51,12 +30,12 @@ wait:   load  ready
         or    diff
         store diff         # diff |= (io3 ^ pin3)
 
-# ── 3. the ONE conditional: diff == 0 iff all four digits matched ──
+        # the only conditional: diff == 0 exactly when all four digits match
         load  diff
         ifzero succ
         goto  fail
 
-# ── 3a. success: write "succ", reveal the answer (acc = 42), stop ─
+        # success: write "succ"
 succ:   load  s_s
         store io0
         load  s_u
@@ -65,10 +44,10 @@ succ:   load  s_s
         store io2
         load  s_c2
         store io3
-        load  answer       # acc = 42, the secret, now revealed
+        load  answer       # reveal the secret
         stop
 
-# ── 3b. failure: write "fail", acc = 0, stop ──────────────────────
+        # failure: write "fail"
 fail:   load  f_f
         store io0
         load  f_a
@@ -80,12 +59,12 @@ fail:   load  f_f
         load  zero         # acc = 0 signals failure
         stop
 
-# ── data ──────────────────────────────────────────────────────────
+# data
 zero:   0
 answer: 42             # the secret behind the PIN
-diff:   0              # accumulated digit differences (0 iff PIN correct)
+diff:   0              # accumulated digit differences
 
-# expected PIN "1337" as ASCII codes
+# PIN "1337" as ASCII codes
 pin0:  49              # '1'
 pin1:  51              # '3'
 pin2:  51              # '3'

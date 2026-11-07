@@ -1,10 +1,12 @@
-# result: 2
+# example: right
+# description: Shifts acc right by 1 bit.
 # steps: 3
-# RIGHT (00000001) — shift accumulator right by 1
-# 00000100 (4) becomes 00000010 (2).
+# result: 2
 
-        load  x         # acc = 4
-        right           # acc = 2
+# Opcode 00000001.
+
+        load  x         # acc = 00000100
+        right           # acc = 00000010
         stop
 
 x:      4

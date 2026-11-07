@@ -1,7 +1,9 @@
-# result: 42
+# example: add
+# description: Adds a memory value to acc.
 # steps: 3
-# ADD (00010110) — add a memory value to the accumulator
-# 40 + 2 = 42.
+# result: 42
+
+# Opcode 00010110.
 
         load  x         # acc = 40
         add   y         # acc = 42

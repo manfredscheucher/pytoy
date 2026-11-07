@@ -1,12 +1,8 @@
-// expect: 5
+// example: if/else
+// description: Subtracts the smaller of a and b from the larger with if/else.
 // steps: toycc 15, minicc 24
-/*
- * if_then_else.toyc - simple if/else demonstration.
- *
- * a = 7, b = 12. Since a < b, the result is b - a = 5.
- *
- * Expected result: ACC = 5
- */
+// result: 5
+
 int main(void) {
     int a = 7;
     int b = 12;

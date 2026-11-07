@@ -1,13 +1,8 @@
-// expect: 15
+// example: countdown sum
+// description: Sums 5 + 4 + 3 + 2 + 1 with += and -=.
 // steps: toycc 66
-/*
- * sum_countdown.toyc - count down from 5 and accumulate the sum 5+4+3+2+1.
- *
- * Demonstrates a while loop with a decrementing counter and +=.
- * 5 + 4 + 3 + 2 + 1 = 15.
- *
- * Expected result: ACC = 15
- */
+// result: 15
+
 int main(void) {
     int i = 5;
     int total = 0;

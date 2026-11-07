@@ -1,45 +1,37 @@
-# result: 4
+# example: largest of three values
+# description: Finds the largest of a, b and c.
 # steps: 15
-# max3.toys
-# Largest of three named values a, b, c.
-#
-# The three values are the first three digits of pi (a=3, b=1, c=4),
-# so the expected result is max(3, 1, 4) = 4.
-#
-# Compare trick (same idea as max_array.toys, but on named values, not an
-# array): to test "x > best", compute x - best. If that subtraction
-# underflows (bit 7 set), then x < best; otherwise x >= best.
-#
-#   best = a
-#   if b > best: best = b
-#   if c > best: best = c
+# result: 4
+
+# The most significant bit (MSB) of b - best acts as its sign: set means b < best.
+# Valid for values 0..127. Whole array: max_array.toys.
 
         load  a
-        store best        # best = a
+        store best
 
-        # compare b vs best
+        # compare b with best
         load  b
-        sub   best        # acc = b - best
-        and   mask        # bit 7 set -> b < best (underflow)
-        ifzero setb       # bit 7 clear -> b >= best -> take b
+        sub   best
+        and   mask        # isolate the MSB
+        ifzero setb       # MSB clear -> b >= best
         goto  chkc
 setb:   load  b
-        store best        # best = b
+        store best
 
-        # compare c vs best
+        # compare c with best
 chkc:   load  c
-        sub   best        # acc = c - best
-        and   mask        # bit 7 set -> c < best
-        ifzero setc       # bit 7 clear -> c >= best -> take c
+        sub   best
+        and   mask        # isolate the MSB
+        ifzero setc       # MSB clear -> c >= best
         goto  done
 setc:   load  c
-        store best        # best = c
+        store best
 
-done:   load  best        # result 4 in accumulator
+done:   load  best
         stop
 
 # data
-mask:   128
+mask:   128               # 10000000
 best:   0
 a:      3
 b:      1

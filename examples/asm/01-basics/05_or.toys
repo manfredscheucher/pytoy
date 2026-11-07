@@ -1,7 +1,9 @@
-# result: 238
+# example: or
+# description: Computes the bitwise or of acc and a memory value.
 # steps: 3
-# OR (00010010) — bitwise OR of accumulator with a memory value
-# 11001100 OR 10101010 = 11101110.
+# result: 238
+
+# Opcode 00010010.
 
         load  x         # acc = 11001100
         or    y         # acc = 11101110

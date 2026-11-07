@@ -151,7 +151,7 @@ python3 run.py cc examples/c/02-extended/multiply_operator.toyc --run
 
 The whole pipeline is exercised by automated tests in `tests/test_toycc.py`,
 run with `pytest`. The tests are *data-driven*: every `examples/c/*.toyc`
-file carries a machine-readable `// expect: N` annotation stating its correct
+file carries a machine-readable `// result: N` annotation stating its correct
 result. For each example the harness runs all three stages
 (`compile_source #sym.arrow assemble #sym.arrow simulate`) and asserts the
 accumulator equals `N`. Adding a new example automatically adds a test.

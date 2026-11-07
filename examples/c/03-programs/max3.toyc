@@ -1,16 +1,9 @@
-// expect: 4
+// example: largest of three values
+// description: Finds the largest of a, b and c.
 // steps: toycc 39, minicc 52
-/*
- * max3.toyc - the largest of three values a, b, c.
- *
- * A helper function max3(a, b, c) using only the `>` comparison. The three
- * values are the first three digits of pi (3, 1, 4). For the maximum of a whole
- * array, see max_array.toyc.
- *
- * max(3, 1, 4) = 4.
- *
- * Expected result: ACC = 4
- */
+// result: 4
+
+// Whole array: max_array.toyc.
 
 int max3(int a, int b, int c) {
     int m = a;

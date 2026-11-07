@@ -1,10 +1,12 @@
-# result: 42
+# example: goto
+# description: Jumps to an address unconditionally.
 # steps: 3
-# GOTO (00011000) — unconditional jump to a program address
-# Jumps over the middle LOAD, so acc ends up 42, not 99.
+# result: 42
+
+# Opcode 00011000.
 
         goto  skip
-        load  y         # skipped
+        load  y         # never runs
 skip:   load  x         # acc = 42
         stop
 

@@ -1,6 +1,9 @@
-# result: 42
+# example: load
+# description: Copies a memory value into acc.
 # steps: 2
-# LOAD (00010100) — copy a memory value into the accumulator
+# result: 42
+
+# Opcode 00010100.
 
         load  x         # acc = 42
         stop

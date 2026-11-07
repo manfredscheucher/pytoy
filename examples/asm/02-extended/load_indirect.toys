@@ -1,12 +1,16 @@
-# result: 9
+# example: load indirect
+# description: Reads data[i] into acc by patching the address of a load.
 # steps: 5
-# load indirect: read data[i] into acc  (i=5 -> pi digit 9)
+# result: 9
+
+# Self-modifying code: the load is written as raw bytes so its address byte can have a label.
+
         load  base
         add   i
-        store patch       # patch the LOAD address below
+        store patch
 
-load:   20                # LOAD opcode
-patch:  0                 # address byte -> data+i
+load:   20                # load opcode
+patch:  0                 # <- address of data[i], patched above
         stop
 
 base:   data

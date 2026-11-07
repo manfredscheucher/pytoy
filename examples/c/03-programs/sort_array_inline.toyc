@@ -1,26 +1,11 @@
-// expect: 1
+// example: bubble sort of an array
+// description: Sorts an array in place with bubble sort; the result is the smallest.
 // steps: toycc 2097
-/*
- * sort_array_inline.toyc - iterative bubble sort of a fixed 10-element array,
- * done inline in main (see sort_array_fn.toyc for the version that
- * passes the array to a function).
- *
- * Port of examples/asm/03-programs/sort_array_inline.toys to C. The array holds the 10 digits of pi
- * (3 1 4 1 5 9 2 6 5 3); after sorting it is 1 1 2 3 3 4 5 5 6 9, so main
- * returns a[0] = 1.
- *
- * toycc compiles the array as a contiguous block of data bytes plus a
- * base-pointer byte, and reaches a[i] with self-modifying code: it computes
- * the element address (base + i), patches it into a raw LOAD/STORE address
- * byte, and executes that instruction (the sum_array.toys / sort_array_inline.toys
- * trick).
- *
- * The // expect annotation only checks ACC (= a[0] = 1); the full sorted array
- * is verified from memory by scripts/verify_bubblesort_c.py and by
- * tests/test_toycc.py::test_bubblesort_full_array.
- *
- * Expected result: ACC = 1
- */
+// result: 1
+
+// a[i] compiles to self-modifying code; by hand: examples/asm/03-programs/sort_array_inline.toys.
+// Sorted: 1 1 2 3 3 4 5 5 6 9. Function version: sort_array_fn.toyc.
+
 int main(void) {
     int a[10] = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};
     int n = 10;
@@ -30,7 +15,7 @@ int main(void) {
     i = 0;
     while (i < n) {
         j = 0;
-        while (j < n - 1 - i) {   /* after pass i the last i are in place */
+        while (j < n - 1 - i) {   // the last i are already in place
             if (a[j] > a[j + 1]) {
                 t = a[j];
                 a[j] = a[j + 1];

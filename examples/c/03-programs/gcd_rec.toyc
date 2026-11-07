@@ -1,15 +1,11 @@
-// expect: 12
+// example: recursive GCD by subtraction
+// description: Computes gcd(48, 36) recursively with Euclid's subtraction algorithm.
 // steps: toycc 175
-/*
- * gcd_rec.toyc - greatest common divisor, RECURSIVE (subtraction algorithm).
- *
- * The iterative version is in gcd_iter.toyc; both compute the same result.
- * toycc compiles recursion with a self-modifying-code stack (see the manual).
- *
- * gcd(48, 36) = gcd(12, 36) = gcd(12, 24) = gcd(12, 12) = 12.
- *
- * Expected result: ACC = 12
- */
+// result: 12
+
+// Trace: (48, 36) -> (12, 36) -> (12, 24) -> (12, 12), then a == b.
+// toycc compiles recursion with a self-modifying-code stack (see the manual).
+// Iterative version: gcd_iter.toyc.
 
 int gcd_rec(int a, int b) {
     if (a == b) {

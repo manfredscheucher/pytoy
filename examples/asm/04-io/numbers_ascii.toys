@@ -1,10 +1,9 @@
-# numbers_ascii.toys — write 0,1,2,...,14 into the output cells io0..io14.
-# Same bytes as numbers.toys, but the I/O panel opens in ascii mode. Codes 0..14
-# are control characters (no visible glyph) — this file is here to show that the
-# raw bytes are unchanged; only the display format differs. Switch the
-# View → I/O format menu to decimal/binary/hex to read them.
-#
+# example: numbers in ASCII
+# description: Writes 0..14 to io0..io14, displayed as ASCII.
 # pytoy: output=ascii
+
+# Same bytes as numbers.toys; codes 0..14 are control characters, so no cell shows a visible character.
+# Switch the View > I/O format menu to read them.
 
         load  c0
         store io0
@@ -38,7 +37,7 @@
         store io14
         stop
 
-# data: the constants 0..14
+# data
 c0:  0
 c1:  1
 c2:  2

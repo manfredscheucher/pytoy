@@ -1,48 +1,45 @@
-# result: 13
+# example: recursive Fibonacci
+# description: Computes fib(7) recursively on a self-modifying-code stack.
 # steps: 2145
-# Recursive Fibonacci, Toy CPU. fib(n)=n if n<2 else fib(n-1)+fib(n-2) mod 256.
-# Real stack via sp + self-modifying indirect load/store.
-# Frame (pushed by caller): [marker][n]. markers: 0=top,1=after fib(n-1),2=after fib(n-2).
-# The top frame is pre-allocated as data; the entry code seeds its n from
-# `input`, so you only set `input` to choose which fib(n) to compute.
-# Here input = 7, so ACC = fib(7) = 13.
-# The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
-# fib(6)=8, fib(7)=13.
+# result: 13
 
-# ---------------- entry: seed the top frame's n from input ----------------
+# Frame, pushed by the caller: [marker][n]. Marker: 0 = top, 1 = after fib(n-1), 2 = after fib(n-2).
+# The top frame is preallocated as data; set `input` to choose n. Iterative version: fibonacci_iter.toys.
+
+        # entry: seed the top frame's n from input
         load  input
-        store seedn        # top-frame n = input (no manual sync needed)
+        store seedn
         goto  fib
 
-# ---------------- fib body ----------------
+        # fib body: n is read from the frame at sp-1
 fib:    load  sp
-        sub   one          # acc = sp-1  (address of this frame's n)
-        store pka          # patch indirect-load address
-lop:    20                 # LOAD opcode (raw byte)
-pka:    0                  # <- address of n, patched above
-        store nloc         # nloc = n
+        sub   one           # address of this frame's n
+        store pka
+lop:    20                  # load opcode
+pka:    0                   # <- address of n, patched above
+        store nloc          # nloc = n
 
-        ifzero ret         # n==0 -> result 0 (acc already 0), return
+        ifzero ret          # n == 0 -> result 0 (acc already 0)
         load  nloc
         sub   one
-        ifzero r1          # n==1 -> result 1
+        ifzero r1           # n == 1 -> result 1
         goto  rec
 r1:     load  one
         goto  ret
 
 rec:    load  nloc
         sub   one
-        store nm1          # nm1 = n-1
+        store nm1           # nm1 = n-1
         load  nloc
         sub   two
-        store nm2          # nm2 = n-2
+        store nm2           # nm2 = n-2
 
         # push marker=1
         load  sp
         store pa1
         load  one
-so1:    21
-pa1:    0
+so1:    21                  # store opcode
+pa1:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
         store sp
@@ -50,30 +47,30 @@ pa1:    0
         load  sp
         store pa2
         load  nm1
-so2:    21
-pa2:    0
+so2:    21                  # store opcode
+pa2:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
         store sp
         goto  fib
 
-r1site: store fret1         # acc=fib(n-1); save it (transient: no call before push)
-        # Re-derive n-2 from THIS frame's n (globals were clobbered by inner calls).
-        # sp still points past our frame, so n is at sp-1, exactly as at fib entry.
+r1site: store fret1         # acc = fib(n-1); safe in a global, no call before the push
+        # Re-derive n-2 from this frame's n (inner calls overwrote the globals).
+        # sp still points past this frame, so n is at sp-1, exactly as at fib entry.
         load  sp
         sub   one
         store pka2
         load  zero
-lop2:   20
-pka2:   0                   # acc = n (from frame)
+lop2:   20                  # load opcode
+pka2:   0                   # <- address of n, patched above
         sub   two
-        store nm2           # nm2 = n-2  (fresh)
+        store nm2           # nm2 = n-2
         # push saved fib(n-1)
         load  sp
         store pa3
         load  fret1
-so3:    21
-pa3:    0
+so3:    21                  # store opcode
+pa3:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
         store sp
@@ -81,8 +78,8 @@ pa3:    0
         load  sp
         store pa4
         load  two
-so4:    21
-pa4:    0
+so4:    21                  # store opcode
+pa4:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
         store sp
@@ -90,41 +87,41 @@ pa4:    0
         load  sp
         store pa5
         load  nm2
-so5:    21
-pa5:    0
+so5:    21                  # store opcode
+pa5:    0                   # <- address of the stack top, patched above
         load  sp
         add   one
         store sp
         goto  fib
 
-r2site: store fscr          # acc = fib(n-2), stash to scratch
+r2site: store fscr          # acc = fib(n-2)
         load  sp
         sub   one
         store sp            # pop
         store pa6
         load  zero
-lo6:    20
-pa6:    0                   # load saved fib(n-1)
+lo6:    20                  # load opcode
+pa6:    0                   # <- address of saved fib(n-1), patched above
         add   fscr          # fib(n-1)+fib(n-2)
 
-# ---------------- return: acc=result. pop frame, dispatch on marker ----------
+        # return: acc = result; pop the frame, dispatch on marker
 ret:    store result
         load  sp
-        sub   two           # pop n and marker (sp -= 2)
+        sub   two           # pop n and marker
         store sp
-        store pa7           # sp now points at marker slot; patch load addr
+        store pa7           # sp points at the marker
         load  zero
-lo7:    20
-pa7:    0                   # load marker
+lo7:    20                  # load opcode
+pa7:    0                   # <- address of the marker, patched above
         store mk
-        ifzero top          # marker 0 -> top-level
+        ifzero top          # marker 0 -> top level
         load  mk
         sub   one
         ifzero r1load       # marker 1 -> after fib(n-1) call
         load  result        # marker 2 -> after fib(n-2) call; restore result
         goto  r2site
 
-r1load: load  result        # restore result into ACC for r1site
+r1load: load  result        # restore result into acc for r1site
         goto  r1site
 
 top:    load  result
@@ -143,10 +140,10 @@ nm2:    0
 fret1:  0
 fscr:   0
 sp:     stackbase
-# Pre-seeded top frame sits JUST BELOW stackbase: [marker=0][n=input].
-# sp = stackbase points at the next free slot; peek (sp-1) reads n.
-seedm:  0            # top-frame marker = 0   (addr stackbase-2)
-seedn:  0            # top-frame n, set to `input` by the entry code (addr stackbase-1)
+# The top frame sits just below stackbase: [marker=0][n=input].
+# sp = stackbase points at the next free slot; sp-1 is n.
+seedm:  0            # top-frame marker (stackbase-2)
+seedn:  0            # top-frame n, set from `input` at entry (stackbase-1)
 stackbase: 0
         0
         0

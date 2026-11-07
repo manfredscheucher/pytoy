@@ -3,7 +3,7 @@
 build_examples.py - compile every examples/c/*.toyc to its .toys.
 
 The generated .toys files are build artifacts (not tracked in git); run this to
-(re)create them all from the C sources. Each example carries a `// expect: N`
+(re)create them all from the C sources. Each example carries a `// result: N`
 header; this script also runs each result and reports OK/MISMATCH so a broken
 compiler is obvious.
 
@@ -24,7 +24,7 @@ from pytoy.assembler import assemble
 from pytoy.simulator import simulate
 
 EXAMPLES = os.path.join(ROOT, "examples", "c")
-_EXPECT = re.compile(r"//\s*expect:\s*(\d+)", re.IGNORECASE)
+_EXPECT = re.compile(r"//\s*result:\s*(\d+)", re.IGNORECASE)
 
 
 def run_acc(asm):

@@ -1,8 +1,12 @@
-# result: 42
+# example: multiply by repeated addition
+# description: Computes a * b by adding a to res, b times.
 # steps: 60
-# multiply: a * b by adding a to itself b times  (6 * 7 = 42)
+# result: 42
+
+# 255 * 255 would take 255 passes, multiply_doubling.toys at most 8.
+
         load  b
-loop:   ifzero done       # b == 0 -> done
+loop:   ifzero done       # b == 0
         load  res
         add   a
         store res         # res += a

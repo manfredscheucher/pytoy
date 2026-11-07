@@ -2,11 +2,15 @@
 #
 # ADDR  BYTES                   SOURCE
 # ────────────────────────────────────────────────────────
-#                                # result: 42
+#                                # example: multiply by repeated addition
+#                                # description: Computes a * b by adding a to res, b times.
 #                                # steps: 60
-#                                # multiply: a * b by adding a to itself b times  (6 * 7 = 42)
+#                                # result: 42
+#                                
+#                                # 255 * 255 would take 255 passes, multiply_doubling.toys at most 8.
+#                                
      0   00010100  00010110              load  b
-     2   00011001  00010010      loop:   ifzero done       # b == 0 -> done
+     2   00011001  00010010      loop:   ifzero done       # b == 0
      4   00010100  00010111              load  res
      6   00010110  00010101              add   a
      8   00010101  00010111              store res         # res += a

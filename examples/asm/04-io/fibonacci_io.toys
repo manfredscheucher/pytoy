@@ -1,29 +1,24 @@
-# fibonacci_io.toys — compute fib(0..13) and write them to io0..io13 (decimal).
-# fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2).  fib(13)=233 is the largest that
-# still fits in one byte (fib(14)=377 would overflow).
-#
-# The output index is advanced by self-modifying code: the STORE below has its
-# address byte patched each iteration to point at the next out cell.
-#
+# example: Fibonacci numbers
+# description: Writes fib(0)..fib(13) to io0..io13.
 # pytoy: output=decimal
+
+# fib(14) = 377 does not fit in a byte, so the output stops at fib(13) = 233.
 
         load  a
 wloop:  load  count
         ifzero done
 
-        # write the current fib value (in `a`) to out[i] via a patched STORE
+        # write a to io[i] via a patched store
         load  a
-        store ival        # stash the value to write
-iop:    21                # STORE opcode (raw byte)
-iarg:   240               # <- address, starts at io0 (240), patched each pass
-        # (the STORE above wrote ival into out[i])
+        store ival        # never read: the patched store writes acc
+iop:    21                # store opcode
+iarg:   240               # <- address of io[i], patched each pass (starts at io0)
 
-        # advance the output pointer
         load  iarg
         add   one
-        store iarg
+        store iarg        # next io cell
 
-        # fib step: next = a + b ; a = b ; b = next
+        # fib step: next = a + b; a = b; b = next
         load  a
         add   b
         store next
@@ -32,10 +27,9 @@ iarg:   240               # <- address, starts at io0 (240), patched each pass
         load  next
         store b
 
-        # count down
         load  count
         sub   one
-        store count
+        store count       # count--
         goto  wloop
 
 done:   load  a
@@ -45,6 +39,6 @@ done:   load  a
 a:     0            # fib(i)
 b:     1            # fib(i+1)
 next:  0
-count: 14           # write 14 values: fib(0)..fib(13)
+count: 14           # values left to write
 one:   1
 ival:  0

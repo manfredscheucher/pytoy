@@ -1,7 +1,9 @@
-# result: 42
+# example: sub
+# description: Subtracts a memory value from acc.
 # steps: 3
-# SUB (00010111) — subtract a memory value from the accumulator
-# 50 - 8 = 42.
+# result: 42
+
+# Opcode 00010111.
 
         load  x         # acc = 50
         sub   y         # acc = 42

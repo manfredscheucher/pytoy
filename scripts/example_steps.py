@@ -12,7 +12,7 @@ Each example documents its numbers in its header comment, and this script
 checks them:
     asm:         # result: 13   and   # steps: 117
     toyo:        the same lines, in the listing's SOURCE column
-    C:           // expect: 13  and   // steps: toycc 255, minicc 180
+    C:           // result: 13  and   // steps: toycc 255, minicc 180
                  (only the compilers that accept the source are listed)
 A missing line is reported as MISSING, a wrong one as MISMATCH.
 
@@ -40,8 +40,10 @@ _RESULT_ASM = re.compile(r"^#\s*result:\s*(\d+)", re.IGNORECASE | re.MULTILINE)
 _STEPS_ASM = re.compile(r"^#\s*steps:\s*(\d+)", re.IGNORECASE | re.MULTILINE)
 _RESULT_TOYO = re.compile(r"^#\s+#\s*result:\s*(\d+)", re.IGNORECASE | re.MULTILINE)
 _STEPS_TOYO = re.compile(r"^#\s+#\s*steps:\s*(\d+)", re.IGNORECASE | re.MULTILINE)
-_RESULT_C = re.compile(r"//\s*expect:\s*(\d+)", re.IGNORECASE)
+_RESULT_C = re.compile(r"//\s*result:\s*(\d+)", re.IGNORECASE)
 _STEPS_C = re.compile(r"//\s*steps:\s*(.+)", re.IGNORECASE)
+_HEADER_BEFORE = re.compile(r"(#|//)\s*(example|description|steps):")
+_HEADER_MORE = re.compile(r"(#|//) {3,}")
 
 
 def run(mem):
@@ -73,16 +75,20 @@ def examples(kind, pattern):
 
 def set_line(path, src, regex, line):
     """Replace the first line matching [regex] with [line], or put [line] at the
-    top (after a leading `// expect:` line in C). Writes the file if changed."""
+    header: `example`, `description`, `steps`, `result`. Writes the file if changed."""
     lines = src.split("\n")
     for i, l in enumerate(lines):
         if regex.match(l):
             lines[i] = line
             break
     else:
-        at = 1 if lines and _RESULT_C.match(lines[0]) else 0
-        if line.startswith("# steps"):     # keep `# result` above `# steps`
-            at = next((i + 1 for i, l in enumerate(lines) if _RESULT_ASM.match(l)), at)
+        is_steps = "steps:" in line
+        at = 0
+        for i, l in enumerate(lines):
+            if _HEADER_BEFORE.match(l) and (not is_steps or "steps:" not in l):
+                at = i + 1
+                while at < len(lines) and _HEADER_MORE.match(lines[at]):   # a description's 2nd line
+                    at += 1
         lines.insert(at, line)
     new = "\n".join(lines)
     if new != src:
@@ -142,7 +148,7 @@ def main():
                 continue   # this compiler does not accept the source
             per[compiler] = steps
             print(f"{name:45} ACC={acc:3}  steps={steps}  ({compiler})")
-            check(f"{name} ({compiler})", "expect", want, acc)
+            check(f"{name} ({compiler})", "result", want, acc)
         got = ", ".join(f"{c} {s}" for c, s in per.items())
         if write and per:
             src = set_line(path, src, _STEPS_C, f"// steps: {got}")

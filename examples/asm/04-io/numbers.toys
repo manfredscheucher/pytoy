@@ -1,11 +1,10 @@
-# numbers.toys — write 0,1,2,...,14 into the output cells io0..io14.
-# The simplest I/O program: just stores to the memory-mapped output region.
-#
-# Try the View → I/O format menu (decimal / binary / hex / ascii)
-# to see the same bytes displayed different ways. numbers_hex / numbers_ascii
-# are the same program opened in those other formats.
-#
+# example: numbers
+# description: Writes 0..14 to io0..io14.
 # pytoy: output=decimal
+
+# The io cells are memory-mapped, so a plain store writes them.
+# The View > I/O format menu shows the same bytes as decimal, binary, hex or ASCII.
+# numbers_hex.toys and numbers_ascii.toys are this program opened in those formats.
 
         load  c0
         store io0
@@ -39,7 +38,7 @@
         store io14
         stop
 
-# data: the constants 0..14
+# data
 c0:  0
 c1:  1
 c2:  2

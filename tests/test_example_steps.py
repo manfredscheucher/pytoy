@@ -1,5 +1,5 @@
 """Every example's documented result and step count (the `# result:` /
-`# steps:` and `// expect:` / `// steps:` header lines) matches a headless run.
+`# steps:` and `// result:` / `// steps:` header lines) matches a headless run.
 
 Run: python3 -m pytest tests/test_example_steps.py -q
 """

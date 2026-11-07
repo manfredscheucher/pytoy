@@ -1,10 +1,12 @@
-# result: 8
+# example: left
+# description: Shifts acc left by 1 bit.
 # steps: 3
-# LEFT (00000010) — shift accumulator left by 1
-# 00000100 (4) becomes 00001000 (8).
+# result: 8
 
-        load  x         # acc = 4
-        left            # acc = 8
+# Opcode 00000010.
+
+        load  x         # acc = 00000100
+        left            # acc = 00001000
         stop
 
 x:      4

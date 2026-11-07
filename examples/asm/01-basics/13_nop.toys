@@ -1,9 +1,12 @@
-# result: 42
+# example: nop
+# description: Does nothing.
 # steps: 3
-# NOP (10000000) — do nothing, just advance to the next instruction
+# result: 42
+
+# Opcode 10000000.
 
         load  x         # acc = 42
-        nop             # no effect
+        nop
         stop
 
 x:      42

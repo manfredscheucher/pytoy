@@ -1,66 +1,47 @@
-# greet_name.toys — read a name via busy-poll, then write a greeting.
-#
-# GUI usage:
-#   1. type the name into io0, io1, io2, ... — one ASCII character per cell.
-#   2. set `ready` (255) to the NUMBER of characters typed, via Edit.
-# The program busy-polls `ready`; once non-zero it reads `ready` as the length
-# N, copies io0..io(N-1) (the name) into a scratch area, then overwrites the io
-# cells with the greeting  "hallo " + NAME + "!"  starting at io0.
-#
-#   output layout:  io0..io5 = 'h','a','l','l','o',' '
-#                   io6..     = the N name characters
-#                   then      = '!'
-#
-# The name is copied to scratch FIRST, because writing "hallo " clobbers
-# io0..io5, which still hold the first name characters.
-#
-# (A '.'-terminated variant is possible — read until a '.' appears — but passing
-#  the length in `ready` is cleaner and needs no sentinel, so we use that.)
-#
-# Example: user types "Max" -> io0='M'(77), io1='a'(97), io2='x'(120), ready=3.
-# Result: io0..io9 = h,a,l,l,o,space,M,a,x,!  i.e. "hallo Max!".
-#
-# Self-modifying code (patched LOAD/STORE address bytes) indexes the io cells by
-# the runtime count N, same technique as sort_array_io.toys / sum_array.toys.
-#
+# example: greet by name
+# description: Reads a name from the io cells and writes "hallo NAME!" back.
 # pytoy: output=ascii
 
-# ── 1. busy-poll until ready != 0, then n = ready ─────────────────
+# Input: type one character per cell into io0, io1, ..., then set ready (mem[255]) to the count.
+# The name goes to scratch first because writing "hallo " overwrites io0..io5.
+# The output needs 6 + n + 1 of the 15 io cells, so names fit up to 8 characters.
+
+        # busy-poll until ready != 0, then n = ready
 wait:   load  ready
         ifzero wait
         load  ready
-        store n              # n = number of name characters
+        store n              # number of name characters
 
-# ── 2. copy io0..io(n-1) into scratch[] ───────────────────────────
+        # copy io0..io[n-1] into scratch[]
         load  iobase
-        store rdarg          # read pointer over the io cells (starts at io0=240)
+        store rdarg          # read pointer over the io cells
         load  scraddr
         store wrarg          # write pointer over scratch[]
         load  n
-        store cnt            # cnt = how many chars still to copy
+        store cnt            # characters left to copy
 
 cploop: load  cnt
         ifzero cpdone
 
-        20                   # LOAD opcode
-rdarg:  240                  # ← io cell, patched each pass (io0, io1, ...)
-        21                   # STORE opcode
-wrarg:  scratch              # ← scratch slot, patched each pass
+        20                   # load opcode
+rdarg:  240                  # <- address of io[i], patched each pass
+        21                   # store opcode
+wrarg:  scratch              # <- address of scratch[i], patched each pass
 
-        load  rdarg          # advance io read pointer
+        load  rdarg
         add   one
-        store rdarg
-        load  wrarg          # advance scratch write pointer
+        store rdarg          # next io cell
+        load  wrarg
         add   one
-        store wrarg
+        store wrarg          # next scratch slot
         load  cnt
         sub   one
-        store cnt
+        store cnt            # cnt--
         goto  cploop
 
 cpdone:
 
-# ── 3. write "hallo " to io0..io5 ─────────────────────────────────
+        # write "hallo " to io0..io5
         load  gh
         store io0
         load  ga
@@ -74,43 +55,41 @@ cpdone:
         load  gsp
         store io5
 
-# ── 4. append the name: scratch[0..n-1] -> io6.. ──────────────────
+        # append the name: scratch[0..n-1] -> io6..
         load  scraddr
         store r2arg          # read pointer over scratch[]
-        load  nameout        # io6 = 246 = first name slot in the output
+        load  nameout
         store w2arg          # write pointer over the io cells
         load  n
-        store cnt            # reuse cnt as the remaining-name counter
+        store cnt            # characters left to write
 
 wrloop: load  cnt
         ifzero wrdone
 
-        20                   # LOAD opcode
-r2arg:  scratch              # ← scratch slot, patched each pass
-        21                   # STORE opcode
-w2arg:  246                  # ← io cell (io6..), patched each pass
+        20                   # load opcode
+r2arg:  scratch              # <- address of scratch[i], patched each pass
+        21                   # store opcode
+w2arg:  246                  # <- address of io[6+i], patched each pass
 
-        load  r2arg          # advance scratch read pointer
+        load  r2arg
         add   one
-        store r2arg
-        load  w2arg          # advance io write pointer
+        store r2arg          # next scratch slot
+        load  w2arg
         add   one
-        store w2arg
+        store w2arg          # next io cell
         load  cnt
         sub   one
-        store cnt
+        store cnt            # cnt--
         goto  wrloop
 
 wrdone:
 
-# ── 5. append "!" right after the name (at io(6+n)) ───────────────
-#   w2arg was advanced once per name char, so it now points one past the last
-#   name cell, i.e. io(6+n) — exactly where '!' goes. Copy it into the STORE.
+        # append "!" at io[6+n]: w2arg points one past the last name cell
         load  w2arg
-        store bangarg        # patch the '!' STORE address
+        store bangarg
         load  gbang
-        21                   # STORE opcode
-bangarg: 0                   # ← io(6+n), patched above
+        21                   # store opcode
+bangarg: 0                   # <- address of io[6+n], patched above
         stop
 
 # data
@@ -118,11 +97,11 @@ zero:    0
 one:     1
 n:       0
 cnt:     0
-iobase:  240          # io0 (numeric init for a self-modifying pointer)
+iobase:  240          # io0
 nameout: 246          # io6
-scraddr: scratch      # address constant: start of scratch[]
+scraddr: scratch      # address of scratch[0]
 
-# greeting "hallo " codes
+# "hallo " and "!" as ASCII codes
 gh:   104             # 'h'
 ga:    97             # 'a'
 gl:   108             # 'l'
@@ -131,7 +110,7 @@ go:   111             # 'o'
 gsp:   32             # ' '
 gbang: 33             # '!'
 
-# scratch area for the typed name (up to 15 chars)
+# scratch array for the typed name
 scratch: 0
          0
          0

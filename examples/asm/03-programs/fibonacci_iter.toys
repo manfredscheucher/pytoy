@@ -1,43 +1,30 @@
-# result: 13
+# example: iterative Fibonacci
+# description: Computes fib(7) in a loop.
 # steps: 81
-# fibonacci_iter.toys
-# Computes the n-th Fibonacci number
-# Result ends up in the accumulator
-#
-# Algorithm:
-#   a, b = 0, 1
-#   for i in range(n):
-#       b = a + b
-#       a = b - a   (= old b, no temp needed)
-#
-# The sequence: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5,
-# fib(6)=8, fib(7)=13. Here n = 7, so ACC = 13.
-#
-# Note: fib(14) = 377 > 255, so n > 13 causes overflow
-#
-# Set before running:
-#   n   = desired position (e.g. 10 -> fib(10) = 55)
-#   b   = 1
-#   one = 1
+# result: 13
 
-        load  n         # acc = n (loop counter)
-loop:   ifzero end      # n == 0 -> done
+# a = b - a recovers the old b, so no temporary variable is needed.
+# fib(14) = 377 does not fit in a byte, so n > 13 overflows.
+# Recursive version: fibonacci_rec.toys.
 
-        load  a         # acc = a
-        add   b         # acc = a + b
-        store b         # b = a + b  (new b)
+        load  n         # loop counter
+loop:   ifzero end      # n == 0
 
-        load  b         # acc = new b
-        sub   a         # acc = (a+b) - a = old b
-        store a         # a = old b
+        load  a
+        add   b
+        store b         # b = a + b
 
-        load  n         # acc = n
-        sub   one       # acc = n - 1
+        load  b
+        sub   a         # acc = (a + b) - a = old b
+        store a
+
+        load  n
+        sub   one
         store n         # n--
 
         goto  loop
 
-end:    load  a         # result: fib(n) in accumulator
+end:    load  a         # fib(n)
         stop
 
 # data

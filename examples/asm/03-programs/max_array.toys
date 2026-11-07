@@ -1,44 +1,35 @@
-# result: 9
+# example: largest value in an array
+# description: Finds the largest value in an array with a loop.
 # steps: 115
-# max_array.toys
-# Finds the maximum of an array using self-modifying code
-#
-# Algorithm:
-#   best = 0
-#   for each element in arr:
-#       if element > best: best = element
-#
-# Compare trick: compute element - best.
-# If no underflow (bit 7 clear), element >= best.
-#
-# Values: 3, 1, 4, 1, 5, 9, 2  (expected max = 9)
+# result: 9
 
-# ── init: set indirect load to point at arr[0] ──────────
+# Self-modifying code: the load is written as raw bytes so its address byte can have a label.
+# The most significant bit (MSB) of cur - best acts as its sign: set means cur < best.
+# Valid for values 0..127. Three values: max3.toys.
+
+        # point the indirect load at arr[0]
         load  ptr
         store iarg
 
-# ── main loop ────────────────────────────────────────────
 loop:   load  count
         ifzero done
 
-        # load arr[i]
-        20                # LOAD opcode
-iarg:   0                 # ← patched to arr[i]
-        store cur         # cur = arr[i]
+        20                # load opcode
+iarg:   0                 # <- address of arr[i], patched each pass
+        store cur
 
-        # compare: cur - best
         sub   best        # acc = cur - best
-        and   mask        # bit 7 set if cur < best (underflow)
-        ifzero update     # bit 7 clear -> cur >= best -> update
+        and   mask        # isolate the MSB
+        ifzero update     # MSB clear -> cur >= best
 
         goto  next
 
 update: load  cur
-        store best        # best = cur
+        store best
 
 next:   load  iarg
         add   one
-        store iarg        # ptr++
+        store iarg        # next element
 
         load  count
         sub   one
@@ -51,12 +42,11 @@ done:   load  best
 # data
 count:  7
 one:    1
-mask:   128
+mask:   128               # 10000000
 best:   0
 cur:    0
-ptr:    arr
+ptr:    arr               # address of arr[0]
 
-# array (contiguous)
 arr:    3
         1
         4

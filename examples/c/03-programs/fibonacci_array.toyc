@@ -1,15 +1,9 @@
-// expect: 34
+// example: Fibonacci numbers in an array
+// description: Fills an array with the first 10 Fibonacci numbers and returns the last.
 // steps: toycc 278, minicc 392
-/*
- * fibonacci_array.toyc - fill an array with the first 10 Fibonacci numbers.
- *
- * a[0]=0, a[1]=1, then a[i] = a[i-1] + a[i-2]. The array ends up holding
- * 0 1 1 2 3 5 8 13 21 34, and main returns the last one, a[9] = 34.
- *
- * Shows arrays with a computed index (a[i], a[i-1], a[i-2]) built from a loop.
- *
- * Expected result: ACC = 34
- */
+// result: 34
+
+// The array ends up as 0 1 1 2 3 5 8 13 21 34.
 
 int main(void) {
     int a[10];

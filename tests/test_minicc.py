@@ -103,7 +103,7 @@ MINICC_OK = [
 def test_example_matches_expect(name):
     path = _example_path(name)
     src = open(path).read()
-    want = int(re.search(r"//\s*expect:\s*(\d+)", src, re.IGNORECASE).group(1))
+    want = int(re.search(r"//\s*result:\s*(\d+)", src, re.IGNORECASE).group(1))
     assert run(src, name + ".toyc") == want
 
 

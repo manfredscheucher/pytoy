@@ -1,14 +1,10 @@
-// expect: 28
+// example: times 7 with the * operator
+// description: Computes 7 * a with the * operator.
 // steps: toycc 51, minicc 49
-/*
- * times7_operator.toyc - compute 7 * a.
- *
- * C counterpart of examples/asm/03-programs/times7_doubling.toys, but with the
- * '*' operator (toycc: double-and-add, minicc: repeated addition).
- * With a = 4: result = 28.
- *
- * Expected result: ACC = 28
- */
+// result: 28
+
+// toycc compiles * to double-and-add, minicc to repeated addition.
+
 int main(void) {
     int a = 4;
     return 7 * a;

@@ -1,22 +1,11 @@
-// expect: 0
+// example: bigint add
+// description: Adds two 32-bit numbers stored as four bytes each, lowest byte first.
 // steps: toycc 99
-/*
- * bigint_add.toyc - add two numbers wider than one byte.
- *
- * The Toy CPU is 8-bit, so a 32-bit value is kept as four bytes (little-endian,
- * least significant first). Addition goes byte by byte, carrying into the next
- * byte when a sum overflows past 255.
- *
- * Carry is detected with the top-bit mask (x & 128), not a 7-step shift:
- *   carry out of a+b = bit 7 of  (a & b) | ((a ^ b) & ~sum)
- *
- * A = 123456789  -> bytes [21, 205, 91, 7]
- * B = 314159265  -> bytes [161, 176, 185, 18]
- * C = A + B = 437616054 -> bytes [182, 125, 21, 26]
- *
- * Returns 0: C is checked against the expected bytes by XOR-ing the differences
- * together (0 only if every byte matches).
- */
+// result: 0
+
+// 123456789 + 314159265 = 437616054, whose bytes are [182, 125, 21, 26].
+// Carry out of a+b is the most significant bit (MSB) of (a & b) | ((a ^ b) & ~sum).
+// Returns 0 if all four bytes match: xor finds the differences, or collects them.
 
 int main(void) {
     int a0 = 21;  int a1 = 205; int a2 = 91;  int a3 = 7;

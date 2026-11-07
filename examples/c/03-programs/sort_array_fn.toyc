@@ -1,19 +1,11 @@
-// expect: 1
+// example: bubble sort of an array in a function
+// description: Sorts an array in place with bubble sort in a function; the result is the smallest.
 // steps: toycc 2116
-/*
- * sort_array_fn.toyc - bubble sort where the array is passed to a FUNCTION
- * (see sort_array_inline.toyc for the version that sorts inline in main).
- *
- * The array decays to a pointer at the call: bubblesort() receives main's
- * array by its base address and sorts it IN PLACE through indirect element
- * access (a[i] == *(a + i), reached with self-modifying code). main then reads
- * a[0], the smallest element.
- *
- * Array = the 10 digits of pi:  3 1 4 1 5 9 2 6 5 3
- * After sorting:                1 1 2 3 3 4 5 5 6 9
- *
- * Expected result: ACC = 1
- */
+// result: 1
+
+// The array decays to a pointer: bubblesort() gets main's base address and sorts in place
+// through a[i] == *(a + i), reached with self-modifying code.
+// Sorted: 1 1 2 3 3 4 5 5 6 9. Inline version: sort_array_inline.toyc.
 
 int bubblesort(int a[], int n) {
     int i;

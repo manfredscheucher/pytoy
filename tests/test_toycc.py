@@ -8,7 +8,7 @@ Pipeline under test (one stage feeds the next):
                                          ▲ assert ACC == expected
 
 For the example programs the expected result lives WITH the data: each
-`examples/c/*.toyc` file carries a machine-readable `// expect: N`
+`examples/c/*.toyc` file carries a machine-readable `// result: N`
 annotation, so adding a new example needs no change to this test file.
 """
 
@@ -81,12 +81,12 @@ def run_c_read_mem(src, name="test.toyc"):
 
 # ── Example programs (data-driven) ──────────────────────────────────────────
 
-_EXPECT_RE = re.compile(r'//\s*expect:\s*(\d+)', re.IGNORECASE)
+_EXPECT_RE = re.compile(r'//\s*result:\s*(\d+)', re.IGNORECASE)
 
 
 def _collect_examples():
     # The I/O examples (04-io/) busy-poll `ready` / read input, so they can't run
-    # headless to a deterministic ACC and carry no `// expect:`. They are covered
+    # headless to a deterministic ACC and carry no `// result:`. They are covered
     # separately by tests/test_cc_io.py; skip them here.
     cases = []
     for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, '**', '*.toyc'), recursive=True)):
@@ -95,7 +95,7 @@ def _collect_examples():
         with open(path) as f:
             src = f.read()
         m = _EXPECT_RE.search(src)
-        assert m, f"{os.path.basename(path)} is missing an '// expect: N' annotation"
+        assert m, f"{os.path.basename(path)} is missing an '// result: N' annotation"
         cases.append((os.path.basename(path), src, int(m.group(1))))
     return cases
 
@@ -470,8 +470,8 @@ def test_bubblesort_fn_fits_256_bytes():
 # ── Compiler diagnostics ────────────────────────────────────────────────────
 
 def test_line_comment_before_main_is_ignored():
-    """The // expect: annotation sits before main and must not break lexing."""
-    src = "// expect: 3\nint main(void) { return 3; }\n"
+    """The // result: annotation sits before main and must not break lexing."""
+    src = "// result: 3\nint main(void) { return 3; }\n"
     assert run_c(src) == 3
 
 def test_syntax_error_raises_compile_error():
@@ -816,11 +816,11 @@ def test_optimize_all_on_preserves_results():
         assert got == want, src
 
 def test_optimizations_preserve_examples():
-    """Every committed C example still produces its // expect: value, both at
+    """Every committed C example still produces its // result: value, both at
     default (no opts) and with everything on."""
     for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, "**", "*.toyc"), recursive=True)):
         src = open(path).read()
-        m = re.search(r"//\s*expect:\s*(\d+)", src, re.IGNORECASE)
+        m = re.search(r"//\s*result:\s*(\d+)", src, re.IGNORECASE)
         if not m:
             continue
         want = int(m.group(1))

@@ -1,7 +1,9 @@
-# result: 102
+# example: xor
+# description: Computes the bitwise xor of acc and a memory value.
 # steps: 3
-# XOR (00010011) — bitwise XOR of accumulator with a memory value
-# 11001100 XOR 10101010 = 01100110.
+# result: 102
+
+# Opcode 00010011.
 
         load  x         # acc = 11001100
         xor   y         # acc = 01100110

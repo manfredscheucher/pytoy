@@ -1,18 +1,10 @@
-// expect: 10
+// example: recursive count
+// description: Counts to 10 recursively with f(n) = f(n - 1) + 1 and f(0) = 0.
 // steps: toycc 421
-/*
- * count_rec.toyc - count up to 10 RECURSIVELY.
- *
- * f(n) = 0            if n == 0
- *      = f(n - 1) + 1 otherwise
- * so f(10) = 10.
- *
- * The iterative version is in count_iter.toyc; both return 10.
- * toycc compiles the recursion with a self-modifying-code stack (see the
- * manual).
- *
- * Expected result: ACC = 10
- */
+// result: 10
+
+// toycc compiles recursion with a self-modifying-code stack (see the manual).
+// Iterative version: count_iter.toyc.
 
 int f(int n) {
     if (n == 0) {

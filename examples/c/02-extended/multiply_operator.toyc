@@ -1,16 +1,12 @@
-// expect: 42
+// example: multiply with the * operator
+// description: Computes a * b with the * operator.
 // steps: toycc 56, minicc 69
-/*
- * multiply_operator.toyc - compute a * b with the '*' operator.
- *
- * The Toy CPU has no multiply instruction, so toycc expands '*' to a
- * double-and-add loop (one step per bit of b); minicc to a repeated-addition
- * loop (one step per unit of b). See multiply_repeated.toyc and
- * multiply_doubling.toyc for the same two methods written out by hand with only
- * +, -, and shifts.
- *
- * With a = 7, b = 6: result = 42.
- */
+// result: 42
+
+// The Toy CPU has no multiply instruction. toycc compiles * to double-and-add (one pass
+// per bit of b), minicc to repeated addition (one pass per unit of b).
+// By hand: multiply_doubling.toyc, multiply_repeated.toyc.
+
 int main(void) {
     int a = 7;
     int b = 6;

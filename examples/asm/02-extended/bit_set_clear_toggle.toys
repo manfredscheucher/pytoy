@@ -1,23 +1,24 @@
-# result: 1
+# example: set, clear and toggle a bit
+# description: Sets, toggles and clears bit 3 of x, storing each result.
 # steps: 10
-# set / clear / toggle bit 3 (mask 00001000) of x
-# x=00000001 -> set:00001001 -> toggle:00000001 -> stored in results
+# result: 1
+
         load  x
         or    mask        # set bit 3
-        store r_set
-
-        load  r_set
-        xor   mask        # toggle bit 3 (back off)
-        store r_toggle
+        store r_set       # 00001001
 
         load  x
-        and   keep        # clear bit 3 (mask's complement)
-        store r_clear
+        xor   mask        # toggle bit 3
+        store r_toggle    # 00001001
+
+        load  x
+        and   keep        # clear bit 3
+        store r_clear     # 00000001
         stop
 
 x:        1               # 00000001
 mask:     8               # 00001000
-keep:     247             # 11110111 (NOT mask)
+keep:     247             # 11110111 (not mask)
 r_set:    0
 r_toggle: 0
 r_clear:  0

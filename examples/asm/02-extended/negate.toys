@@ -1,6 +1,10 @@
-# result: 251
+# example: negate
+# description: Negates x by computing 0 - x.
 # steps: 3
-# negate: 0 - x  (two's complement)  x=5 -> 251 (= -5 mod 256)
+# result: 251
+
+# 251 is -5 mod 256.
+
         load  zero
         sub   x
         stop

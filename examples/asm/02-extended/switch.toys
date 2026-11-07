@@ -1,7 +1,10 @@
-# result: 2
+# example: switch
+# description: Branches on x with equality tests: 0, 1 and 2 map to themselves, else 3.
 # steps: 10
-# switch(x): 0->0, 1->1, 2->2, else->3   (no jump table, just equality tests)
-# equality a==b is (a-b)==0 via SUB + IFZERO.
+# result: 2
+
+# Equality a == b is tested as (a - b) == 0 with sub and ifzero.
+
         load  x
         ifzero case0      # x == 0
 

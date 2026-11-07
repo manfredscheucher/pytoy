@@ -1,8 +1,8 @@
-# numbers_hex.toys — write 0,1,2,...,14 into the output cells io0..io14.
-# Same bytes as numbers.toys, but the I/O panel opens in hex mode, so they show
-# as 0..9 then a..e. Switch the View → I/O format menu to see them any other way.
-#
+# example: numbers in hex
+# description: Writes 0..14 to io0..io14, displayed in hex.
 # pytoy: output=hex
+
+# Same bytes as numbers.toys; they show as 00..09, then 0A..0E.
 
         load  c0
         store io0
@@ -36,7 +36,7 @@
         store io14
         stop
 
-# data: the constants 0..14
+# data
 c0:  0
 c1:  1
 c2:  2

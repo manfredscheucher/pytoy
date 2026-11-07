@@ -1,20 +1,21 @@
-# result: 12
+# example: iterative GCD by subtraction
+# description: Computes gcd(48, 36) in a loop with Euclid's subtraction algorithm.
 # steps: 32
-# gcd_iter.toys
-# Greatest common divisor by subtraction (Euclid):
-#   while a != b: if a > b: a -= b  else: b -= a
-# gcd(48, 36) = 12.  Values 1..127 (msb is used as the sign for a > b).
+# result: 12
+
+# Trace: (48, 36) -> (12, 36) -> (12, 24) -> (12, 12), then a == b.
+# The most significant bit (MSB) of a - b acts as its sign: set means a < b.
+# Valid for a and b in 1..127.
 
 loop:   load  a
         sub   b
         ifzero done       # a == b -> gcd found
-        and   sign        # sign bit of (a - b)
-        ifzero a_gt_b     # bit clear -> a > b
+        and   sign        # isolate the MSB
+        ifzero a_gt_b     # MSB clear -> a > b
 
-        # a < b:  b -= a
         load  b
         sub   a
-        store b
+        store b           # b -= a
         goto  loop
 
 a_gt_b: load  a
@@ -28,4 +29,4 @@ done:   load  a           # a == b == gcd
 # data
 a:      48
 b:      36
-sign:   128
+sign:   128               # 10000000

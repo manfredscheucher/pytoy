@@ -1,13 +1,7 @@
-# result: 28
+# example: times 7 by doubling
+# description: Computes 7 * a by doubling and adding.
 # steps: 10
-# times7_doubling.toys
-# Computes res = 7 * a using doubling and addition
-#
-# b = a + a      (2a)
-# c = b + b      (4a)
-# res = a + b + c (a + 2a + 4a = 7a)
-#
-# With a = 4: result = 28
+# result: 28
 
         load  a
         add   a

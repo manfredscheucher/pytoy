@@ -1,31 +1,26 @@
-# result: 25
+# example: sum of an array
+# description: Sums an array with a loop.
 # steps: 90
-# sum_array.toys
-# Sums an array of values using self-modifying code
-#
-# Trick: the LOAD instruction is 2 bytes [opcode=20, address].
-# We place the opcode as a raw data byte followed by a patchable
-# address byte. At runtime we overwrite the address byte to
-# iterate through the array.
-#
-# Values: 3, 1, 4, 1, 5, 9, 2  (expected sum = 25)
+# result: 25
 
-# ── init: set indirect load to point at arr[0] ──────────
-        load  ptr         # acc = address of arr[0]
-        store iarg        # patch the address byte
+# Self-modifying code: the load is written as raw bytes so its address byte can have a label.
+# Three values: sum3.toys.
 
-# ── main loop ────────────────────────────────────────────
+        # point the indirect load at arr[0]
+        load  ptr
+        store iarg
+
 loop:   load  count
         ifzero done
 
-iop:    20                # LOAD opcode (raw byte)
-iarg:   0                 # ← address byte, patched to arr[i]
+iop:    20                # load opcode
+iarg:   0                 # <- address of arr[i], patched each pass
         add   result
         store result      # result += arr[i]
 
-        load  iarg        # current pointer
+        load  iarg
         add   one
-        store iarg        # ptr++
+        store iarg        # next element
 
         load  count
         sub   one
@@ -41,7 +36,6 @@ one:    1
 result: 0
 ptr:    arr               # address of arr[0]
 
-# array (contiguous)
 arr:    3
         1
         4

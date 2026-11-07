@@ -1,7 +1,9 @@
-# result: 136
+# example: and
+# description: Computes the bitwise and of acc and a memory value.
 # steps: 3
-# AND (00010001) — bitwise AND of accumulator with a memory value
-# 11001100 AND 10101010 = 10001000.
+# result: 136
+
+# Opcode 00010001.
 
         load  x         # acc = 11001100
         and   y         # acc = 10001000

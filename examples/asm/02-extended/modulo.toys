@@ -1,12 +1,15 @@
-# result: 2
+# example: modulo by repeated subtraction
+# description: Computes a % b by subtracting b until a < b.
 # steps: 30
-# modulo: a % b by repeated subtraction  (20 % 6 = 2)
-# subtract b from a until a-b goes negative; a is then the remainder.
-# valid for a in 0..127 (msb is the sign).
+# result: 2
+
+# The most significant bit (MSB) of a - b acts as its sign: set means a < b.
+# Valid for a in 0..127, b in 1..128.
+
 loop:   load  a
         sub   b
-        and   sign        # a-b < 0 ?
-        ifzero cont       # no -> subtract for real
+        and   sign        # isolate the MSB
+        ifzero cont       # MSB clear -> a >= b, subtract for real
         load  a
         stop              # a = remainder
 cont:   load  a
@@ -16,4 +19,4 @@ cont:   load  a
 
 a:      20
 b:      6
-sign:   128
+sign:   128               # 10000000

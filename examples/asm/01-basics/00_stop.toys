@@ -1,11 +1,13 @@
-# result: 42
+# example: stop
+# description: Halts the CPU.
 # steps: 2
-# STOP (00000000) — halt execution
-# The CPU runs until STOP. Everything after it is never executed.
+# result: 42
+
+# Opcode 00000000.
 
         load  x         # acc = 42
-        stop            # halt here
-        load  y         # never runs (acc stays 42)
+        stop
+        load  y         # never runs
 
 x:      42
 y:      99

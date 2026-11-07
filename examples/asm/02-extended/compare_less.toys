@@ -1,11 +1,15 @@
-# result: 1
+# example: compare a < b
+# description: Sets acc to 1 if a < b, else to 0.
 # steps: 6
-# compare a < b: sign bit of (a-b) is set on underflow
-# a=3, b=5 -> a<b -> acc=1  (try a=5,b=3 -> acc=0)
+# result: 1
+
+# The most significant bit (MSB) of a - b acts as its sign: set means a < b.
+# Valid while a - b stays in -128..127.
+
         load  a
         sub   b
-        and   sign        # isolate bit 7
-        ifzero ge         # bit 7 clear -> a >= b
+        and   sign        # isolate the MSB
+        ifzero ge         # MSB clear -> a >= b
         load  one
         stop
 ge:     load  zero
@@ -13,6 +17,6 @@ ge:     load  zero
 
 a:      3
 b:      5
-sign:   128
+sign:   128               # 10000000
 one:    1
 zero:   0

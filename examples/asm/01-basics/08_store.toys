@@ -1,7 +1,9 @@
-# result: 42
+# example: store
+# description: Copies acc into memory.
 # steps: 3
-# STORE (00010101) — copy the accumulator into a memory address
-# Watch address `dst` change from 0 to 42 in the memory panel.
+# result: 42
+
+# Opcode 00010101.
 
         load  x         # acc = 42
         store dst       # dst = 42

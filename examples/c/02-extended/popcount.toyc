@@ -1,22 +1,15 @@
-// expect: 3
+// example: popcount
+// description: Counts the set bits of 37 (100101 in binary).
 // steps: toycc 120, minicc 163
-/*
- * popcount.toyc - count the set bits (1-bits) of a number.
- *
- * Look at the lowest bit, add it to the count, then shift right; repeat until
- * the number is zero. The lowest bit is x & 1 (the Toy CPU has no `%`, but
- * `x & 1` is exactly `x % 2` for the low bit).
- *
- * x = 37 = 32 + 4 + 1 = 100101 in binary -> 3 bits set.
- *
- * Expected result: ACC = 3
- */
+// result: 3
+
+// The Toy CPU has no %, but x & 1 equals x % 2: the least significant bit (LSB).
 
 int popcount(int x) {
     int count = 0;
     while (x != 0) {
-        count = count + (x & 1);   /* add the lowest bit */
-        x = x >> 1;                /* drop it */
+        count = count + (x & 1);   // add the LSB
+        x = x >> 1;                // drop it
     }
     return count;
 }

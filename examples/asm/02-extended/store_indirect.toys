@@ -1,13 +1,18 @@
-# result: 42
+# example: store indirect
+# description: Writes val into data[i] by patching the address of a store.
 # steps: 6
-# store indirect: write val into data[i]  (watch data[3]: 0 -> 42)
+# result: 42
+
+# Self-modifying code: the store is written as raw bytes so its address byte can have a label.
+# data[3] changes from 0 to 42.
+
         load  base
         add   i
-        store patch       # patch the STORE address below
+        store patch
 
         load  val
-store:  21                # STORE opcode
-patch:  0                 # address byte -> data+i
+store:  21                # store opcode
+patch:  0                 # <- address of data[i], patched above
         stop
 
 base:   data
