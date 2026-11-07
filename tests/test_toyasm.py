@@ -292,12 +292,12 @@ val:    42
     assert _run(src) == 42
 
 def test_sim_sum():
-    """sum_array.toys with [3,1,4,1,5,9,2] should produce 25."""
+    """sum_array.toys with [3,1,4,1,5,9,2,6,5,3] should produce 39."""
     src = open('examples/asm/03-programs/sum_array.toys').read()
-    assert _run(src) == 25
+    assert _run(src) == 39
 
 def test_sim_max():
-    """max_array.toys with [3,1,4,1,5,9,2] should produce 9."""
+    """max_array.toys with [3,1,4,1,5,9,2,6,5,3] should produce 9."""
     src = open('examples/asm/03-programs/max_array.toys').read()
     assert _run(src) == 9
 

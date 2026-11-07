@@ -39,7 +39,7 @@ extended demos show the standard ways around that.
 - **`bit_set_clear_toggle.toys`** — one-bit masking: `OR mask` sets bit 3,
   `XOR mask` toggles it, `AND (NOT mask)` clears it. Results in `r_set`,
   `r_toggle`, `r_clear`.
-- **`multiply_repeated.toys`** — `a * b` by adding `a` to itself `b` times. `6 * 7 = 42`.
+- **`multiply_repeated.toys`** — `a * b` by adding `a` to itself `b` times. `7 * 6 = 42`.
 - **`multiply_doubling.toys`** — `a * b` by double-and-add: each step test `lsb(b)`
   (`AND 1`); if set, `res += a`; then `a <<= 1` (LEFT), `b >>= 1` (RIGHT). Same
   result, fewer steps for large `b`.

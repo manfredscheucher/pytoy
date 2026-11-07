@@ -150,12 +150,11 @@ wait:   load  ready
 ```
 
 With `n` in hand it copies the name out of the `io` cells into a scratch area,
-writes "hallo " into `io0`..`io5`, appends the name after it, and finishes with
-a `!`. Type `Max` with `ready = 3` and `io0`..`io9` come back as `h a l l o _ M
-a x !`.
+writes "Hallo " into `io0`..`io5` and appends the name after it. Type `Max` with
+`ready = 3` and `io0`..`io8` come back as `H a l l o _ M a x`.
 
 Two details are worth noticing. First, the program must copy the name to scratch
-_before_ writing "hallo ", because the greeting overwrites `io0`..`io5`, which
+_before_ writing "Hallo ", because the greeting overwrites `io0`..`io5`, which
 may still hold name characters. Second, it indexes the `io` cells by the runtime
 count `n` using *self-modifying code* — patching the address byte of a
 `load`/`store` on each pass — exactly the indirect-access technique from the _A
@@ -179,7 +178,7 @@ writes them back.
   [`fibonacci_io`],   [write the Fibonacci numbers `0`..`233` into the `io` cells],
   [`countdown`],   [count down from 10, writing each step to a cell],
   [`poll_demo`],   [the canonical busy-poll: wait on `ready`, echo `io0` to `io1`],
-  [`greet_name`],  [read a name, write "hallo NAME!" (input + output)],
+  [`greet_name`],  [read a name, write "Hallo NAME" (input + output)],
   [`sort_array_io`],        [read `N` values, sort ascending, write them back],
   [`pin_check`],   [read a 4-digit PIN (ascii), check it against 1337; right PIN reveals the secret 42 ("succ"), wrong PIN gives 0 ("fail")],
   [`pin_check_hardened`], [the same check made _constant-time_ (no per-digit branch), to close the timing side channel],

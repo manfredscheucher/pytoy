@@ -1,9 +1,9 @@
 # example: greet by name
-# description: Reads a name and writes "hallo NAME!" back. Names over 8 characters overflow.
+# description: Reads a name and writes "Hallo NAME" back. Names over 9 characters overflow.
 # pytoy: output=ascii
 
 # Input: type one character per cell into io0, io1, ..., then set ready (mem[255]) to the count.
-# The name goes to scratch first because writing "hallo " overwrites io0..io5.
+# The name goes to scratch first because writing "Hallo " overwrites io0..io5.
 
         # busy-poll until ready != 0, then n = ready
 wait:   load  ready
@@ -40,7 +40,7 @@ wrarg:  scratch              # <- address of scratch[i], patched each pass
 
 cpdone:
 
-        # write "hallo " to io0..io5
+        # write "Hallo " to io0..io5
         load  gh
         store io0
         load  ga
@@ -81,15 +81,7 @@ w2arg:  246                  # <- address of io[6+i], patched each pass
         store cnt            # cnt--
         goto  wrloop
 
-wrdone:
-
-        # append "!" at io[6+n]: w2arg points one past the last name cell
-        load  w2arg
-        store bangarg
-        load  gbang
-        21                   # store opcode
-bangarg: 0                   # <- address of io[6+n], patched above
-        stop
+wrdone: stop
 
 # data
 one:     1
@@ -99,14 +91,13 @@ iobase:  240          # io0
 nameout: 246          # io6
 scraddr: scratch      # address of scratch[0]
 
-# "hallo " and "!" as ASCII codes
-gh:   104             # 'h'
+# "Hallo " as ASCII codes
+gh:    72             # 'H'
 ga:    97             # 'a'
 gl:   108             # 'l'
 gl2:  108             # 'l'
 go:   111             # 'o'
 gsp:   32             # ' '
-gbang: 33             # '!'
 
 # scratch array for the typed name
 scratch: 0

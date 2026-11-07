@@ -1,6 +1,6 @@
 # example: multiply by double-and-add
 # description: Computes a * b by adding shifted copies of a.
-# steps: 43
+# steps: 40
 # result: 42
 
 # One pass per bit of b: add a if the least significant bit (LSB) of b is set, then
@@ -23,7 +23,7 @@ skip:   load  a
 done:   load  res
         stop
 
-a:      6
-b:      7
+a:      7
+b:      6         # 110 in binary, so 7 * 6 = 7 * 4 + 7 * 2
 res:    0
 one:    1

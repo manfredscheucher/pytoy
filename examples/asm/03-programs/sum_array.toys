@@ -1,7 +1,7 @@
 # example: sum of an array
 # description: Sums an array with a loop.
-# steps: 90
-# result: 25
+# steps: 126
+# result: 39
 
 # Self-modifying code: the load is written as raw bytes so its address byte can have a label.
 # Three values: sum3.toys.
@@ -31,7 +31,7 @@ done:   load  result
         stop
 
 # data
-count:  7
+count:  10
 one:    1
 result: 0
 ptr:    arr               # address of arr[0]
@@ -43,3 +43,6 @@ arr:    3
         5
         9
         2
+        6
+        5
+        3

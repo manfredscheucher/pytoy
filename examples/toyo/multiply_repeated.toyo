@@ -4,7 +4,7 @@
 # ────────────────────────────────────────────────────────
 #                                # example: multiply by repeated addition
 #                                # description: Computes a * b by adding a to res, b times.
-#                                # steps: 60
+#                                # steps: 52
 #                                # result: 42
 #                                
 #                                # 255 * 255 would take 255 passes, multiply_doubling.toys at most 8.
@@ -21,8 +21,8 @@
     18   00010100  00010111      done:   load  res
     20   00000000                        stop
 #                                
-    21   00000110                a:      6
-    22   00000111                b:      7
+    21   00000111                a:      7
+    22   00000110                b:      6
     23   00000000                res:    0
     24   00000001                one:    1
 

@@ -1,6 +1,6 @@
 # example: largest value in an array
 # description: Finds the largest value in an array with a loop.
-# steps: 115
+# steps: 160
 # result: 9
 
 # Self-modifying code: the load is written as raw bytes so its address byte can have a label.
@@ -40,7 +40,7 @@ done:   load  best
         stop
 
 # data
-count:  7
+count:  10
 one:    1
 mask:   128               # 10000000
 best:   0
@@ -54,3 +54,6 @@ arr:    3
         5
         9
         2
+        6
+        5
+        3

@@ -1,6 +1,6 @@
 # example: multiply by repeated addition
 # description: Computes a * b by adding a to res, b times.
-# steps: 60
+# steps: 52
 # result: 42
 
 # 255 * 255 would take 255 passes, multiply_doubling.toys at most 8.
@@ -17,7 +17,7 @@ loop:   ifzero done       # b == 0
 done:   load  res
         stop
 
-a:      6
-b:      7
+a:      7
+b:      6
 res:    0
 one:    1
